@@ -147,6 +147,19 @@ Opens at http://localhost:8501. Three tabs (Summary hidden for now):
 │   │   └── llm.py              # Gemini LLM (get_llm)
 │   └── ui/
 │       └── chat_tab.py         # Chat UI, invokes agent
+├── ARCHITECTURE.md              # High-level architecture, runtime flow, and packages
 ├── requirements.txt
 └── supabase_rls_policies.sql
 ```
+
+## Tests
+
+- **Test runner**: [pytest](https://docs.pytest.org/)
+- **Location**: all tests live under `tests/`
+- **Run all tests** from the project root:
+
+```bash
+pytest
+```
+
+The suite includes unit-level tests for the tracker database helpers, CSV services, and FastAPI/Chat APIs, plus a small Streamlit UI import smoke test. These are safe to run in CI on every push (they do not touch your production database).

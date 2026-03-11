@@ -1,12 +1,12 @@
 """Shared UI helpers for the tracker Streamlit tabs (error messages, connection checks)."""
 
 DATABASE_ERROR_MSG = (
-    "**Could not reach the database.** This is usually:\n\n"
-    "• **Project paused** — Free-tier Supabase projects pause after inactivity. "
-    "Open your [Supabase Dashboard](https://supabase.com/dashboard), select the project, and click **Restore**.\n\n"
+    "**Could not reach the database.** This is usually one of:\n\n"
+    "• **Database paused or restarting** — If you are using a managed Postgres service (e.g. Supabase, Render, Railway), "
+    "check its dashboard and resume/restart the instance if needed.\n\n"
     "• **Temporary outage** — Try again in a few minutes.\n\n"
     "• **Network/firewall** — Check VPN or corporate network if the problem continues.\n\n"
-    "• **DATABASE_URL** — Ensure .env has a valid DATABASE_URL (PostgreSQL connection string)."
+    "• **DATABASE_URL** — Ensure `.env` has a valid `DATABASE_URL` (PostgreSQL connection string)."
 )
 
 

@@ -6,6 +6,7 @@ from datetime import date
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
+from pydantic.config import ConfigDict
 
 from tracker.constants import CATEGORIES
 
@@ -55,5 +56,4 @@ class TransactionResponse(BaseModel):
     transaction_date: date
     description: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
