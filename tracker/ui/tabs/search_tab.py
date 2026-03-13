@@ -11,7 +11,14 @@ from tracker.ui.utils.search_results import render_search_results
 
 
 def render_search() -> None:
-    st.subheader("Search transactions")
+    st.markdown(
+        """
+        <div class="chat-main-header">
+            <h2>Search transactions</h2>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     if "search_page" not in st.session_state:
         st.session_state.search_page = 1
     if "search_results_total" not in st.session_state:
