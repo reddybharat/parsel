@@ -45,7 +45,7 @@ def render_search() -> None:
                 order_dir = "DESC" if sort_desc else "ASC"
                 order_clause = f"ORDER BY {sort_col} {order_dir}"
 
-                cols = "id, amount, category, transaction_date, description"
+                cols = "id, amount, category, transaction_date, description, created_at, updated_at, version_no"
                 if category and category != "All":
                     count_sql = """
                         SELECT COUNT(*) AS n FROM transactions

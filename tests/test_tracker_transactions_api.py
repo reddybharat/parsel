@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 
 from fastapi import FastAPI
@@ -17,6 +17,7 @@ def test_create_transaction_happy_path(monkeypatch):
     app = create_app()
 
     def fake_execute_insert(sql: str, params: tuple[Any, ...]):
+        now = datetime.now(timezone.utc)
         return [
             {
                 "id": 1,
@@ -24,6 +25,9 @@ def test_create_transaction_happy_path(monkeypatch):
                 "category": params[1],
                 "transaction_date": params[2],
                 "description": params[3],
+                "created_at": now,
+                "updated_at": now,
+                "version_no": 0,
             }
         ]
 
