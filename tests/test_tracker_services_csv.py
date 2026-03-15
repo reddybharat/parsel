@@ -22,21 +22,25 @@ def test_export_transactions_csv_builds_csv(monkeypatch):
         }
     ]
 
-    def fake_execute_query(sql: str, params: tuple):
+    def fake_execute_query(sql, params=None, conn=None):
         return fake_rows
 
     monkeypatch.setattr(services, "execute_query", fake_execute_query)
+
+    class DummyConn:
+        pass
 
     csv_text = services.export_transactions_csv(
         start_date=date(2026, 3, 1),
         end_date=date(2026, 3, 31),
         category="All",
+        conn=DummyConn(),
     )
     assert "transaction_date,category,amount,description" in csv_text
     assert "Grocery" in csv_text
 
 
-def test_import_transactions_from_csv_valid(monkeypatch):
+def test_import_transactions_from_csv_valid():
     class DummyCursor:
         def __init__(self):
             self.executed = []
@@ -66,28 +70,19 @@ def test_import_transactions_from_csv_valid(monkeypatch):
         def close(self):
             pass
 
-    def fake_get_connection():
-        # Match the context manager protocol used in tracker.database.get_connection
-        class _CM:
-            def __enter__(self):
-                return DummyConnection()
-
-            def __exit__(self, exc_type, exc, tb):
-                return False
-
-        return _CM()
-
-    monkeypatch.setattr(services, "get_connection", fake_get_connection)
-
+    conn = DummyConnection()
     csv_bytes = b"transaction_date,category,amount,description\n2026-03-01,Grocery,1000,Test\n"
-    inserted_count, errors = services.import_transactions_from_csv(csv_bytes)
+    inserted_count, errors = services.import_transactions_from_csv(csv_bytes, conn)
     assert inserted_count == 1
     assert errors == []
 
 
 def test_import_transactions_from_csv_missing_required_columns():
+    class DummyConn:
+        pass
+
     csv_bytes = b"date,category,amount,description\n2026-03-01,Grocery,1000,Test\n"
-    inserted_count, errors = services.import_transactions_from_csv(csv_bytes)
+    inserted_count, errors = services.import_transactions_from_csv(csv_bytes, conn=DummyConn())
     assert inserted_count == 0
     assert any("Missing required column" in e for e in errors)
 

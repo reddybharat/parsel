@@ -45,6 +45,12 @@ def render_add_transaction() -> None:
         description = st.text_input("Description (optional)", placeholder="Short note")
         submitted = st.form_submit_button("Save transaction")
 
+    conn = st.session_state.get("db_conn")
+    if conn is None:
+        if submitted:
+            st.error("Database not configured. Set DATABASE_URL in .env to add transactions.")
+        return
+
     if submitted:
         errors: list[str] = []
         try:
@@ -76,8 +82,9 @@ def render_add_transaction() -> None:
                     transaction_date.isoformat(),
                     description.strip() or None,
                 )
-                rows = execute_insert(sql, params)
+                rows = execute_insert(sql, params, conn=conn)
                 if rows:
+                    conn.commit()
                     st.success(f"Saved: ₹{amount:,.2f} — {category} on {transaction_date}")
                 else:
                     st.error("Insert failed. Check your database.")
@@ -90,8 +97,4 @@ def render_add_transaction() -> None:
                 else:
                     st.error(f"Error: {err}")
 
-    # Import from CSV (template + file upload + import)
-    try:
-        render_import_csv_section()
-    except ValueError:
-        pass  # DB not configured; expander still visible but import will fail
+    render_import_csv_section(conn)

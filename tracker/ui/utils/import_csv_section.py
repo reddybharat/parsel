@@ -1,6 +1,6 @@
 """Import from CSV UI for the Add Transaction tab (template download + file upload + import)."""
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import streamlit as st
 
@@ -14,8 +14,8 @@ if TYPE_CHECKING:
     from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 
-def render_import_csv_section() -> None:
-    """Render the 'Import from CSV' expander: download template, file uploader, and Import button."""
+def render_import_csv_section(conn: Any) -> None:
+    """Render the 'Import from CSV' expander: download template, file uploader, and Import button. conn is required."""
     with st.expander("Import from CSV", expanded=False):
         template_csv = transactions_csv_template()
         st.download_button(
@@ -39,7 +39,7 @@ def render_import_csv_section() -> None:
         if uploaded_file is not None:
             if st.button("Import", use_container_width=True, key="add_txn_import_btn"):
                 content = uploaded_file.getvalue()
-                inserted, import_errors = import_transactions_from_csv(content)
+                inserted, import_errors = import_transactions_from_csv(content, conn)
                 if inserted:
                     st.success(
                         f"Imported {inserted} transaction(s) from CSV."

@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -13,10 +14,15 @@ def create_app() -> FastAPI:
     return app
 
 
+@contextmanager
+def _dummy_conn_cm():
+    yield None
+
+
 def test_create_transaction_happy_path(monkeypatch):
     app = create_app()
 
-    def fake_execute_insert(sql: str, params: tuple[Any, ...]):
+    def fake_execute_insert(sql: str, params: tuple[Any, ...] = None, conn=None):
         now = datetime.now(timezone.utc)
         return [
             {
@@ -33,6 +39,9 @@ def test_create_transaction_happy_path(monkeypatch):
 
     from tracker import api as tracker_api_pkg  # type: ignore[import-untyped]
 
+    monkeypatch.setattr(
+        tracker_api_pkg.transactions, "get_connection", _dummy_conn_cm  # type: ignore[attr-defined]
+    )
     monkeypatch.setattr(
         tracker_api_pkg.transactions, "execute_insert", fake_execute_insert  # type: ignore[attr-defined]
     )
@@ -68,11 +77,14 @@ def test_create_transaction_invalid_date(monkeypatch):
 def test_get_transaction_not_found(monkeypatch):
     app = create_app()
 
-    def fake_execute_query(sql: str, params: tuple[Any, ...]):
+    def fake_execute_query(sql: str, params: tuple[Any, ...] = None, conn=None):
         return []
 
     from tracker import api as tracker_api_pkg  # type: ignore[import-untyped]
 
+    monkeypatch.setattr(
+        tracker_api_pkg.transactions, "get_connection", _dummy_conn_cm  # type: ignore[attr-defined]
+    )
     monkeypatch.setattr(
         tracker_api_pkg.transactions, "execute_query", fake_execute_query  # type: ignore[attr-defined]
     )
@@ -80,24 +92,4 @@ def test_get_transaction_not_found(monkeypatch):
     client = TestClient(app)
     resp = client.get("/transactions/unknown-id")
     assert resp.status_code == 404
-
-
-def test_summary_empty(monkeypatch):
-    app = create_app()
-
-    def fake_execute_query(sql: str, params: tuple[Any, ...]):
-        return []
-
-    from tracker import api as tracker_api_pkg  # type: ignore[import-untyped]
-
-    monkeypatch.setattr(
-        tracker_api_pkg.transactions, "execute_query", fake_execute_query  # type: ignore[attr-defined]
-    )
-
-    client = TestClient(app)
-    resp = client.get("/summary")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["total_spend"] == 0
-    assert body["by_category"] == {}
 

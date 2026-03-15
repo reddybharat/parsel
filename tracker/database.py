@@ -15,6 +15,8 @@ load_dotenv()
 
 _DATABASE_URL: Optional[str] = None
 
+CONNECTION_REQUIRED_MSG = "Database connection unavailable."
+
 
 def _get_database_url() -> str:
     global _DATABASE_URL
@@ -25,6 +27,11 @@ def _get_database_url() -> str:
             "DATABASE_URL must be set in .env to use database."
         )
     return _DATABASE_URL
+
+
+def open_session_connection():
+    """Open a connection for the session. Caller must commit after writes and must not close (reused)."""
+    return psycopg2.connect(_get_database_url())
 
 
 @contextmanager
@@ -41,35 +48,37 @@ def get_connection():
         conn.close()
 
 
-def execute_query(sql: str, params: Optional[tuple | dict] = None) -> list[dict[str, Any]]:
-    """Run a SELECT; return rows as list of dicts (column name -> value)."""
-    with get_connection() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(sql, params)
-            return [dict(row) for row in cur.fetchall()]
+def execute_query(sql: str, params: Optional[tuple | dict] = None, conn: Optional[Any] = None) -> list[dict[str, Any]]:
+    """Run a SELECT; return rows as list of dicts (column name -> value). conn is required."""
+    if conn is None:
+        raise ValueError(CONNECTION_REQUIRED_MSG)
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(sql, params)
+        return [dict(row) for row in cur.fetchall()]
 
 
-def execute_insert(sql: str, params: Optional[tuple | dict] = None) -> list[dict[str, Any]]:
-    """Run INSERT ... RETURNING *; return inserted row(s) as list of dicts."""
-    with get_connection() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(sql, params)
-            rows = cur.fetchall()
-            return [dict(row) for row in rows]
+def execute_insert(sql: str, params: Optional[tuple | dict] = None, conn: Optional[Any] = None) -> list[dict[str, Any]]:
+    """Run INSERT ... RETURNING *; return inserted row(s) as list of dicts. conn is required."""
+    if conn is None:
+        raise ValueError(CONNECTION_REQUIRED_MSG)
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(sql, params)
+        return [dict(row) for row in cur.fetchall()]
 
 
-def execute_update_delete(sql: str, params: Optional[tuple | dict] = None) -> int:
-    """Run UPDATE or DELETE; return number of rows affected."""
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            return cur.rowcount
+def execute_update_delete(sql: str, params: Optional[tuple | dict] = None, conn: Optional[Any] = None) -> int:
+    """Run UPDATE or DELETE; return number of rows affected. conn is required."""
+    if conn is None:
+        raise ValueError(CONNECTION_REQUIRED_MSG)
+    with conn.cursor() as cur:
+        cur.execute(sql, params)
+        return cur.rowcount
 
 
-def execute_update_returning(sql: str, params: Optional[tuple | dict] = None) -> list[dict[str, Any]]:
-    """Run UPDATE ... RETURNING *; return updated row(s) as list of dicts."""
-    with get_connection() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(sql, params)
-            rows = cur.fetchall()
-            return [dict(row) for row in rows]
+def execute_update_returning(sql: str, params: Optional[tuple | dict] = None, conn: Optional[Any] = None) -> list[dict[str, Any]]:
+    """Run UPDATE ... RETURNING *; return updated row(s) as list of dicts. conn is required."""
+    if conn is None:
+        raise ValueError(CONNECTION_REQUIRED_MSG)
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(sql, params)
+        return [dict(row) for row in cur.fetchall()]

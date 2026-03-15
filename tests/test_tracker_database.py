@@ -1,6 +1,3 @@
-import builtins
-from contextlib import contextmanager
-import psycopg2
 import pytest
 
 from tracker import database
@@ -63,34 +60,27 @@ def test_get_database_url_raises_when_missing_env(monkeypatch):
         database._get_database_url()
 
 
-def test_execute_query_returns_rows(monkeypatch):
+def test_execute_query_returns_rows():
     rows = [{"id": 1, "amount": 100}]
-
-    def fake_connect(url):
-        return _dummy_connection(rows=rows).__enter__()  # type: ignore[arg-type]
-
-    monkeypatch.setattr(psycopg2, "connect", fake_connect)
-
-    result = database.execute_query("SELECT * FROM transactions")
+    with _dummy_connection(rows=rows) as conn:
+        result = database.execute_query("SELECT * FROM transactions", conn=conn)
     assert result == [{"id": 1, "amount": 100}]
-def test_execute_insert_returns_rows(monkeypatch):
+
+
+def test_execute_insert_returns_rows():
     rows = [{"id": 1, "amount": 200}]
-
-    def fake_connect(url):
-        return _dummy_connection(rows=rows).__enter__()  # type: ignore[arg-type]
-
-    monkeypatch.setattr(psycopg2, "connect", fake_connect)
-
-    inserted = database.execute_insert("INSERT ... RETURNING *")
+    with _dummy_connection(rows=rows) as conn:
+        inserted = database.execute_insert("INSERT ... RETURNING *", conn=conn)
     assert inserted == [{"id": 1, "amount": 200}]
 
 
-def test_execute_update_delete_returns_rowcount(monkeypatch):
-    def fake_connect(url):
-        return _dummy_connection(rowcount=3).__enter__()  # type: ignore[arg-type]
-
-    monkeypatch.setattr(psycopg2, "connect", fake_connect)
-
-    affected = database.execute_update_delete("UPDATE ...")
+def test_execute_update_delete_returns_rowcount():
+    with _dummy_connection(rowcount=3) as conn:
+        affected = database.execute_update_delete("UPDATE ...", conn=conn)
     assert affected == 3
+
+
+def test_execute_query_raises_when_conn_missing():
+    with pytest.raises(ValueError, match="Database connection unavailable"):
+        database.execute_query("SELECT 1")
 

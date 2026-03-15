@@ -4,8 +4,8 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 
 ## Features
 
-- **FastAPI** — REST API for transactions: create, list, get by id, update (PATCH), delete, and current-month summary; plus **Chat API** (invoke, resume, exit)
-- **Streamlit** — Tabbed UI: **Add** (form + **Import from CSV**), **Search** (filter by date range/category, pagination, **Export to CSV**, edit and delete per transaction), **Chat** (Finance Assistant). Summary tab is present in code but hidden from the UI for now.
+- **FastAPI** — REST API for transactions: create, list, get by id, update (PATCH), delete; plus **Chat API** (invoke, resume, exit)
+- **Streamlit** — Tabbed UI: **Add** (form + **Import from CSV**), **Search** (filter by date range/category, pagination, **Export to CSV**, edit and delete per transaction), **Chat** (Finance Assistant).
 - **Chat / Finance Assistant** — Natural language questions about your transactions. Uses a LangGraph SQL agent (Gemini LLM) with tools: list tables, get schema, execute read-only SQL. Answers summarize spending, breakdowns by category, and similar queries.
 - **Import from CSV** — In the **Add** tab: download a template (correct headers + example rows), upload a CSV, and bulk-import transactions. Columns: `transaction_date` (YYYY-MM-DD), `category`, `amount`, `description` (optional). Category must be one of the fixed list; validation and row-level errors are shown.
 - **Export to CSV** — In the **Search** tab: after you run a search, an **Export to CSV** button appears next to the Search button and downloads all transactions matching the current filters (date range and category).
@@ -28,11 +28,10 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 │   ├── validations.py          # Shared validations (amount, category, date)
 │   ├── services.py             # CSV export, template, import
 │   ├── api/
-│   │   └── transactions.py     # Transaction & summary routes
+│   │   └── transactions.py     # Transaction routes
 │   └── ui/
 │       ├── common.py           # Shared UI helpers
 │       ├── tabs/
-│       │   ├── summary_tab.py  # (hidden for now)
 │       │   ├── add_txn_tab.py
 │       │   └── search_tab.py
 │       └── utils/

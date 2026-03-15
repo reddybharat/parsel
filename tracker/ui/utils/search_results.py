@@ -1,6 +1,7 @@
 """Components for rendering search results table and edit/delete actions on the Search tab."""
 
 from datetime import date, datetime
+from typing import Any, Optional
 
 import streamlit as st
 
@@ -34,7 +35,7 @@ def _format_audit_ts(value) -> str:
     return s[:16] if len(s) > 16 else s
 
 
-def _render_edit_form(row: dict) -> None:
+def _render_edit_form(row: dict, conn: Optional[Any] = None) -> None:
     row_id = row.get("id")
     if not row_id:
         return
@@ -96,7 +97,8 @@ def _render_edit_form(row: dict) -> None:
                     RETURNING id
                 """
                 params = (amount, category.strip(), txn_date.isoformat(), (description or "").strip() or None, row_id)
-                execute_update_returning(sql, params)
+                execute_update_returning(sql, params, conn=conn)
+                conn.commit()
                 if "editing_transaction" in st.session_state:
                     del st.session_state.editing_transaction
                 st.success("Transaction updated.")
@@ -105,7 +107,7 @@ def _render_edit_form(row: dict) -> None:
                 st.error(f"Update failed: {str(e)[:200]}")
 
 
-def _render_delete_confirm(row: dict) -> None:
+def _render_delete_confirm(row: dict, conn: Optional[Any] = None) -> None:
     row_id = row.get("id")
     if not row_id:
         return
@@ -116,8 +118,9 @@ def _render_delete_confirm(row: dict) -> None:
     with col1:
         if st.button("Confirm delete", type="primary", key="confirm_del"):
             try:
-                rowcount = execute_update_delete("DELETE FROM transactions WHERE id = %s", (row_id,))
+                rowcount = execute_update_delete("DELETE FROM transactions WHERE id = %s", (row_id,), conn=conn)
                 if rowcount > 0:
+                    conn.commit()
                     if "deleting_transaction" in st.session_state:
                         del st.session_state.deleting_transaction
                     st.success("Transaction deleted.")
@@ -133,8 +136,9 @@ def _render_delete_confirm(row: dict) -> None:
             st.rerun()
 
 
-def render_search_results(rows: list[dict], total_count: int | None, page_size: int) -> None:
-    """Render the paginated search results table with edit/delete actions."""
+def render_search_results(rows: list[dict], total_count: int | None, page_size: int, conn=None) -> None:
+    """Render the paginated search results table with edit/delete actions.
+    conn: optional DB connection to reuse for update/delete (avoids extra connection per run)."""
     if not rows:
         return
 
@@ -149,10 +153,10 @@ def render_search_results(rows: list[dict], total_count: int | None, page_size: 
         st.rerun()
 
     if st.session_state.get("editing_transaction"):
-        _render_edit_form(st.session_state.editing_transaction)
+        _render_edit_form(st.session_state.editing_transaction, conn=conn)
         st.divider()
     if st.session_state.get("deleting_transaction"):
-        _render_delete_confirm(st.session_state.deleting_transaction)
+        _render_delete_confirm(st.session_state.deleting_transaction, conn=conn)
         st.divider()
 
     offset_start = (st.session_state.search_page - 1) * page_size

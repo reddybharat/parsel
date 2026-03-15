@@ -8,8 +8,9 @@ from tracker.constants import CATEGORIES
 from tracker.services import export_transactions_csv
 
 
-def render_search_filters():
-    """Render search filters and return selected values and whether Search was clicked."""
+def render_search_filters(conn=None):
+    """Render search filters and return selected values and whether Search was clicked.
+    conn: optional DB connection to reuse for export (avoids extra connection when user exports)."""
     if "search_sort_column" not in st.session_state:
         st.session_state.search_sort_column = "transaction_date"
     if "search_sort_desc" not in st.session_state:
@@ -102,7 +103,7 @@ def render_search_filters():
             or st.session_state.get("search_results_total") is not None
         )
         if search_has_run:
-            csv_data = export_transactions_csv(start_date, end_date, category)
+            csv_data = export_transactions_csv(start_date, end_date, category, conn=conn)
             if csv_data:
                 st.download_button(
                     "Export to CSV",

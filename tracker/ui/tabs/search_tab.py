@@ -27,8 +27,12 @@ def render_search() -> None:
         st.session_state.editing_transaction = None
     if "deleting_transaction" not in st.session_state:
         st.session_state.deleting_transaction = None
+    conn = st.session_state.get("db_conn")
+    if conn is None:
+        st.warning("Database not configured. Set DATABASE_URL in .env to search.")
+        return
     try:
-        start_date, end_date, category, page_size, sort_column, sort_desc_bool, search_clicked = render_search_filters()
+        start_date, end_date, category, page_size, sort_column, sort_desc_bool, search_clicked = render_search_filters(conn)
 
         if start_date > end_date:
             st.error("From date must be on or before To date.")
@@ -73,11 +77,11 @@ def render_search() -> None:
                     """
                     data_params = (start_date.isoformat(), end_date.isoformat(), page_size, offset_start)
 
-                count_rows = execute_query(count_sql, count_params)
+                count_rows = execute_query(count_sql, count_params, conn=conn)
                 total_count = int(count_rows[0]["n"]) if count_rows else 0
                 st.session_state.search_results_total = total_count
 
-                rows = execute_query(data_sql, data_params)
+                rows = execute_query(data_sql, data_params, conn=conn)
 
                 if total_count == 0:
                     st.info("No transactions found for the selected filters.")
@@ -85,7 +89,7 @@ def render_search() -> None:
                 elif not rows:
                     st.info("No transactions on this page.")
                 else:
-                    render_search_results(rows, total_count, page_size)
+                    render_search_results(rows, total_count, page_size, conn=conn)
             elif total_from_last is not None and total_from_last == 0:
                 st.info("No transactions found for the selected filters.")
     except ValueError:

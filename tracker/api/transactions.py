@@ -1,5 +1,5 @@
 """
-Transaction and summary API endpoints.
+Transaction API endpoints.
 """
 
 from datetime import date, datetime
@@ -11,6 +11,7 @@ from tracker.database import (
     execute_query,
     execute_update_delete,
     execute_update_returning,
+    get_connection,
 )
 from tracker.schemas import TransactionCreate, TransactionResponse, TransactionUpdate
 from tracker.validations import validate_transaction_date
@@ -66,7 +67,8 @@ def create_transaction(payload: TransactionCreate) -> TransactionResponse:
         payload.transaction_date.isoformat(),
         payload.description,
     )
-    rows = execute_insert(sql, params)
+    with get_connection() as conn:
+        rows = execute_insert(sql, params, conn=conn)
     if not rows:
         raise HTTPException(status_code=500, detail="Insert failed")
     return _record_to_response(rows[0])
@@ -76,7 +78,8 @@ def create_transaction(payload: TransactionCreate) -> TransactionResponse:
 def get_transaction(transaction_id: str) -> TransactionResponse:
     """Fetch a single transaction by id."""
     sql = f"SELECT {_COLS} FROM transactions WHERE id = %s"
-    rows = execute_query(sql, (transaction_id,))
+    with get_connection() as conn:
+        rows = execute_query(sql, (transaction_id,), conn=conn)
     if not rows:
         raise HTTPException(status_code=404, detail="Transaction not found")
     return _record_to_response(rows[0])
@@ -113,7 +116,8 @@ def update_transaction(transaction_id: str, payload: TransactionUpdate) -> Trans
         + ", ".join(set_parts)
         + " WHERE id = %s RETURNING id, amount, category, transaction_date, description, created_at, updated_at, version_no"
     )
-    rows = execute_update_returning(sql, tuple(params))
+    with get_connection() as conn:
+        rows = execute_update_returning(sql, tuple(params), conn=conn)
     if not rows:
         raise HTTPException(status_code=404, detail="Transaction not found")
     return _record_to_response(rows[0])
@@ -123,7 +127,8 @@ def update_transaction(transaction_id: str, payload: TransactionUpdate) -> Trans
 def delete_transaction(transaction_id: str) -> None:
     """Delete a transaction by id."""
     sql = "DELETE FROM transactions WHERE id = %s"
-    rowcount = execute_update_delete(sql, (transaction_id,))
+    with get_connection() as conn:
+        rowcount = execute_update_delete(sql, (transaction_id,), conn=conn)
     if rowcount == 0:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
@@ -136,37 +141,6 @@ def list_transactions() -> list[TransactionResponse]:
         ORDER BY transaction_date DESC
         LIMIT 20
     """
-    rows = execute_query(sql)
+    with get_connection() as conn:
+        rows = execute_query(sql, conn=conn)
     return [_record_to_response(r) for r in rows]
-
-
-@router.get("/summary")
-def get_summary() -> dict:
-    """
-    Current month summary:
-    - total_spend: total amount for the current month
-    - by_category: { "CategoryName": total_inr, ... }
-    """
-    today = date.today()
-    start = today.replace(day=1).isoformat()
-    end = today.isoformat()
-
-    sql = """
-        SELECT amount, category FROM transactions
-        WHERE transaction_date >= %s AND transaction_date <= %s
-    """
-    rows = execute_query(sql, (start, end))
-
-    total = 0.0
-    by_category: dict[str, float] = {}
-    for row in rows:
-        amt = float(row.get("amount", 0))
-        cat = row.get("category") or "Uncategorized"
-        total += amt
-        by_category[cat] = by_category.get(cat, 0) + amt
-
-    return {
-        "total_spend": round(total, 2),
-        "by_category": {k: round(v, 2) for k, v in sorted(by_category.items())},
-        "month": today.strftime("%Y-%m"),
-    }
