@@ -195,10 +195,16 @@ def _ensure_state() -> None:
 def _invoke_agent() -> str:
     """Call the LangGraph agent and return the reply text."""
     try:
-        logger.info("Invoking agent with %d messages", len(st.session_state.chat_messages))
         from chat.agent.graph import run_agent
+        from chat.utils.readonly_sql import set_agent_connection
 
-        reply = run_agent(st.session_state.chat_messages)
+        # Use the same DB connection created at app start; agent tools will use it.
+        set_agent_connection(st.session_state.get("db_conn"))
+        try:
+            logger.info("Invoking agent with %d messages", len(st.session_state.chat_messages))
+            reply = run_agent(st.session_state.chat_messages)
+        finally:
+            set_agent_connection(None)
         logger.info("Agent returned reply (%d chars)", len(reply))
         return reply
     except ValueError as e:

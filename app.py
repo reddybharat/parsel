@@ -7,7 +7,7 @@ import streamlit as st
 
 from common.logger import get_logger  # noqa: F401 — triggers logging config on app start
 
-from tracker.database import open_session_connection
+from common.database import open_session_connection
 from tracker.ui.tabs.add_txn_tab import render_add_transaction
 from tracker.ui.tabs.search_tab import render_search
 from chat.ui.chat_tab import render_chat

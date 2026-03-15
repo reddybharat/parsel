@@ -20,9 +20,11 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 ├── app.py                      # Streamlit UI (tabs: Add, Search, Chat)
 ├── main.py                     # FastAPI app (tracker + chat routers)
 ├── common/
-│   └── logger.py               # Shared logging config
+│   ├── logger.py               # Shared logging config
+│   └── database.py             # Postgres connection only (session, get_connection)
 ├── tracker/                    # Transaction management
-│   ├── database.py             # Postgres CRUD via DATABASE_URL
+│   ├── utils/
+│   │   └── db.py               # Execute helpers (query, insert, update, delete)
 │   ├── schemas.py              # Pydantic models (with category validation)
 │   ├── constants.py            # Allowed categories list
 │   ├── validations.py          # Shared validations (amount, category, date)
@@ -39,7 +41,8 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 │           ├── search_filters.py       # Date/category/sort + Search + Export to CSV
 │           └── search_results.py      # Results table with edit/delete
 ├── chat/                       # Finance assistant
-│   ├── services.py             # Read-only SQL executor (guardrails, psycopg2)
+│   ├── utils/
+│   │   └── readonly_sql.py     # Read-only SQL executor for agent
 │   ├── api/
 │   │   └── chat.py             # invoke, resume, exit endpoints
 │   ├── agent/

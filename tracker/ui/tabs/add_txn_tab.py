@@ -5,7 +5,7 @@ from datetime import date
 import streamlit as st
 
 from tracker.constants import CATEGORIES
-from tracker.database import execute_insert
+from tracker.utils.db import execute_insert
 from tracker.validations import validate_amount, validate_category, validate_transaction_date
 from tracker.ui.utils.import_csv_section import render_import_csv_section
 from tracker.ui.common import DATABASE_ERROR_MSG, is_db_connection_error

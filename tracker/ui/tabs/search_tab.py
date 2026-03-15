@@ -4,7 +4,7 @@ from datetime import date
 
 import streamlit as st
 
-from tracker.database import execute_query
+from tracker.utils.db import execute_query
 from tracker.ui.common import DATABASE_ERROR_MSG, is_db_connection_error
 from tracker.ui.utils.search_filters import render_search_filters
 from tracker.ui.utils.search_results import render_search_results

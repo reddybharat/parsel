@@ -6,12 +6,12 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, HTTPException
 
-from tracker.database import (
+from common.database import get_connection
+from tracker.utils.db import (
     execute_insert,
     execute_query,
     execute_update_delete,
     execute_update_returning,
-    get_connection,
 )
 from tracker.schemas import TransactionCreate, TransactionResponse, TransactionUpdate
 from tracker.validations import validate_transaction_date

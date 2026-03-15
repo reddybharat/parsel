@@ -2,7 +2,7 @@
 
 This project is organized around two feature packages — **tracker** and **chat** — plus a small **common** package for shared utilities.
 
-- **common/**: shared logging configuration.
+- **common/**: shared logging and database connection only (no execute helpers).
 - **tracker/**: all transaction CRUD, validations, CSV import/export, FastAPI routes, and Streamlit UI tabs for Add/Search.
 - **chat/**: the LangGraph-based finance assistant (agent), its FastAPI APIs, and the Streamlit Chat tab.
 
@@ -19,19 +19,19 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
     - `tracker.ui.tabs.add_txn_tab.render_add_transaction`
     - `tracker.ui.tabs.search_tab.render_search`
     - `chat.ui.chat_tab.render_chat`
+### Common package (`common/`)
+
+- `database.py`: shared PostgreSQL connection only — `get_database_url()`, `is_database_configured()`, `open_session_connection()`, `get_connection()`. No execute/query helpers.
+- `logger.py`: shared logging configuration.
+
 ### Tracker package (`tracker/`)
 
-- `database.py`: thin psycopg2 layer over `DATABASE_URL`, providing:
-  - `get_connection()`
-  - CRUD helpers and query helpers used by the API and UI.
+- `utils/db.py`: tracker execute helpers (execute_query, execute_insert, execute_update_delete, execute_update_returning). Require a connection from `common.database`.
 - `schemas.py`: Pydantic models for request/response payloads and internal use.
 - `constants.py`: fixed list of allowed categories and any other domain constants.
 - `validations.py`: shared validation helpers (amount > 0, category required, date not in future, etc.).
-- `services.py`: CSV-related logic:
-  - Export to CSV based on search filters.
-  - Provide a CSV template with correct headers.
-  - Import rows from CSV using `tracker.database` and `tracker.schemas`.
-- `api/transactions.py`: FastAPI router exposing CRUD endpoints for `/transactions`.
+- `services.py`: CSV-related logic (export, template, import) using `tracker.utils.db` and `tracker.schemas`.
+- `api/transactions.py`: FastAPI router exposing CRUD endpoints for `/transactions`; uses `common.database.get_connection` and `tracker.utils.db` execute helpers.
 - `ui/`:
   - `common.py`: shared Streamlit helpers and common error messaging.
   - `tabs/add_txn_tab.py`, `tabs/search_tab.py`: page-level layout and interactions.
@@ -39,9 +39,7 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
 
 ### Chat package (`chat/`)
 
-- `services.py`: read-only SQL executor using psycopg2 and `DATABASE_URL`, with guards to:
-  - Enforce SELECT-only queries.
-  - Limit result size and protect against dangerous SQL.
+- `utils/readonly_sql.py`: read-only SQL executor with guardrails (SELECT only, blocked keywords). Used by agent tools; uses session connection from Streamlit when set via `set_agent_connection()`.
 - `agent/`:
   - `graph.py`: constructs the LangGraph graph and exposes `run_agent`.
   - `nodes.py`: defines the core agent node and tool orchestration.
@@ -62,21 +60,24 @@ flowchart TD
   mainApp["FastAPI main.py"] --> trackerApi["tracker.api.transactions"]
   mainApp --> chatApi["chat.api.chat"]
 
-  streamlitApp["Streamlit app.py"] --> trackerUI["tracker.ui.tabs (Add, Search, Summary)"]
+  streamlitApp["Streamlit app.py"] --> trackerUI["tracker.ui.tabs (Add, Search)"]
   streamlitApp --> chatUI["chat.ui.chat_tab"]
 
-  trackerApi --> trackerDB["tracker.database (psycopg2 + DATABASE_URL)"]
-  trackerUI --> trackerApi
+  trackerApi --> commonDB["common.database"]
+  trackerApi --> trackerDb["tracker.utils.db (execute_*)"]
+  trackerDb --> commonDB
+  streamlitApp --> commonDB
+  trackerUI --> trackerDb
 
   chatApi --> chatAgent["chat.agent.graph (run_agent)"]
   chatUI --> chatAgent
-  chatAgent --> chatServices["chat.services (read-only SQL)"]
-  chatServices --> trackerDB
+  chatAgent --> chatReadonly["chat.utils.readonly_sql"]
+  chatReadonly --> commonDB
 ```
 
 This layout is designed so that:
 
-- The **database integration** is centralized in `tracker.database` and `chat.services`.
+- The **connection** is in `common.database`; **execute helpers** live in `tracker.utils.db` (tracker) and `chat.utils.readonly_sql` (chat).
 - **Feature code** for transactions and chat lives in separate, clearly named packages.
 - **UI layers** (FastAPI and Streamlit) depend on feature packages, not the other way around.
 

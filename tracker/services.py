@@ -1,6 +1,6 @@
 """
 CSV export, template, and import for transactions.
-Uses tracker.database and tracker.schemas; no UI dependencies.
+Uses tracker.utils.db and tracker.schemas; no UI dependencies.
 """
 
 import csv
@@ -8,7 +8,7 @@ import io
 from datetime import date
 from typing import Any, Optional
 
-from tracker.database import execute_query, CONNECTION_REQUIRED_MSG
+from tracker.utils.db import CONNECTION_REQUIRED_MSG, execute_query
 from tracker.schemas import TransactionCreate
 
 # CSV column names (used for export, template, and import)

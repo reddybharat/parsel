@@ -1,25 +1,25 @@
 """
-Secure read-only SQL executor with guardrails.
+Secure read-only SQL executor with guardrails for the chat agent.
 
-Uses a direct Postgres connection (psycopg2) via DATABASE_URL.
+Uses the shared connection (common.database). When run from Streamlit, uses the
+session connection from app start via set_agent_connection().
 Only single SELECT statements are allowed; all DML/DDL is blocked.
 """
 
-import os
 import re
-from typing import Optional
+from contextvars import ContextVar
+from typing import Any, Optional
 
 import psycopg2
 import psycopg2.extras
-from dotenv import load_dotenv
 
+from common.database import get_database_url, is_database_configured
 from common.logger import get_logger
-
-load_dotenv()
 
 logger = get_logger(__name__)
 
-_DATABASE_URL: Optional[str] = os.getenv("DATABASE_URL")
+# When set by the Streamlit chat tab, agent tools use this connection instead of opening a new one.
+_agent_conn: ContextVar[Optional[Any]] = ContextVar("agent_conn", default=None)
 
 MAX_ROWS_DEFAULT = 500
 
@@ -32,10 +32,17 @@ _BLOCKED_KEYWORDS = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+_BLOCKED_PATTERNS = re.compile(r"(--|/\*|;\s*\S)")
 
-_BLOCKED_PATTERNS = re.compile(
-    r"(--|/\*|;\s*\S)",
-)
+
+def set_agent_connection(conn: Optional[Any]) -> None:
+    """Set the connection for the agent to use (e.g. session db_conn from Streamlit). Pass None to clear."""
+    _agent_conn.set(conn)
+
+
+def get_agent_connection() -> Optional[Any]:
+    """Return the connection set for the agent, or None."""
+    return _agent_conn.get()
 
 
 class SQLSecurityError(Exception):
@@ -43,13 +50,8 @@ class SQLSecurityError(Exception):
 
 
 def _get_connection():
-    """Create a new Postgres connection from DATABASE_URL."""
-    if not _DATABASE_URL:
-        raise SQLSecurityError(
-            "DATABASE_URL is not configured. "
-            "Set it in .env to enable SQL queries."
-        )
-    return psycopg2.connect(_DATABASE_URL)
+    """Create a new Postgres connection using shared database config."""
+    return psycopg2.connect(get_database_url())
 
 
 def _validate_query(sql: str) -> str:
@@ -92,19 +94,32 @@ def _enforce_row_limit(sql: str, max_rows: int) -> str:
 
 
 def execute_readonly_query(
-    sql: str, max_rows: int = MAX_ROWS_DEFAULT
+    sql: str, max_rows: int = MAX_ROWS_DEFAULT, conn: Optional[Any] = None
 ) -> list[dict]:
     """Execute a read-only SELECT query and return rows as list of dicts.
+
+    If conn is provided, use it and do not close it (caller's connection, e.g. session).
+    If conn is None, use the connection from set_agent_connection() when set (Streamlit);
+    otherwise create a new connection and close it when done (e.g. API).
 
     Raises SQLSecurityError for disallowed queries.
     """
     cleaned = _validate_query(sql)
     limited = _enforce_row_limit(cleaned, max_rows)
 
-    conn = None
-    try:
+    if conn is None:
+        conn = get_agent_connection()
+    use_session_conn = conn is not None
+
+    if not use_session_conn and not is_database_configured():
+        raise SQLSecurityError(
+            "DATABASE_URL is not configured. Set it in .env to enable SQL queries."
+        )
+    if not use_session_conn:
         conn = _get_connection()
         conn.set_session(readonly=True, autocommit=True)
+
+    try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(limited)
             rows = cur.fetchall()
@@ -118,10 +133,10 @@ def execute_readonly_query(
         logger.error("Unexpected error during query: %s", e)
         raise SQLSecurityError("An unexpected error occurred.")
     finally:
-        if conn:
+        if not use_session_conn and conn:
             conn.close()
 
 
 def is_configured() -> bool:
     """Check whether DATABASE_URL is set."""
-    return bool(_DATABASE_URL)
+    return is_database_configured()

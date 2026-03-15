@@ -1,6 +1,9 @@
+from contextlib import contextmanager
+
 import pytest
 
-from tracker import database
+from common import database
+from tracker.utils import db
 
 
 class DummyCursor:
@@ -57,30 +60,30 @@ def test_get_database_url_raises_when_missing_env(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
 
     with pytest.raises(ValueError):
-        database._get_database_url()
+        database.get_database_url()
 
 
 def test_execute_query_returns_rows():
     rows = [{"id": 1, "amount": 100}]
     with _dummy_connection(rows=rows) as conn:
-        result = database.execute_query("SELECT * FROM transactions", conn=conn)
+        result = db.execute_query("SELECT * FROM transactions", conn=conn)
     assert result == [{"id": 1, "amount": 100}]
 
 
 def test_execute_insert_returns_rows():
     rows = [{"id": 1, "amount": 200}]
     with _dummy_connection(rows=rows) as conn:
-        inserted = database.execute_insert("INSERT ... RETURNING *", conn=conn)
+        inserted = db.execute_insert("INSERT ... RETURNING *", conn=conn)
     assert inserted == [{"id": 1, "amount": 200}]
 
 
 def test_execute_update_delete_returns_rowcount():
     with _dummy_connection(rowcount=3) as conn:
-        affected = database.execute_update_delete("UPDATE ...", conn=conn)
+        affected = db.execute_update_delete("UPDATE ...", conn=conn)
     assert affected == 3
 
 
 def test_execute_query_raises_when_conn_missing():
     with pytest.raises(ValueError, match="Database connection unavailable"):
-        database.execute_query("SELECT 1")
+        db.execute_query("SELECT 1")
 

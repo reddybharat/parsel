@@ -6,7 +6,7 @@ from typing import Any, Optional
 import streamlit as st
 
 from tracker.constants import CATEGORIES
-from tracker.database import execute_update_delete, execute_update_returning
+from tracker.utils.db import execute_update_delete, execute_update_returning
 from tracker.validations import validate_amount, validate_category, validate_transaction_date
 
 
