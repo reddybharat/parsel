@@ -37,32 +37,6 @@ def render_chat() -> None:
                 margin-left: auto;
                 margin-right: auto;
             }
-            .chat-message {
-                padding: 0.9rem 1rem;
-                border-radius: 0.75rem;
-                margin-bottom: 0.85rem;
-                border: 1px solid #e5e7eb;
-                box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
-                font-size: 0.95rem;
-            }
-            .chat-message.user {
-                background: #eff6ff;
-                margin-left: 15%;
-                margin-right: 5%;
-                border-left: 3px solid #3b82f6;
-            }
-            .chat-message.assistant {
-                background: #f9fafb;
-                margin-left: 5%;
-                margin-right: 15%;
-                border-left: 3px solid #6b7280;
-            }
-            .chat-message .chat-role {
-                font-weight: 600;
-                margin-bottom: 0.25rem;
-                display: block;
-                color: #374151;
-            }
             .chat-suggest-label {
                 font-weight: 600;
                 margin-bottom: 0.4rem;
@@ -85,22 +59,13 @@ def render_chat() -> None:
     with st.container():
         st.markdown('<div class="chat-block-container">', unsafe_allow_html=True)
 
-        # Chat history
+        # Chat history (assistant messages rendered as markdown)
         if st.session_state.chat_messages:
             for msg in st.session_state.chat_messages:
                 role = msg.get("role", "assistant")
-                content = msg.get("content", "")
-                css_class = "assistant" if role != "user" else "user"
-                role_label = "You" if role == "user" else "Assistant"
-                st.markdown(
-                    f"""
-                    <div class="chat-message {css_class}">
-                        <span class="chat-role">{role_label}</span>
-                        <div>{content}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                content = msg.get("content", "") or ""
+                with st.chat_message(role):
+                    st.markdown(content)
         else:
             st.info(
                 "Start a conversation by asking a question about your finances or use one of the quick suggestions below."
