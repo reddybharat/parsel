@@ -16,7 +16,7 @@ QueryParams = Optional[Union[tuple, list]]
 import psycopg2
 import psycopg2.extras
 
-from common.database import get_database_url, is_database_configured
+from common.database import get_connection, is_database_configured
 from common.logger import get_logger
 
 logger = get_logger(__name__)
@@ -43,18 +43,8 @@ def set_agent_connection(conn: Optional[Any]) -> None:
     _agent_conn.set(conn)
 
 
-def get_agent_connection() -> Optional[Any]:
-    """Return the connection set for the agent, or None."""
-    return _agent_conn.get()
-
-
 class SQLSecurityError(Exception):
     """Raised when a query violates security constraints."""
-
-
-def _get_connection():
-    """Create a new Postgres connection using shared database config."""
-    return psycopg2.connect(get_database_url())
 
 
 def _validate_query(sql: str) -> str:
@@ -96,6 +86,26 @@ def _enforce_row_limit(sql: str, max_rows: int) -> str:
     return sql
 
 
+def _run_query(conn: Any, limited: str, params: QueryParams) -> list[dict]:
+    """Execute validated SQL on conn and return rows as list of dicts. Caller owns conn lifecycle."""
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if params is not None:
+                cur.execute(limited, params)
+            else:
+                cur.execute(limited)
+            rows = cur.fetchall()
+            return [dict(row) for row in rows]
+    except SQLSecurityError:
+        raise
+    except psycopg2.Error as e:
+        logger.error("Database query failed: %s | Query: %s", e, limited)
+        raise SQLSecurityError("Query execution failed. Please check your query and try again.")
+    except Exception as e:
+        logger.error("Unexpected error during query: %s", e)
+        raise SQLSecurityError("An unexpected error occurred.")
+
+
 def execute_readonly_query(
     sql: str,
     max_rows: int = MAX_ROWS_DEFAULT,
@@ -117,38 +127,15 @@ def execute_readonly_query(
     limited = _enforce_row_limit(cleaned, max_rows)
 
     if conn is None:
-        conn = get_agent_connection()
+        conn = _agent_conn.get()
     use_session_conn = conn is not None
 
     if not use_session_conn and not is_database_configured():
         raise SQLSecurityError(
             "DATABASE_URL is not configured. Set it in .env to enable SQL queries."
         )
-    if not use_session_conn:
-        conn = _get_connection()
+    if use_session_conn:
+        return _run_query(conn, limited, params)
+    with get_connection() as conn:
         conn.set_session(readonly=True, autocommit=True)
-
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            if params is not None:
-                cur.execute(limited, params)
-            else:
-                cur.execute(limited)
-            rows = cur.fetchall()
-            return [dict(row) for row in rows]
-    except SQLSecurityError:
-        raise
-    except psycopg2.Error as e:
-        logger.error("Database query failed: %s | Query: %s", e, limited)
-        raise SQLSecurityError("Query execution failed. Please check your query and try again.")
-    except Exception as e:
-        logger.error("Unexpected error during query: %s", e)
-        raise SQLSecurityError("An unexpected error occurred.")
-    finally:
-        if not use_session_conn and conn:
-            conn.close()
-
-
-def is_configured() -> bool:
-    """Check whether DATABASE_URL is set."""
-    return is_database_configured()
+        return _run_query(conn, limited, params)

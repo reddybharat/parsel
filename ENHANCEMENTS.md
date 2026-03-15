@@ -10,20 +10,6 @@ Actionable points from the codebase review. Tests are out of scope for now.
 - [x] **Parameterize `get_schema` table name** — Done: `execute_readonly_query` now accepts optional `params`; `get_schema` uses `WHERE table_name = %s` with `params=(table_name,)`.
 - [x] **Validate `transaction_id` as UUID** — Done: path param is now `transaction_id: UUID` in get/update/delete; handlers use `str(transaction_id)` when calling the DB. Invalid IDs get 422 from FastAPI.
 
-**How to fix (Security):**
-
-1. **`get_schema` table name**
-   - **Issue:** The query is built with `f"... table_name = '{table_name}'"`. Even though `table_name` is checked against `ALLOWED_TABLES`, this is a bad pattern: if the allow-list or call path ever changes, or a caller bypasses the check, it could become an SQL injection vector. Best practice is to never interpolate user- or tool-supplied values into SQL.
-   - **Fix:** Use a parameterized query. Either:
-     - Add an overload or optional `params` argument to `execute_readonly_query` in `chat/utils/readonly_sql.py` so you can pass `(table_name,)` and use `WHERE table_schema = 'public' AND table_name = %s` with `cur.execute(sql, params)`, or
-     - In `get_schema`, after validating `table_name in ALLOWED_TABLES`, call a small helper that runs the information_schema SELECT with `%s` and passes `table_name` as the only parameter. Ensure the helper uses the same connection/readonly rules as `execute_readonly_query`.
-
-2. **`transaction_id` validation**
-   - **Issue:** Path params are plain `str`, so any string (e.g. `"x"`, `"../../etc/passwd"`) is accepted and sent to the DB. The queries are parameterized so there’s no SQL injection, but invalid IDs cause unnecessary DB round-trips and can produce confusing errors or odd behavior.
-   - **Fix:** Use FastAPI’s path type so invalid IDs are rejected before hitting the DB:
-     - Change the path parameter from `transaction_id: str` to `transaction_id: UUID` (from `uuid` module) in `get_transaction`, `update_transaction`, and `delete_transaction`.
-     - FastAPI will return 422 for non-UUID strings. In the handler, use `str(transaction_id)` when passing the id to the DB layer so the rest of the code stays unchanged.
-
 ### Correctness / API contract
 - [x] **Resolve `GET /summary`** — Removed from README; endpoint was never implemented and is no longer required.
 - [x] **Sanitize chat API 500 responses** — Done: `chat/api/chat.py` now logs the exception with `logger.exception()` and returns a generic message: "Sorry, couldn't process your request due to a technical error. Please try again later."

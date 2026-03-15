@@ -14,7 +14,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 
 from chat.agent.llm import get_llm
-from chat.utils.readonly_sql import SQLSecurityError, execute_readonly_query, is_configured
+from common.database import is_database_configured
+from chat.utils.readonly_sql import SQLSecurityError, execute_readonly_query
 from common.logger import get_logger
 
 logger = get_logger(__name__)
@@ -60,7 +61,7 @@ def get_schema(table_name: str) -> str:
         logger.info("Returning cached schema for '%s'", table_name)
         return _SCHEMA_CACHE[table_name]
 
-    if not is_configured():
+    if not is_database_configured():
         logger.error("Database not configured for get_schema")
         return json.dumps({
             "error": "Database is not configured. Cannot retrieve schema."
@@ -143,7 +144,7 @@ def execute_sql(sql: str) -> str:
     """
     logger.info("execute_sql called with query: %s", sql[:200])
 
-    if not is_configured():
+    if not is_database_configured():
         logger.error("Database not configured for execute_sql")
         return json.dumps({
             "error": "Database is not configured. Set DATABASE_URL in .env."
