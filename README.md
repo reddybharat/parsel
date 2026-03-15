@@ -12,102 +12,7 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 - **Database** — Connects directly to PostgreSQL via `DATABASE_URL` for both tracker (CRUD) and chat (read-only SQL). No Supabase client or RLS required for the app.
 - **Fixed categories** — Transactions use one of: Grocery, Dining, Transportation, Utilities, Entertainment, Health, Housing, Personal, Investments, Misc (enforced in UI and API)
 - **Validations** — Shared rules in `tracker.validations`: amount must be > 0, category required, transaction date cannot be in the future (enforced in UI and API)
-
-## Prerequisites
-
-- Python 3.8+
-- A [Supabase](https://supabase.com) (or other PostgreSQL) project with a `transactions` table
-- For the **Chat** tab: a [Google AI Studio](https://ai.google.dev/gemini-api/docs/api-key) API key (Gemini)
-
-### Table schema
-
-`transactions` should have at least: `id`, `amount`, `category`, `transaction_date`, `description`.
-
-## Setup
-
-### 1. Clone and virtual environment
-
-```bash
-cd personal_finance_tracker
-python -m venv venv
-```
-
-**Windows (PowerShell):**
-```powershell
-.\venv\Scripts\Activate.ps1
-```
-
-**macOS/Linux:**
-```bash
-source venv/bin/activate
-```
-
-### 2. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Environment variables
-
-Create a `.env` in the project root:
-
-```env
-GOOGLE_API_KEY=your-gemini-api-key
-DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@db.YOUR_PROJECT_REF.supabase.co:5432/postgres
-```
-
-- **DATABASE_URL** — Postgres connection string (Supabase: Dashboard → Connect → URI). Used for all tracker CRUD and for the Chat agent’s read-only SQL. If the password contains special characters (e.g. `#`), URL-encode them.
-- **GOOGLE_API_KEY** — From [Google AI Studio](https://ai.google.dev/gemini-api/docs/api-key). Required for the Chat (Finance Assistant) tab.
-
-### 4. Row Level Security (optional)
-
-If your table has RLS enabled and you use the Supabase client elsewhere, you can run the policies in **Supabase Dashboard → SQL Editor** using `supabase_rls_policies.sql`. The app uses a direct Postgres connection and does not require RLS for normal operation.
-
-## Running the app
-
-### API server
-
-```bash
-uvicorn main:app --reload
-```
-
-- API: http://127.0.0.1:8000  
-- Interactive docs: http://127.0.0.1:8000/docs  
-
-### Streamlit UI
-
-```bash
-streamlit run app.py
-```
-
-Opens at http://localhost:8501. Three tabs (Summary hidden for now):
-
-- **Add** — Form: amount, category (required), date (today or past only), optional description. **Import from CSV** expander: download template, upload CSV, import (with validation and error report)
-- **Search** — Filter by date range, optional category, sort, and per-page count. **Search** and **Export to CSV** buttons side by side; Export appears after you run a search and downloads all results for the current filters. Table supports edit and delete per transaction
-- **Chat** — Finance Assistant: ask questions in plain English (e.g. “What is my total spend this month?”, “Spending by category”). The agent uses Gemini and read-only SQL against your `transactions` table and returns summarized answers
-
-## API endpoints
-
-### Tracker (transactions)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Basic API info |
-| POST | `/transactions` | Create a transaction (amount > 0, category required, date not in future) |
-| GET | `/transactions` | List last 20 transactions |
-| GET | `/transactions/{transaction_id}` | Get one transaction by id |
-| PATCH | `/transactions/{transaction_id}` | Update a transaction (partial) |
-| DELETE | `/transactions/{transaction_id}` | Delete a transaction |
-| GET | `/summary` | Current month total and spend by category |
-
-### Chat
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/chat/invoke` | Run the chat agent. Body: `{ "messages": [ {"role": "user"\|"assistant", "content": "..." } ] }`. Returns `{ "reply": "..." }` |
-| POST | `/chat/resume` | Resume (stub) |
-| POST | `/chat/exit` | Exit (stub) |
+- **Audit fields** — Transactions have `created_at`, `updated_at`, and `version_no`; the app sets them on insert/update (no DB triggers). API and Search UI return and display them.
 
 ## Project structure
 
@@ -147,10 +52,121 @@ Opens at http://localhost:8501. Three tabs (Summary hidden for now):
 │   │   └── llm.py              # Gemini LLM (get_llm)
 │   └── ui/
 │       └── chat_tab.py         # Chat UI, invokes agent
+├── tests/
+│   ├── test_tracker_database.py
+│   ├── test_tracker_transactions_api.py
+│   ├── test_tracker_services_csv.py
+│   ├── test_chat_api.py
+│   └── test_ui_smoke.py
 ├── ARCHITECTURE.md              # High-level architecture, runtime flow, and packages
 ├── requirements.txt
-└── supabase_rls_policies.sql
+└── .env                         # (create from example below; not committed)
 ```
+
+## Table schema
+
+`public.transactions`:
+
+| Column             | Type                     | Nullable | Default            |
+|--------------------|--------------------------|----------|--------------------|
+| id                 | uuid                     | NOT NULL | gen_random_uuid()  |
+| created_at         | timestamp with time zone | NOT NULL | now()              |
+| amount             | numeric                  | NOT NULL | —                  |
+| category           | text                     | NOT NULL | —                  |
+| transaction_date   | date                     | NOT NULL | —                  |
+| description        | text                     | NULL     | —                  |
+| updated_at         | timestamp with time zone | NOT NULL | now()              |
+| version_no         | integer                  | NOT NULL | 0                  |
+
+Primary key: `id`.
+
+## Setup
+
+### Prerequisites
+
+- Python 3.8+
+- A [Supabase](https://supabase.com) (or other PostgreSQL) project with a `transactions` table (see schema above)
+- For the **Chat** tab: a [Google AI Studio](https://ai.google.dev/gemini-api/docs/api-key) API key (Gemini)
+
+### 1. Clone and virtual environment
+
+```bash
+cd personal_finance_tracker
+python -m venv venv
+```
+
+**Windows (PowerShell):**
+```powershell
+.\venv\Scripts\Activate.ps1
+```
+
+**macOS/Linux:**
+```bash
+source venv/bin/activate
+```
+
+### 2. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Environment variables
+
+Create a `.env` in the project root:
+
+```env
+GOOGLE_API_KEY=your-gemini-api-key
+DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@db.YOUR_PROJECT_REF.supabase.co:5432/postgres
+```
+
+- **DATABASE_URL** — Postgres connection string (Supabase: Dashboard → Connect → URI). Used for all tracker CRUD and for the Chat agent’s read-only SQL. If the password contains special characters (e.g. `#`), URL-encode them.
+- **GOOGLE_API_KEY** — From [Google AI Studio](https://ai.google.dev/gemini-api/docs/api-key). Required for the Chat (Finance Assistant) tab.
+
+### 4. Run the app
+
+**API server:**
+
+```bash
+uvicorn main:app --reload
+```
+
+- API: http://127.0.0.1:8000  
+- Interactive docs: http://127.0.0.1:8000/docs  
+
+**Streamlit UI:**
+
+```bash
+streamlit run app.py
+```
+
+Opens at http://localhost:8501. Three tabs (Summary hidden for now):
+
+- **Add** — Form: amount, category (required), date (today or past only), optional description. **Import from CSV** expander: download template, upload CSV, import (with validation and error report)
+- **Search** — Filter by date range, optional category, sort, and per-page count. **Search** and **Export to CSV** buttons side by side; Export appears after you run a search and downloads all results for the current filters. Table shows an **Updated** column (last modified time) and supports edit and delete per transaction; the edit form displays Created/Updated/Version for audit.
+- **Chat** — Finance Assistant: ask questions in plain English (e.g. “What is my total spend this month?”, “Spending by category”). The agent uses Gemini and read-only SQL against your `transactions` table and returns summarized answers
+
+## API endpoints
+
+### Tracker (transactions)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | Basic API info |
+| POST | `/transactions` | Create a transaction (amount > 0, category required, date not in future). Response includes `created_at`, `updated_at`, `version_no`. |
+| GET | `/transactions` | List last 20 transactions (each includes `created_at`, `updated_at`, `version_no`) |
+| GET | `/transactions/{transaction_id}` | Get one transaction by id (response includes `created_at`, `updated_at`, `version_no`) |
+| PATCH | `/transactions/{transaction_id}` | Update a transaction (partial); sets `updated_at` and increments `version_no` |
+| DELETE | `/transactions/{transaction_id}` | Delete a transaction |
+| GET | `/summary` | Current month total and spend by category |
+
+### Chat
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/chat/invoke` | Run the chat agent. Body: `{ "messages": [ {"role": "user"\|"assistant", "content": "..." } ] }`. Returns `{ "reply": "..." }` |
+| POST | `/chat/resume` | Resume (stub) |
+| POST | `/chat/exit` | Exit (stub) |
 
 ## Tests
 

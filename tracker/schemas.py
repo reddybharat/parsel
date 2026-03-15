@@ -2,7 +2,7 @@
 Pydantic models for the tracker. All monetary values in INR (₹).
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
@@ -55,5 +55,8 @@ class TransactionResponse(BaseModel):
     category: str
     transaction_date: date
     description: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    version_no: int
 
     model_config = ConfigDict(from_attributes=True)

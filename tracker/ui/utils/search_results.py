@@ -1,6 +1,6 @@
 """Components for rendering search results table and edit/delete actions on the Search tab."""
 
-from datetime import date
+from datetime import date, datetime
 
 import streamlit as st
 
@@ -24,12 +24,28 @@ def _show_pagination_footer(total_count: int, page_size: int, current_page: int)
         st.rerun()
 
 
+def _format_audit_ts(value) -> str:
+    """Format created_at/updated_at for display."""
+    if value is None:
+        return "—"
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d %H:%M")
+    s = str(value)
+    return s[:16] if len(s) > 16 else s
+
+
 def _render_edit_form(row: dict) -> None:
     row_id = row.get("id")
     if not row_id:
         return
     with st.form(key="edit_txn_form"):
         st.caption("Edit transaction")
+        if any(row.get(k) is not None for k in ("created_at", "updated_at", "version_no")):
+            st.caption(
+                f"Created: {_format_audit_ts(row.get('created_at'))} | "
+                f"Updated: {_format_audit_ts(row.get('updated_at'))} | "
+                f"Version: {row.get('version_no', '—')}"
+            )
         amount = st.number_input(
             "Amount (₹)",
             min_value=0.01,
@@ -74,7 +90,8 @@ def _render_edit_form(row: dict) -> None:
             try:
                 sql = """
                     UPDATE transactions
-                    SET amount = %s, category = %s, transaction_date = %s, description = %s
+                    SET amount = %s, category = %s, transaction_date = %s, description = %s,
+                        updated_at = now(), version_no = version_no + 1
                     WHERE id = %s
                     RETURNING id
                 """
@@ -143,8 +160,8 @@ def render_search_results(rows: list[dict], total_count: int | None, page_size: 
     end_one = min(offset_start + len(rows), total_count)
     st.caption(f"Showing **{start_one}–{end_one}** of **{total_count}** transactions")
 
-    header_cols = st.columns([1, 1, 1, 2, 2])
-    headers = ["Date", "Amount", "Category", "Description", ""]
+    header_cols = st.columns([1, 1, 1, 2, 1, 2])
+    headers = ["Date", "Amount", "Category", "Description", "Updated", ""]
     for c, h in zip(header_cols, headers):
         c.markdown(f"**{h}**")
 
@@ -152,7 +169,7 @@ def render_search_results(rows: list[dict], total_count: int | None, page_size: 
         row_id = r.get("id")
         if not row_id:
             continue
-        cols = st.columns([1, 1, 1, 2, 2])
+        cols = st.columns([1, 1, 1, 2, 1, 2])
         with cols[0]:
             st.text(r.get("transaction_date", ""))
         with cols[1]:
@@ -164,6 +181,15 @@ def render_search_results(rows: list[dict], total_count: int | None, page_size: 
             truncated = desc[:40] + ("…" if desc and len(desc) > 40 else "")
             st.text(truncated)
         with cols[4]:
+            updated = r.get("updated_at")
+            if updated is not None:
+                if isinstance(updated, datetime):
+                    st.text(updated.strftime("%Y-%m-%d %H:%M"))
+                else:
+                    st.text(str(updated)[:16] if len(str(updated)) > 16 else str(updated))
+            else:
+                st.text("—")
+        with cols[5]:
             b1, b2 = st.columns(2)
             with b1:
                 edit_clicked = st.button("Edit", key=f"edit_{row_id}")
