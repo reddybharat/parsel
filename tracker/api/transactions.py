@@ -3,6 +3,7 @@ Transaction API endpoints.
 """
 
 from datetime import date, datetime
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
@@ -75,18 +76,18 @@ def create_transaction(payload: TransactionCreate) -> TransactionResponse:
 
 
 @router.get("/transactions/{transaction_id}", response_model=TransactionResponse)
-def get_transaction(transaction_id: str) -> TransactionResponse:
+def get_transaction(transaction_id: UUID) -> TransactionResponse:
     """Fetch a single transaction by id."""
     sql = f"SELECT {_COLS} FROM transactions WHERE id = %s"
     with get_connection() as conn:
-        rows = execute_query(sql, (transaction_id,), conn=conn)
+        rows = execute_query(sql, (str(transaction_id),), conn=conn)
     if not rows:
         raise HTTPException(status_code=404, detail="Transaction not found")
     return _record_to_response(rows[0])
 
 
 @router.patch("/transactions/{transaction_id}", response_model=TransactionResponse)
-def update_transaction(transaction_id: str, payload: TransactionUpdate) -> TransactionResponse:
+def update_transaction(transaction_id: UUID, payload: TransactionUpdate) -> TransactionResponse:
     """Update a transaction by id. Only provided fields are updated."""
     payload_dict = payload.model_dump(exclude_unset=True)
     if not payload_dict:
@@ -110,7 +111,7 @@ def update_transaction(transaction_id: str, payload: TransactionUpdate) -> Trans
         params.append(v)
     set_parts.append("updated_at = now()")
     set_parts.append("version_no = version_no + 1")
-    params.append(transaction_id)
+    params.append(str(transaction_id))
     sql = (
         "UPDATE transactions SET "
         + ", ".join(set_parts)
@@ -124,11 +125,11 @@ def update_transaction(transaction_id: str, payload: TransactionUpdate) -> Trans
 
 
 @router.delete("/transactions/{transaction_id}", status_code=204)
-def delete_transaction(transaction_id: str) -> None:
+def delete_transaction(transaction_id: UUID) -> None:
     """Delete a transaction by id."""
     sql = "DELETE FROM transactions WHERE id = %s"
     with get_connection() as conn:
-        rowcount = execute_update_delete(sql, (transaction_id,), conn=conn)
+        rowcount = execute_update_delete(sql, (str(transaction_id),), conn=conn)
     if rowcount == 0:
         raise HTTPException(status_code=404, detail="Transaction not found")
 

@@ -181,6 +181,5 @@ def _invoke_agent() -> str:
     except Exception as e:
         logger.error("Agent invocation failed: %s", e, exc_info=True)
         return (
-            f"Sorry, something went wrong: **{type(e).__name__}: {e}**\n\n"
-            "Check the terminal logs for details."
+            "Sorry, couldn't process your request due to a technical error. Please try again later."
         )

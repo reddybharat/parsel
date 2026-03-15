@@ -160,7 +160,6 @@ Opens at http://localhost:8501. Three tabs (Summary hidden for now):
 | GET | `/transactions/{transaction_id}` | Get one transaction by id (response includes `created_at`, `updated_at`, `version_no`) |
 | PATCH | `/transactions/{transaction_id}` | Update a transaction (partial); sets `updated_at` and increments `version_no` |
 | DELETE | `/transactions/{transaction_id}` | Delete a transaction |
-| GET | `/summary` | Current month total and spend by category |
 
 ### Chat
 

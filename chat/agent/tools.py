@@ -68,11 +68,12 @@ def get_schema(table_name: str) -> str:
 
     try:
         rows = execute_readonly_query(
-            f"SELECT column_name, data_type "
-            f"FROM information_schema.columns "
-            f"WHERE table_schema = 'public' AND table_name = '{table_name}' "
-            f"ORDER BY ordinal_position",
+            "SELECT column_name, data_type "
+            "FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = %s "
+            "ORDER BY ordinal_position",
             max_rows=50,
+            params=(table_name,),
         )
         logger.info("Schema retrieved: %d columns for '%s'", len(rows), table_name)
         result = json.dumps(rows, default=str)

@@ -8,7 +8,10 @@ Only single SELECT statements are allowed; all DML/DDL is blocked.
 
 import re
 from contextvars import ContextVar
-from typing import Any, Optional
+from typing import Any, Optional, Union
+
+# Type for query parameters (tuple or list, as accepted by psycopg2).
+QueryParams = Optional[Union[tuple, list]]
 
 import psycopg2
 import psycopg2.extras
@@ -94,13 +97,19 @@ def _enforce_row_limit(sql: str, max_rows: int) -> str:
 
 
 def execute_readonly_query(
-    sql: str, max_rows: int = MAX_ROWS_DEFAULT, conn: Optional[Any] = None
+    sql: str,
+    max_rows: int = MAX_ROWS_DEFAULT,
+    conn: Optional[Any] = None,
+    params: QueryParams = None,
 ) -> list[dict]:
     """Execute a read-only SELECT query and return rows as list of dicts.
 
     If conn is provided, use it and do not close it (caller's connection, e.g. session).
     If conn is None, use the connection from set_agent_connection() when set (Streamlit);
     otherwise create a new connection and close it when done (e.g. API).
+
+    params: optional tuple or list of values for parameterized query (%s placeholders).
+    Use this for user- or tool-supplied values (e.g. table names) instead of interpolating.
 
     Raises SQLSecurityError for disallowed queries.
     """
@@ -121,7 +130,10 @@ def execute_readonly_query(
 
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(limited)
+            if params is not None:
+                cur.execute(limited, params)
+            else:
+                cur.execute(limited)
             rows = cur.fetchall()
             return [dict(row) for row in rows]
     except SQLSecurityError:

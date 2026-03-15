@@ -8,8 +8,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from chat.agent.graph import run_agent
+from common.logger import get_logger
 
 router = APIRouter(tags=["chat"])
+logger = get_logger(__name__)
 
 
 @router.post("/invoke")
@@ -28,7 +30,11 @@ def chat_invoke(body: dict[str, Any]) -> dict:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Chat invoke failed: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail="Sorry, couldn't process your request due to a technical error. Please try again later.",
+        )
 
 
 @router.post("/resume")
