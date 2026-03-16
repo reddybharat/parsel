@@ -3,12 +3,12 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from chat.api.chat import router as chat_router
+from chat.router import router as chat_router
 
 
 def create_app() -> FastAPI:
     app = FastAPI()
-    app.include_router(chat_router, prefix="/chat")
+    app.include_router(chat_router)
     return app
 
 

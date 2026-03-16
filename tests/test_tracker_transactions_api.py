@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from tracker.api.transactions import router as transactions_router
+from tracker.router import router as transactions_router
 
 
 def create_app() -> FastAPI:

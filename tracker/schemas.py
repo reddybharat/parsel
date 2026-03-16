@@ -60,3 +60,10 @@ class TransactionResponse(BaseModel):
     version_no: int
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class TransactionsSearchResult(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: list[TransactionResponse]
