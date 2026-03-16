@@ -19,7 +19,7 @@ Actionable points from the codebase review. Tests are out of scope for now.
 ## Medium priority
 
 ### Connection / lifecycle
-- [ ] **Unify DB connection for chat path** — In `chat/utils/readonly_sql.py`, when creating a new connection (e.g. for API requests), use the same abstraction as the rest of the app (e.g. `common.database.get_connection()` or the pool when you have one) instead of raw `psycopg2.connect(get_database_url())`.
+- [x] **Unify DB connection for chat path** — Done: `chat/utils/readonly_sql.py` now uses `common.database.get_connection()` (with readonly, autocommit session) or the Streamlit session connection instead of calling `psycopg2.connect(get_database_url())` directly.
 - [ ] **Streamlit connection refresh** — In `app.py` (and any place that uses `st.session_state.db_conn`), add handling for stale/failed connections: catch connection errors on use and reopen (or clear `db_conn` and show a “reconnect” message) so long-lived sessions don’t break when the server closes idle connections.
 
 ### Robustness
@@ -29,8 +29,8 @@ Actionable points from the codebase review. Tests are out of scope for now.
 - [ ] **Clarify search tab “DB not configured”** — In `tracker/ui/tabs/search_tab.py`, avoid using a bare `except ValueError` to show “Database not configured.” Use a dedicated exception or an explicit check (e.g. for a specific error message or a flag from the DB layer) so other `ValueError`s don’t show that message.
 
 ### Dependencies and config
-- [ ] **Add explicit `langgraph` to requirements.txt** — Add `langgraph` with a version pin so the dependency is explicit and upgrades don’t break the app if LangChain’s dependencies change.
-- [ ] **Centralize `load_dotenv()`** — Call `load_dotenv()` once at application entry (e.g. in `main.py` and `app.py`). Remove `load_dotenv()` from `common/database.py` and `chat/agent/llm.py` so env loading is in one place.
+- [x] **Add explicit `langgraph` to requirements.txt** — Done: `requirements.txt` now includes `langgraph>=0.2.0` with a version pin.
+- [x] **Centralize `load_dotenv()`** — Done: `load_dotenv()` is now called once in `main.py` (FastAPI) and `app.py` (Streamlit); duplicate calls were removed from `common/database.py` and `chat/agent/llm.py`.
 
 ---
 
@@ -41,7 +41,7 @@ Actionable points from the codebase review. Tests are out of scope for now.
 - [ ] **PATCH empty body** — Decide and document behavior when PATCH body has no updatable fields: either return 400 with a clear message or keep current “return current resource” behavior and document it.
 
 ### Observability and config
-- [ ] **Configurable log level** — In `common/logger.py`, read log level from environment (e.g. `LOG_LEVEL`) and set the root logger level accordingly so you can turn on DEBUG in development without code changes.
+- [x] **Configurable log level** — Done: `common/logger.py` now reads `LOG_LEVEL` from the environment (defaulting to INFO) and sets the root logger level accordingly.
 - [ ] **Request/session IDs (optional)** — Add a request ID (e.g. in FastAPI middleware) or session identifier and include it in log lines so you can trace a single request or chat session across the app.
 
 ### Data and consistency
@@ -63,10 +63,10 @@ Actionable points from the codebase review. Tests are out of scope for now.
 | High     | Correctness/API   | 2     |
 | Medium   | Connection        | 2     |
 | Medium   | Robustness        | 4     |
-| Medium   | Dependencies/config | 2   |
+| Medium   | Dependencies/config | 0   |
 | Low      | API design        | 2     |
-| Low      | Observability     | 2     |
+| Low      | Observability     | 1     |
 | Low      | Data consistency  | 3     |
 | Low      | Code quality      | 2     |
 
-Total: **21 points** (tests excluded).
+Total: **18 points** (tests excluded).

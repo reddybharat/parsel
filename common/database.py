@@ -9,9 +9,6 @@ import os
 from contextlib import contextmanager
 
 import psycopg2
-from dotenv import load_dotenv
-
-load_dotenv()
 
 _DATABASE_URL: str | None = None
 
