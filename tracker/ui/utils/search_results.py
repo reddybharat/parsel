@@ -5,9 +5,16 @@ from typing import Any, Optional
 
 import streamlit as st
 
+from common.api_client import ApiClientError
+from common.logger import get_logger
+from tracker.client import delete_transaction as api_delete_transaction
+from tracker.client import update_transaction as api_update_transaction
 from tracker.constants import CATEGORIES
-from tracker.utils.db import execute_update_delete, execute_update_returning
 from tracker.validations import validate_amount, validate_category, validate_transaction_date
+
+GENERIC_ERROR_MSG = "Sorry, couldn't process your request due to a technical error. Please try again later."
+
+logger = get_logger(__name__)
 
 
 def _show_pagination_footer(total_count: int, page_size: int, current_page: int) -> None:
@@ -89,22 +96,23 @@ def _render_edit_form(row: dict, conn: Optional[Any] = None) -> None:
                 st.error(str(e))
                 return
             try:
-                sql = """
-                    UPDATE transactions
-                    SET amount = %s, category = %s, transaction_date = %s, description = %s,
-                        updated_at = now(), version_no = version_no + 1
-                    WHERE id = %s
-                    RETURNING id
-                """
-                params = (amount, category.strip(), txn_date.isoformat(), (description or "").strip() or None, row_id)
-                execute_update_returning(sql, params, conn=conn)
-                conn.commit()
+                api_update_transaction(
+                    transaction_id=str(row_id),
+                    amount=float(amount),
+                    category=category.strip(),
+                    transaction_date=txn_date,
+                    description=(description or "").strip() or None,
+                )
                 if "editing_transaction" in st.session_state:
                     del st.session_state.editing_transaction
-                st.success("Transaction updated.")
+                st.session_state.search_last_message = ("Transaction updated.", "success")
                 st.rerun()
+            except ApiClientError as e:
+                logger.error("Update transaction API error: %s", e, exc_info=True)
+                st.error(GENERIC_ERROR_MSG)
             except Exception as e:
-                st.error(f"Update failed: {str(e)[:200]}")
+                logger.error("Update transaction unexpected error: %s", e, exc_info=True)
+                st.error(GENERIC_ERROR_MSG)
 
 
 def _render_delete_confirm(row: dict, conn: Optional[Any] = None) -> None:
@@ -118,17 +126,17 @@ def _render_delete_confirm(row: dict, conn: Optional[Any] = None) -> None:
     with col1:
         if st.button("Confirm delete", type="primary", key="confirm_del"):
             try:
-                rowcount = execute_update_delete("DELETE FROM transactions WHERE id = %s", (row_id,), conn=conn)
-                if rowcount > 0:
-                    conn.commit()
-                    if "deleting_transaction" in st.session_state:
-                        del st.session_state.deleting_transaction
-                    st.success("Transaction deleted.")
-                    st.rerun()
-                else:
-                    st.error("Transaction not found or already deleted.")
+                api_delete_transaction(transaction_id=str(row_id))
+                if "deleting_transaction" in st.session_state:
+                    del st.session_state.deleting_transaction
+                st.session_state.search_last_message = ("Transaction deleted.", "success")
+                st.rerun()
+            except ApiClientError as e:
+                logger.error("Delete transaction API error: %s", e, exc_info=True)
+                st.error(GENERIC_ERROR_MSG)
             except Exception as e:
-                st.error(f"Delete failed: {str(e)[:200]}")
+                logger.error("Delete transaction unexpected error: %s", e, exc_info=True)
+                st.error(GENERIC_ERROR_MSG)
     with col2:
         if st.button("Cancel", key="cancel_del"):
             if "deleting_transaction" in st.session_state:
@@ -141,6 +149,19 @@ def render_search_results(rows: list[dict], total_count: int | None, page_size: 
     conn: optional DB connection to reuse for update/delete (avoids extra connection per run)."""
     if not rows:
         return
+
+    # Show last status message (from edit/delete) just above results
+    if "search_last_message" in st.session_state:
+        msg, level = st.session_state.search_last_message
+        if level == "success":
+            st.success(msg)
+        elif level == "warning":
+            st.warning(msg)
+        elif level == "error":
+            st.error(msg)
+        else:
+            st.info(msg)
+        del st.session_state.search_last_message
 
     if total_count is None:
         total_count = len(rows)
@@ -164,8 +185,8 @@ def render_search_results(rows: list[dict], total_count: int | None, page_size: 
     end_one = min(offset_start + len(rows), total_count)
     st.caption(f"Showing **{start_one}–{end_one}** of **{total_count}** transactions")
 
-    header_cols = st.columns([1, 1, 1, 2, 1, 2])
-    headers = ["Date", "Amount", "Category", "Description", "Updated", ""]
+    header_cols = st.columns([1, 1, 1, 2, 2])
+    headers = ["Date", "Amount", "Category", "Description", ""]
     for c, h in zip(header_cols, headers):
         c.markdown(f"**{h}**")
 
@@ -173,7 +194,7 @@ def render_search_results(rows: list[dict], total_count: int | None, page_size: 
         row_id = r.get("id")
         if not row_id:
             continue
-        cols = st.columns([1, 1, 1, 2, 1, 2])
+        cols = st.columns([1, 1, 1, 2, 2])
         with cols[0]:
             st.text(r.get("transaction_date", ""))
         with cols[1]:
@@ -185,15 +206,6 @@ def render_search_results(rows: list[dict], total_count: int | None, page_size: 
             truncated = desc[:40] + ("…" if desc and len(desc) > 40 else "")
             st.text(truncated)
         with cols[4]:
-            updated = r.get("updated_at")
-            if updated is not None:
-                if isinstance(updated, datetime):
-                    st.text(updated.strftime("%Y-%m-%d %H:%M"))
-                else:
-                    st.text(str(updated)[:16] if len(str(updated)) > 16 else str(updated))
-            else:
-                st.text("—")
-        with cols[5]:
             b1, b2 = st.columns(2)
             with b1:
                 edit_clicked = st.button("Edit", key=f"edit_{row_id}")

@@ -4,13 +4,17 @@ from datetime import date
 
 import streamlit as st
 
+from common.api_client import ApiClientError
+from common.logger import get_logger
+from tracker.client import create_transaction as api_create_transaction
 from tracker.constants import CATEGORIES
-from tracker.utils.db import execute_insert
 from tracker.validations import validate_amount, validate_category, validate_transaction_date
 from tracker.ui.utils.import_csv_section import render_import_csv_section
-from tracker.ui.common import DATABASE_ERROR_MSG, is_db_connection_error
 
 REQUIRED_LABEL = "<span style='color: red'>*</span>"
+GENERIC_ERROR_MSG = "Sorry, couldn't process your request due to a technical error. Please try again later."
+
+logger = get_logger(__name__)
 
 
 def render_add_transaction() -> None:
@@ -45,12 +49,6 @@ def render_add_transaction() -> None:
         description = st.text_input("Description (optional)", placeholder="Short note")
         submitted = st.form_submit_button("Save transaction")
 
-    conn = st.session_state.get("db_conn")
-    if conn is None:
-        if submitted:
-            st.error("Database not configured. Set DATABASE_URL in .env to add transactions.")
-        return
-
     if submitted:
         errors: list[str] = []
         try:
@@ -71,30 +69,18 @@ def render_add_transaction() -> None:
                 st.error(msg)
         else:
             try:
-                sql = """
-                    INSERT INTO transactions (amount, category, transaction_date, description)
-                    VALUES (%s, %s, %s, %s)
-                    RETURNING id
-                """
-                params = (
-                    float(amount),
-                    category.strip(),
-                    transaction_date.isoformat(),
-                    description.strip() or None,
+                api_create_transaction(
+                    amount=float(amount),
+                    category=category.strip(),
+                    transaction_date=transaction_date,
+                    description=description.strip() or None,
                 )
-                rows = execute_insert(sql, params, conn=conn)
-                if rows:
-                    conn.commit()
-                    st.success(f"Saved: ₹{amount:,.2f} — {category} on {transaction_date}")
-                else:
-                    st.error("Insert failed. Check your database.")
-            except ValueError as e:
-                st.error(str(e))
+                st.success(f"Saved: ₹{amount:,.2f} — {category} on {transaction_date}")
+            except ApiClientError as e:
+                logger.error("Add transaction API error: %s", e, exc_info=True)
+                st.error(GENERIC_ERROR_MSG)
             except Exception as e:
-                err = str(e)
-                if is_db_connection_error(err):
-                    st.error(DATABASE_ERROR_MSG)
-                else:
-                    st.error(f"Error: {err}")
+                logger.error("Add transaction unexpected error: %s", e, exc_info=True)
+                st.error(GENERIC_ERROR_MSG)
 
-    render_import_csv_section(conn)
+    render_import_csv_section()

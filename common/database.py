@@ -9,8 +9,10 @@ import os
 from contextlib import contextmanager
 
 import psycopg2
+from psycopg2.pool import SimpleConnectionPool
 
 _DATABASE_URL: str | None = None
+_POOL: SimpleConnectionPool | None = None
 
 
 def get_database_url() -> str:
@@ -30,15 +32,22 @@ def is_database_configured() -> bool:
     return bool(os.getenv("DATABASE_URL"))
 
 
-def open_session_connection():
-    """Open a connection for the session. Caller must commit after writes and must not close (reused)."""
-    return psycopg2.connect(get_database_url())
+def _get_pool() -> SimpleConnectionPool:
+    global _POOL
+    if _POOL is None:
+        _POOL = SimpleConnectionPool(
+            minconn=1,
+            maxconn=5,
+            dsn=get_database_url(),
+        )
+    return _POOL
 
 
 @contextmanager
 def get_connection():
     """Context manager yielding a DB connection. Commits on success, rolls back on exception."""
-    conn = psycopg2.connect(get_database_url())
+    pool = _get_pool()
+    conn = pool.getconn()
     try:
         yield conn
         conn.commit()
@@ -46,4 +55,4 @@ def get_connection():
         conn.rollback()
         raise
     finally:
-        conn.close()
+        pool.putconn(conn)

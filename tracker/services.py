@@ -6,9 +6,10 @@ Uses tracker.utils.db and tracker.schemas; no UI dependencies.
 import csv
 import io
 from datetime import date
-from typing import Any, Optional
+from typing import Optional
 
-from tracker.utils.db import CONNECTION_REQUIRED_MSG, execute_query
+from common.database import get_connection
+from tracker.utils.db import execute_query
 from tracker.schemas import TransactionCreate
 
 # CSV column names (used for export, template, and import)
@@ -16,11 +17,9 @@ CSV_FIELDS = ["transaction_date", "category", "amount", "description"]
 
 
 def export_transactions_csv(
-    start_date: date, end_date: date, category: Optional[str], conn: Any
+    start_date: date, end_date: date, category: Optional[str]
 ) -> str:
-    """Return CSV string for all transactions matching the given filters. conn is required."""
-    if conn is None:
-        raise ValueError(CONNECTION_REQUIRED_MSG)
+    """Return CSV string for all transactions matching the given filters."""
     sql = """
         SELECT transaction_date, category, amount, description
         FROM transactions
@@ -36,7 +35,8 @@ def export_transactions_csv(
             ORDER BY transaction_date ASC
         """
         params = (start_date.isoformat(), end_date.isoformat(), category)
-    rows = execute_query(sql, params, conn=conn)
+    with get_connection() as conn:
+        rows = execute_query(sql, params, conn=conn)
 
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=CSV_FIELDS)
@@ -83,7 +83,7 @@ def transactions_csv_template() -> str:
     return output.getvalue()
 
 
-def import_transactions_from_csv(content: bytes, conn: Any) -> tuple[int, list[str]]:
+def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
     """
     Parse CSV content and insert valid rows into the transactions table.
 
@@ -158,15 +158,13 @@ def import_transactions_from_csv(content: bytes, conn: Any) -> tuple[int, list[s
 
     inserted_count = 0
     if rows_to_insert:
-        if conn is None:
-            raise ValueError(CONNECTION_REQUIRED_MSG)
         sql = """
             INSERT INTO transactions (amount, category, transaction_date, description)
             VALUES (%s, %s, %s, %s)
         """
-        with conn.cursor() as cur:
-            cur.executemany(sql, rows_to_insert)
-        conn.commit()
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.executemany(sql, rows_to_insert)
         inserted_count = len(rows_to_insert)
 
     return inserted_count, errors

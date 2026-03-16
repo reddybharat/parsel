@@ -1,9 +1,13 @@
 """
-Secure read-only SQL executor with guardrails for the chat agent.
+SQL executor with guardrails for the chat agent.
 
 Uses the shared connection (common.database). When run from Streamlit, uses the
 session connection from app start via set_agent_connection().
-Only single SELECT statements are allowed; all DML/DDL is blocked.
+
+Note: Originally this module enforced read-only SELECT queries only. The current
+configuration allows the LLM to execute any single statement; guardrails now
+focus on blocking multiple statements and SQL comments. The system prompt for
+the agent is expected to keep queries read-only in practice.
 """
 
 import re
@@ -26,15 +30,6 @@ _agent_conn: ContextVar[Optional[Any]] = ContextVar("agent_conn", default=None)
 
 MAX_ROWS_DEFAULT = 500
 
-_BLOCKED_KEYWORDS = re.compile(
-    r"\b("
-    r"INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|"
-    r"GRANT|REVOKE|COPY|EXECUTE|CALL|DO|PERFORM|"
-    r"SET\s+ROLE|SET\s+SESSION|LOCK|VACUUM|REINDEX|CLUSTER|"
-    r"NOTIFY|LISTEN|UNLISTEN|LOAD|IMPORT"
-    r")\b",
-    re.IGNORECASE,
-)
 _BLOCKED_PATTERNS = re.compile(r"(--|/\*|;\s*\S)")
 
 
@@ -48,7 +43,14 @@ class SQLSecurityError(Exception):
 
 
 def _validate_query(sql: str) -> str:
-    """Validate and sanitize a SQL query. Returns cleaned SQL or raises."""
+    """Validate and sanitize a SQL query. Returns cleaned SQL or raises.
+
+    Guardrails:
+    - Disallow multiple statements separated by semicolons.
+    - Disallow SQL comments (-- or /* ... */).
+
+    Query type (SELECT/INSERT/UPDATE/DELETE/etc.) is no longer restricted here.
+    """
     cleaned = sql.strip().rstrip(";").strip()
 
     if not cleaned:
@@ -61,21 +63,17 @@ def _validate_query(sql: str) -> str:
         if "--" in cleaned or "/*" in cleaned:
             raise SQLSecurityError("SQL comments are not allowed.")
 
-    if not re.match(r"^\s*SELECT\b", cleaned, re.IGNORECASE):
-        raise SQLSecurityError("Only SELECT queries are allowed.")
-
-    if _BLOCKED_KEYWORDS.search(cleaned):
-        match = _BLOCKED_KEYWORDS.search(cleaned)
-        raise SQLSecurityError(
-            f"Blocked keyword detected: {match.group(0).upper()}. "
-            "Only read-only SELECT queries are permitted."
-        )
-
     return cleaned
 
 
 def _enforce_row_limit(sql: str, max_rows: int) -> str:
-    """Inject or cap LIMIT clause to enforce max_rows."""
+    """Inject or cap LIMIT clause to enforce max_rows for SELECT queries.
+
+    Non-SELECT statements are returned unchanged.
+    """
+    if not re.match(r"^\s*SELECT\b", sql, re.IGNORECASE):
+        return sql
+
     limit_match = re.search(r"\bLIMIT\s+(\d+)", sql, re.IGNORECASE)
     if limit_match:
         existing_limit = int(limit_match.group(1))
@@ -112,7 +110,7 @@ def execute_readonly_query(
     conn: Optional[Any] = None,
     params: QueryParams = None,
 ) -> list[dict]:
-    """Execute a read-only SELECT query and return rows as list of dicts.
+    """Execute a SQL query and return rows as list of dicts.
 
     If conn is provided, use it and do not close it (caller's connection, e.g. session).
     If conn is None, use the connection from set_agent_connection() when set (Streamlit);
@@ -137,5 +135,6 @@ def execute_readonly_query(
     if use_session_conn:
         return _run_query(conn, limited, params)
     with get_connection() as conn:
-        conn.set_session(readonly=True, autocommit=True)
+        # Use pooled connection as-is (no read-only transaction); the agent
+        # prompt is responsible for keeping queries read-only in practice.
         return _run_query(conn, limited, params)

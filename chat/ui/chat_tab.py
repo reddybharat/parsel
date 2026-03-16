@@ -2,7 +2,9 @@
 
 import streamlit as st
 
+from common.api_client import ApiClientError
 from common.logger import get_logger
+from chat.client import chat_invoke
 
 logger = get_logger(__name__)
 
@@ -158,28 +160,22 @@ def _ensure_state() -> None:
 
 
 def _invoke_agent() -> str:
-    """Call the LangGraph agent and return the reply text."""
+    """Call the chat API and return the reply text."""
     try:
-        from chat.agent.graph import run_agent
-        from chat.utils.readonly_sql import set_agent_connection
-
-        # Use the same DB connection created at app start; agent tools will use it.
-        set_agent_connection(st.session_state.get("db_conn"))
-        try:
-            logger.info("Invoking agent with %d messages", len(st.session_state.chat_messages))
-            reply = run_agent(st.session_state.chat_messages)
-        finally:
-            set_agent_connection(None)
-        logger.info("Agent returned reply (%d chars)", len(reply))
+        logger.info("Invoking chat API with %d messages", len(st.session_state.chat_messages))
+        result = chat_invoke(st.session_state.chat_messages)
+        reply = str(result.get("reply", ""))
+        logger.info("Chat API returned reply (%d chars)", len(reply))
+        if not reply:
+            return "No reply received from the chat API."
         return reply
-    except ValueError as e:
-        logger.error("Configuration error: %s", e, exc_info=True)
+    except ApiClientError as e:
+        logger.error("Chat API configuration/HTTP error: %s", e, exc_info=True)
         return (
-            f"**Configuration error:** {e}\n\n"
-            "Please set the required environment variables in `.env`."
+            "Sorry, couldn't process your request due to a technical error. Please try again later."
         )
     except Exception as e:
-        logger.error("Agent invocation failed: %s", e, exc_info=True)
+        logger.error("Chat API invocation failed: %s", e, exc_info=True)
         return (
             "Sorry, couldn't process your request due to a technical error. Please try again later."
         )
