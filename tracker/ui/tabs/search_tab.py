@@ -44,8 +44,14 @@ def render_search() -> None:
             if run_query:
                 page = st.session_state.search_page
 
+                allowed_sort_columns = {"transaction_date", "amount"}
                 sort_col = st.session_state.search_sort_column
                 sort_desc = st.session_state.search_sort_desc
+
+                if sort_col not in allowed_sort_columns:
+                    logger.error("Unexpected sort column in UI: %s", sort_col)
+                    st.error("Internal error: invalid sort column selected. Please try again.")
+                    return
 
                 api_result = api_search_transactions(
                     start_date=start_date,
