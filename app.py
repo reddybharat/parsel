@@ -16,10 +16,19 @@ load_dotenv()
 
 st.set_page_config(page_title="Personal Finance Tracker", page_icon="💰", layout="centered")
 
-tab1, tab2, tab3 = st.tabs(["Add", "Search", "Chat"])
-with tab1:
-    render_add_transaction()
-with tab2:
-    render_search()
-with tab3:
+nav_transactions, nav_chat = st.tabs(["Transactions", "Chat"])
+
+with nav_transactions:
+    st.title("Transactions")
+
+    search_tab, add_tab = st.tabs(["Search", "Add"])
+
+    with search_tab:
+        render_search()
+
+    with add_tab:
+        render_add_transaction()
+
+with nav_chat:
+    st.title("Chat")
     render_chat()
