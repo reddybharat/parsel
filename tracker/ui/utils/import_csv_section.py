@@ -4,11 +4,10 @@ from typing import TYPE_CHECKING, Optional
 
 import streamlit as st
 
+from common.api_client import ApiClientError
+from tracker.client import import_transactions_csv
 from tracker.constants import CATEGORIES
-from tracker.services import (
-    import_transactions_from_csv,
-    transactions_csv_template,
-)
+from tracker.services import transactions_csv_template
 
 if TYPE_CHECKING:
     from streamlit.runtime.uploaded_file_manager import UploadedFile
@@ -39,20 +38,25 @@ def render_import_csv_section() -> None:
         if uploaded_file is not None:
             if st.button("Import", use_container_width=True, key="add_txn_import_btn"):
                 content = uploaded_file.getvalue()
-                inserted, import_errors = import_transactions_from_csv(content)
-                if inserted:
-                    st.success(
-                        f"Imported {inserted} transaction(s) from CSV."
-                    )
-                if import_errors:
-                    err_preview = "\n- ".join(import_errors[:20])
-                    more = (
-                        "\n… (showing first 20 errors)"
-                        if len(import_errors) > 20
-                        else ""
-                    )
-                    st.warning(
-                        "Some rows could not be imported:\n- "
-                        + err_preview
-                        + more
-                    )
+                try:
+                    result = import_transactions_csv(content)
+                    inserted = int(result.get("inserted", 0))
+                    import_errors = result.get("errors", []) or []
+                    if inserted:
+                        st.success(
+                            f"Imported {inserted} transaction(s) from CSV."
+                        )
+                    if import_errors:
+                        err_preview = "\n- ".join(import_errors[:20])
+                        more = (
+                            "\n… (showing first 20 errors)"
+                            if len(import_errors) > 20
+                            else ""
+                        )
+                        st.warning(
+                            "Some rows could not be imported:\n- "
+                            + err_preview
+                            + more
+                        )
+                except ApiClientError as e:
+                    st.error(f"CSV import failed via API: {e}")

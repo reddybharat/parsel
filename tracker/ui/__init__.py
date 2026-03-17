@@ -1,1 +1,1 @@
-"""Tracker Streamlit UI (summary, add, search tabs and components)."""
+"""Tracker Streamlit UI (add, search tabs and components)."""

@@ -4,10 +4,15 @@ from datetime import date
 
 import streamlit as st
 
-from tracker.database import execute_query
-from tracker.ui.common import DATABASE_ERROR_MSG, is_db_connection_error
+from common.api_client import ApiClientError
+from common.logger import get_logger
+from tracker.client import search_transactions as api_search_transactions
 from tracker.ui.utils.search_filters import render_search_filters
 from tracker.ui.utils.search_results import render_search_results
+
+GENERIC_ERROR_MSG = "Sorry, couldn't process your request due to a technical error. Please try again later."
+
+logger = get_logger(__name__)
 
 
 def render_search() -> None:
@@ -38,46 +43,29 @@ def render_search() -> None:
 
             if run_query:
                 page = st.session_state.search_page
-                offset_start = (page - 1) * page_size
 
+                allowed_sort_columns = {"transaction_date", "amount"}
                 sort_col = st.session_state.search_sort_column
                 sort_desc = st.session_state.search_sort_desc
-                order_dir = "DESC" if sort_desc else "ASC"
-                order_clause = f"ORDER BY {sort_col} {order_dir}"
 
-                cols = "id, amount, category, transaction_date, description, created_at, updated_at, version_no"
-                if category and category != "All":
-                    count_sql = """
-                        SELECT COUNT(*) AS n FROM transactions
-                        WHERE transaction_date >= %s AND transaction_date <= %s AND category = %s
-                    """
-                    count_params: tuple = (start_date.isoformat(), end_date.isoformat(), category)
-                    data_sql = f"""
-                        SELECT {cols} FROM transactions
-                        WHERE transaction_date >= %s AND transaction_date <= %s AND category = %s
-                        {order_clause}
-                        LIMIT %s OFFSET %s
-                    """
-                    data_params = (start_date.isoformat(), end_date.isoformat(), category, page_size, offset_start)
-                else:
-                    count_sql = """
-                        SELECT COUNT(*) AS n FROM transactions
-                        WHERE transaction_date >= %s AND transaction_date <= %s
-                    """
-                    count_params = (start_date.isoformat(), end_date.isoformat())
-                    data_sql = f"""
-                        SELECT {cols} FROM transactions
-                        WHERE transaction_date >= %s AND transaction_date <= %s
-                        {order_clause}
-                        LIMIT %s OFFSET %s
-                    """
-                    data_params = (start_date.isoformat(), end_date.isoformat(), page_size, offset_start)
+                if sort_col not in allowed_sort_columns:
+                    logger.error("Unexpected sort column in UI: %s", sort_col)
+                    st.error("Internal error: invalid sort column selected. Please try again.")
+                    return
 
-                count_rows = execute_query(count_sql, count_params)
-                total_count = int(count_rows[0]["n"]) if count_rows else 0
+                api_result = api_search_transactions(
+                    start_date=start_date,
+                    end_date=end_date,
+                    category=category,
+                    sort_column=sort_col,
+                    sort_desc=sort_desc,
+                    page=page,
+                    page_size=page_size,
+                )
+
+                total_count = int(api_result.get("total", 0))
                 st.session_state.search_results_total = total_count
-
-                rows = execute_query(data_sql, data_params)
+                rows = api_result.get("items", []) or []
 
                 if total_count == 0:
                     st.info("No transactions found for the selected filters.")
@@ -86,13 +74,11 @@ def render_search() -> None:
                     st.info("No transactions on this page.")
                 else:
                     render_search_results(rows, total_count, page_size)
-            elif total_from_last is not None and total_from_last == 0:
+            elif st.session_state.search_results_total == 0:
                 st.info("No transactions found for the selected filters.")
-    except ValueError:
-        st.warning("Database not configured. Set DATABASE_URL in .env to search.")
+    except ApiClientError as e:
+        logger.error("Search API error: %s", e, exc_info=True)
+        st.error(GENERIC_ERROR_MSG)
     except Exception as e:
-        err = str(e)
-        if is_db_connection_error(err):
-            st.warning(DATABASE_ERROR_MSG)
-        else:
-            st.warning(f"Could not search: {err[:200]}" + ("…" if len(err) > 200 else ""))
+        logger.error("Search unexpected error: %s", e, exc_info=True)
+        st.error(GENERIC_ERROR_MSG)

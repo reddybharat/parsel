@@ -7,9 +7,16 @@ Usage:
 """
 
 import logging
+import os
 import sys
 
 _configured = False
+
+
+def _get_log_level_from_env() -> int:
+    """Return logging level from LOG_LEVEL env var, defaulting to INFO."""
+    level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    return getattr(logging, level_name, logging.INFO)
 
 
 def _configure_logging() -> None:
@@ -24,7 +31,7 @@ def _configure_logging() -> None:
     )
 
     root = logging.getLogger()
-    root.setLevel(logging.INFO)
+    root.setLevel(_get_log_level_from_env())
     root.addHandler(handler)
 
     _configured = True

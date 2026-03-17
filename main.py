@@ -3,10 +3,13 @@ Personal Finance Tracker - FastAPI MVP.
 All monetary values in INR (₹). Uses PostgreSQL via DATABASE_URL.
 """
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 
-from tracker.api.transactions import router as transactions_router
-from chat.api.chat import router as chat_router
+from tracker.router import router as transactions_router
+from chat.router import router as chat_router
+
+load_dotenv()
 
 app = FastAPI(title="Personal Finance Tracker", version="0.1.0")
 
@@ -17,4 +20,4 @@ def root():
 
 
 app.include_router(transactions_router)
-app.include_router(chat_router, prefix="/chat")
+app.include_router(chat_router)

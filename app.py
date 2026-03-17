@@ -1,16 +1,18 @@
 """
 Simple Streamlit UI for the Personal Finance Tracker.
-Tabs: Add Transaction, Search, Chat. (Summary tab hidden for now.)
+Tabs: Add Transaction, Search, Chat.
 """
 
+from dotenv import load_dotenv
 import streamlit as st
 
 from common.logger import get_logger  # noqa: F401 — triggers logging config on app start
 
-# Summary tab hidden for now; code kept in tracker.ui.tabs.summary_tab
 from tracker.ui.tabs.add_txn_tab import render_add_transaction
 from tracker.ui.tabs.search_tab import render_search
 from chat.ui.chat_tab import render_chat
+
+load_dotenv()
 
 st.set_page_config(page_title="Personal Finance Tracker", page_icon="💰", layout="centered")
 

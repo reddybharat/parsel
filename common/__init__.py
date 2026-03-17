@@ -1,1 +1,1 @@
-"""Shared utilities (logger, etc.) for Personal Finance Tracker."""
+"""Shared utilities for Personal Finance Tracker: logger, database connection."""

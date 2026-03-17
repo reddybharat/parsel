@@ -1,1 +1,1 @@
-"""Tracker REST API (transactions, summary)."""
+"""Tracker REST API (transactions)."""

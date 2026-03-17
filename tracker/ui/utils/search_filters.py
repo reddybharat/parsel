@@ -4,8 +4,14 @@ from datetime import date, timedelta
 
 import streamlit as st
 
+from common.api_client import ApiClientError
+from common.logger import get_logger
+from tracker.client import export_transactions_csv
 from tracker.constants import CATEGORIES
-from tracker.services import export_transactions_csv
+
+GENERIC_ERROR_MSG = "Sorry, couldn't process your request due to a technical error. Please try again later."
+
+logger = get_logger(__name__)
 
 
 def render_search_filters():
@@ -97,22 +103,27 @@ def render_search_filters():
         if search_clicked:
             st.session_state.search_page = 1
     with col_export:
-        search_has_run = (
-            search_clicked
-            or st.session_state.get("search_results_total") is not None
-        )
-        if search_has_run:
-            csv_data = export_transactions_csv(start_date, end_date, category)
-            if csv_data:
-                st.download_button(
-                    "Export to CSV",
-                    data=csv_data,
-                    file_name=f"transactions_{start_date.isoformat()}_{end_date.isoformat()}.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                    key="search_export_csv",
-                )
-            else:
-                st.caption("No data to export for current filters.")
+        has_results = st.session_state.get("search_results_total") not in (None, 0)
+        if has_results:
+            if st.button("Export to CSV", use_container_width=True, key="search_export_btn"):
+                try:
+                    csv_data = export_transactions_csv(start_date, end_date, category)
+                    if csv_data:
+                        st.download_button(
+                            "Download CSV",
+                            data=csv_data,
+                            file_name=f"transactions_{start_date.isoformat()}_{end_date.isoformat()}.csv",
+                            mime="text/csv",
+                            use_container_width=True,
+                            key="search_export_csv",
+                        )
+                    else:
+                        st.caption("No data to export for current filters.")
+                except ApiClientError as e:
+                    logger.error("Export CSV API error: %s", e, exc_info=True)
+                    st.error(GENERIC_ERROR_MSG)
+                except Exception as e:
+                    logger.error("Export CSV unexpected error: %s", e, exc_info=True)
+                    st.error(GENERIC_ERROR_MSG)
 
     return start_date, end_date, category, page_size, sort_column, sort_desc, search_clicked

@@ -2,7 +2,9 @@
 
 import streamlit as st
 
+from common.api_client import ApiClientError
 from common.logger import get_logger
+from chat.client import chat_invoke
 
 logger = get_logger(__name__)
 
@@ -37,32 +39,6 @@ def render_chat() -> None:
                 margin-left: auto;
                 margin-right: auto;
             }
-            .chat-message {
-                padding: 0.9rem 1rem;
-                border-radius: 0.75rem;
-                margin-bottom: 0.85rem;
-                border: 1px solid #e5e7eb;
-                box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
-                font-size: 0.95rem;
-            }
-            .chat-message.user {
-                background: #eff6ff;
-                margin-left: 15%;
-                margin-right: 5%;
-                border-left: 3px solid #3b82f6;
-            }
-            .chat-message.assistant {
-                background: #f9fafb;
-                margin-left: 5%;
-                margin-right: 15%;
-                border-left: 3px solid #6b7280;
-            }
-            .chat-message .chat-role {
-                font-weight: 600;
-                margin-bottom: 0.25rem;
-                display: block;
-                color: #374151;
-            }
             .chat-suggest-label {
                 font-weight: 600;
                 margin-bottom: 0.4rem;
@@ -85,22 +61,13 @@ def render_chat() -> None:
     with st.container():
         st.markdown('<div class="chat-block-container">', unsafe_allow_html=True)
 
-        # Chat history
+        # Chat history (assistant messages rendered as markdown)
         if st.session_state.chat_messages:
             for msg in st.session_state.chat_messages:
                 role = msg.get("role", "assistant")
-                content = msg.get("content", "")
-                css_class = "assistant" if role != "user" else "user"
-                role_label = "You" if role == "user" else "Assistant"
-                st.markdown(
-                    f"""
-                    <div class="chat-message {css_class}">
-                        <span class="chat-role">{role_label}</span>
-                        <div>{content}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                content = msg.get("content", "") or ""
+                with st.chat_message(role):
+                    st.markdown(content)
         else:
             st.info(
                 "Start a conversation by asking a question about your finances or use one of the quick suggestions below."
@@ -193,23 +160,22 @@ def _ensure_state() -> None:
 
 
 def _invoke_agent() -> str:
-    """Call the LangGraph agent and return the reply text."""
+    """Call the chat API and return the reply text."""
     try:
-        logger.info("Invoking agent with %d messages", len(st.session_state.chat_messages))
-        from chat.agent.graph import run_agent
-
-        reply = run_agent(st.session_state.chat_messages)
-        logger.info("Agent returned reply (%d chars)", len(reply))
+        logger.info("Invoking chat API with %d messages", len(st.session_state.chat_messages))
+        result = chat_invoke(st.session_state.chat_messages)
+        reply = str(result.get("reply", ""))
+        logger.info("Chat API returned reply (%d chars)", len(reply))
+        if not reply:
+            return "No reply received from the chat API."
         return reply
-    except ValueError as e:
-        logger.error("Configuration error: %s", e, exc_info=True)
+    except ApiClientError as e:
+        logger.error("Chat API configuration/HTTP error: %s", e, exc_info=True)
         return (
-            f"**Configuration error:** {e}\n\n"
-            "Please set the required environment variables in `.env`."
+            "Sorry, couldn't process your request due to a technical error. Please try again later."
         )
     except Exception as e:
-        logger.error("Agent invocation failed: %s", e, exc_info=True)
+        logger.error("Chat API invocation failed: %s", e, exc_info=True)
         return (
-            f"Sorry, something went wrong: **{type(e).__name__}: {e}**\n\n"
-            "Check the terminal logs for details."
+            "Sorry, couldn't process your request due to a technical error. Please try again later."
         )

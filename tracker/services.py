@@ -1,6 +1,6 @@
 """
 CSV export, template, and import for transactions.
-Uses tracker.database and tracker.schemas; no UI dependencies.
+Uses tracker.utils.db and tracker.schemas; no UI dependencies.
 """
 
 import csv
@@ -8,7 +8,8 @@ import io
 from datetime import date
 from typing import Optional
 
-from tracker.database import execute_query, get_connection
+from common.database import get_connection
+from tracker.utils.db import execute_query
 from tracker.schemas import TransactionCreate
 
 # CSV column names (used for export, template, and import)
@@ -34,7 +35,8 @@ def export_transactions_csv(
             ORDER BY transaction_date ASC
         """
         params = (start_date.isoformat(), end_date.isoformat(), category)
-    rows = execute_query(sql, params)
+    with get_connection() as conn:
+        rows = execute_query(sql, params, conn=conn)
 
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=CSV_FIELDS)
