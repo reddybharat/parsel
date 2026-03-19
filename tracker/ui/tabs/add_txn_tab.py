@@ -17,15 +17,16 @@ GENERIC_ERROR_MSG = "Sorry, couldn't process your request due to a technical err
 logger = get_logger(__name__)
 
 
-def render_add_transaction() -> None:
-    st.markdown(
-        """
-        <div class="chat-main-header">
-            <h2>Add Transaction</h2>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+def render_add_transaction(show_header: bool = True) -> None:
+    if show_header:
+        st.markdown(
+            """
+            <div class="chat-main-header">
+                <h2>Add Transaction</h2>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     with st.form("transaction_form", clear_on_submit=True):
         st.markdown(f"Amount (₹) {REQUIRED_LABEL}", unsafe_allow_html=True)
         amount = st.number_input(

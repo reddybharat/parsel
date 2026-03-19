@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from common.api_client import delete, get, get_text, patch, post, post_bytes
+from common.api_client import delete, get, get_text, patch, post, post_multipart
 
 
 def search_transactions(
@@ -64,9 +64,9 @@ def export_transactions_csv(
 
 
 def import_transactions_csv(content: bytes) -> dict[str, Any]:
-    return post_bytes(
+    return post_multipart(
         "/transactions/import",
-        data=content,
+        files={"file": ("transactions_import.csv", content, "text/csv")},
     )
 
 

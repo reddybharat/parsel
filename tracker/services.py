@@ -5,7 +5,7 @@ Uses tracker.utils.db and tracker.schemas; no UI dependencies.
 
 import csv
 import io
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from common.database import get_connection
@@ -14,6 +14,98 @@ from tracker.schemas import TransactionCreate
 
 # CSV column names (used for export, template, and import)
 CSV_FIELDS = ["transaction_date", "category", "amount", "description"]
+
+
+def _parse_transaction_date(raw_date: str) -> date:
+    """
+    Parse CSV transaction_date and normalize to a `date` (YYYY-MM-DD).
+
+    Accepts:
+    - YYYY-MM-DD
+    - YYYY-MM-DDTHH:MM:SS... / YYYY-MM-DD HH:MM:SS... (takes the date prefix)
+    - Common slash/dot formats like MM/DD/YYYY or DD/MM/YYYY
+    """
+    s = (raw_date or "").strip()
+    if not s:
+        raise ValueError("transaction_date is required.")
+
+    # Fast path: plain YYYY-MM-DD.
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        try:
+            return date.fromisoformat(s[:10])
+        except ValueError:
+            # Fall through to other formats.
+            pass
+
+    # datetime.fromisoformat handles many ISO-like variants; take date part.
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return dt.date()
+    except ValueError:
+        pass
+
+    # Common non-ISO formats (Excel/exports).
+    # Handle slash formats with a heuristic to avoid MM/DD vs DD/MM mixups.
+    if "/" in s:
+        parts = s.split("/")
+        if len(parts) == 3:
+            p1, p2, p3 = parts
+            if len(p1) == 4:  # YYYY/MM/DD
+                year = int(p1)
+                month = int(p2)
+                day = int(p3)
+                return date(year, month, day)
+
+            # Otherwise assume last part is year (YY or YYYY).
+            day_or_month_1 = int(p1)
+            day_or_month_2 = int(p2)
+            year_part = p3
+            year = int(year_part)
+            if len(year_part) == 2:
+                # Simple 2-digit year mapping: 00-68 -> 2000-2068, else 1900-1999.
+                year = 2000 + year if year <= 68 else 1900 + year
+
+            # Disambiguate:
+            # - If one component is > 12, it must be the day.
+            # - If both are <= 12, default to DD/MM (common in India).
+            if day_or_month_1 > 12 and day_or_month_2 <= 12:
+                day, month = day_or_month_1, day_or_month_2
+            elif day_or_month_2 > 12 and day_or_month_1 <= 12:
+                month, day = day_or_month_1, day_or_month_2
+            else:
+                day, month = day_or_month_1, day_or_month_2
+            return date(year, month, day)
+
+    # dot formats like DD.MM.YYYY or YYYY.MM.DD
+    if "." in s:
+        parts = s.split(".")
+        if len(parts) == 3:
+            p1, p2, p3 = parts
+            if len(p1) == 4:  # YYYY.MM.DD
+                year = int(p1)
+                month = int(p2)
+                day = int(p3)
+                return date(year, month, day)
+            if len(p3) == 2:  # DD.MM.YY
+                # Assume YY -> 19xx/20xx using same mapping.
+                year2 = int(p3)
+                year = 2000 + year2 if year2 <= 68 else 1900 + year2
+            else:
+                year = int(p3)
+            day = int(p1)
+            month = int(p2)
+            return date(year, month, day)
+
+    raise ValueError(f"Invalid date format '{raw_date}'. Use YYYY-MM-DD.")
+
+
+def _parse_amount(raw_amount: str) -> float:
+    s = (raw_amount or "").strip()
+    if not s:
+        raise ValueError("amount is required.")
+    # Be forgiving about common formatting artifacts.
+    s = s.replace(",", "").replace("₹", "")
+    return float(s)
 
 
 def export_transactions_csv(
@@ -125,15 +217,9 @@ def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
                     "transaction_date, category, and amount are required."
                 )
 
+            parsed_date = _parse_transaction_date(raw_date)
             try:
-                parsed_date = date.fromisoformat(raw_date)
-            except ValueError:
-                raise ValueError(
-                    f"Invalid date format '{raw_date}'. Use YYYY-MM-DD."
-                )
-
-            try:
-                parsed_amount = float(raw_amount)
+                parsed_amount = _parse_amount(raw_amount)
             except ValueError:
                 raise ValueError(
                     f"Invalid amount '{raw_amount}'. Must be a number."
