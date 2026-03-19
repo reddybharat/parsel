@@ -5,19 +5,19 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 ## Features
 
 - **FastAPI** — REST API for transactions: create, search, update (PATCH), delete; plus **Chat API** (invoke, resume, exit).
-- **Streamlit** — Tabbed UI: **Add** (form + **Import from CSV**), **Search** (filter by date range/category, pagination, **Export to CSV**, edit and delete per transaction), **Chat** (Finance Assistant).
+- **Streamlit** — Frontend for transactions management and the finance chat.
 - **Chat / Finance Assistant** — Natural language questions about your transactions. Uses a LangGraph SQL agent (Gemini LLM) with tools: list tables, get schema, generate SQL, execute SQL with guardrails (single statement, no comments). Answers summarize spending, breakdowns by category, and similar queries.
-- **Import from CSV** — In the **Add** tab: download a template (correct headers + example rows), upload a CSV, and bulk-import transactions. Columns: `transaction_date` (YYYY-MM-DD), `category`, `amount`, `description` (optional). Category must be one of the fixed list; validation and row-level errors are shown.
-- **Export to CSV** — In the **Search** tab: after you run a search, an **Export to CSV** button appears next to the Search button and downloads all transactions matching the current filters (date range and category).
+- **Import from CSV** — Bulk-import transactions from a CSV with validation and row-level errors (API: `POST /transactions/import`).
+- **Export to CSV** — Export matching transactions as CSV for a date range and optional category (API: `GET /transactions/export`).
 - **Database** — Connects directly to PostgreSQL via `DATABASE_URL` for both tracker (CRUD) and chat (SQL tools). No Supabase client or RLS required for the app. A shared connection pool is used for API and Chat.
-- **Fixed categories** — Transactions use one of: Grocery, Dining, Transportation, Utilities, Entertainment, Health, Housing, Personal, Investments, Misc (enforced in UI and API)
-- **Validations** — Shared rules in `tracker.validations`: amount must be > 0, category required, transaction date cannot be in the future (enforced in UI and API)
-- **Audit fields** — Transactions have `created_at`, `updated_at`, and `version_no`; the app sets them on insert/update (no DB triggers). API and Search UI return and display them.
+- **Fixed categories** — Transactions use one of: Grocery, Dining, Transportation, Utilities, Entertainment, Health, Housing, Personal, Investments, Misc (enforced in app and API)
+- **Validations** — Shared rules in `tracker.validations`: amount must be > 0, category required, transaction date cannot be in the future (enforced in app and API)
+- **Audit fields** — Transactions have `created_at`, `updated_at`, and `version_no`; the app sets them on insert/update (no DB triggers). API and search return and display them.
 
 ## Project structure
 
 ```
-├── app.py                      # Streamlit UI (tabs: Add, Search, Chat)
+├── app.py                      # Streamlit frontend entrypoint
 ├── main.py                     # FastAPI app (tracker + chat routers)
 ├── common/
 │   ├── logger.py               # Shared logging config
@@ -31,12 +31,12 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 │   ├── services.py             # CSV export, template, import
 │   ├── router.py               # Transaction API routes (search, create, update, delete, CSV export/import)
 │   └── ui/
-│       ├── common.py           # Shared UI helpers
+│       ├── common.py           # Shared frontend helpers
 │       ├── tabs/
 │       │   ├── add_txn_tab.py
 │       │   └── search_tab.py
 │       └── utils/
-│           ├── import_csv_section.py   # Import from CSV (Add tab)
+│           ├── import_csv_section.py   # Import from CSV
 │           ├── search_filters.py       # Date/category/sort + Search + Export to CSV
 │           └── search_results.py      # Results table with edit/delete
 ├── chat/                       # Finance assistant
@@ -51,7 +51,7 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 │   │   ├── prompt.py           # System prompt for the agent
 │   │   └── llm.py              # Gemini LLM (get_llm)
 │   └── ui/
-│       └── chat_tab.py         # Chat UI, calls FastAPI chat router via HTTP client
+│       └── chat_tab.py         # Chat frontend, calls FastAPI chat router via HTTP client
 ├── tests/
 │   ├── test_tracker_database.py
 │   ├── test_tracker_transactions_api.py
@@ -134,17 +134,13 @@ uvicorn main:app --reload
 - API: http://127.0.0.1:8000  
 - Interactive docs: http://127.0.0.1:8000/docs  
 
-**Streamlit UI (in a second terminal):**
+**Streamlit frontend (in a second terminal):**
 
 ```bash
 streamlit run app.py
 ```
 
-Opens at http://localhost:8501. Three tabs (Summary hidden for now):
-
-- **Add** — Form: amount, category (required), date (today or past only), optional description. **Import from CSV** expander: download template, upload CSV, import (with validation and error report)
-- **Search** — Filter by date range, optional category, sort, and per-page count. **Search** and **Export to CSV** buttons side by side; Export appears after you run a search and downloads all results for the current filters. Table shows an **Updated** column (last modified time) and supports edit and delete per transaction; the edit form displays Created/Updated/Version for audit.
-- **Chat** — Finance Assistant: ask questions in plain English (e.g. “What is my total spend this month?”, “Spending by category”). The agent uses Gemini and SQL tools (with guardrails) against your `transactions` table and returns summarized answers.
+Opens at http://localhost:8501.
 
 ## API endpoints
 
@@ -167,15 +163,3 @@ Opens at http://localhost:8501. Three tabs (Summary hidden for now):
 | POST | `/chat/invoke` | Run the chat agent. Body: `{ "messages": [ {"role": "user"\|"assistant", "content": "..." } ] }`. Returns `{ "reply": "..." }`. |
 | POST | `/chat/resume` | Resume (stub). |
 | POST | `/chat/exit` | Exit (stub). |
-
-## Tests
-
-- **Test runner**: [pytest](https://docs.pytest.org/)
-- **Location**: all tests live under `tests/`
-- **Run all tests** from the project root:
-
-```bash
-pytest
-```
-
-The suite includes unit-level tests for the tracker database helpers, CSV services, and FastAPI/Chat APIs, plus a small Streamlit UI import smoke test. These are safe to run in CI on every push (they do not touch your production database).

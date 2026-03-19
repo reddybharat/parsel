@@ -16,10 +16,9 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
   - Legacy modules `tracker.api.transactions` and `chat.api.chat` exist only as thin re-export stubs of these routers for backward compatibility.
 - **Streamlit (`app.py`)**
   - Uses `common.logger.get_logger` to configure logging on startup.
-  - Renders three main tabs:
-    - `tracker.ui.tabs.add_txn_tab.render_add_transaction`
-    - `tracker.ui.tabs.search_tab.render_search`
-    - `chat.ui.chat_tab.render_chat`
+  - Renders two main tabs:
+    - `Transactions` tab: `tracker.ui.tabs.search_tab.render_search` and `tracker.ui.tabs.add_txn_tab.render_add_transaction`
+    - `Chat` tab: `chat.ui.chat_tab.render_chat`
   - Communicates with FastAPI exclusively over HTTP via the client layer (`tracker.client`, `chat.client`, and `common.api_client`).
 ### Common package (`common/`)
 
@@ -64,7 +63,7 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
 
 ```mermaid
 flowchart TD
-  streamlitApp["Streamlit app.py"] --> trackerUI["tracker.ui.tabs (Add, Search)"]
+  streamlitApp["Streamlit app.py"] --> trackerUI["Transactions tab (Search, Add)"]
   streamlitApp --> chatUI["chat.ui.chat_tab"]
   trackerUI --> trackerClient["tracker.client"]
   chatUI --> chatClient["chat.client"]
