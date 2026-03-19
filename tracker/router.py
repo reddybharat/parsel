@@ -3,7 +3,7 @@ from typing import Optional
 from uuid import UUID
 import time
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile
 
 from common.database import get_connection
 from common.logger import get_logger
@@ -160,8 +160,9 @@ def export_transactions(
 
 
 @router.post("/import")
-def import_transactions(content: bytes) -> dict:
+async def import_transactions(file: UploadFile = File(...)) -> dict:
     t0 = time.perf_counter()
+    content = await file.read()
     inserted, errors = import_transactions_from_csv(content)
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(

@@ -51,6 +51,19 @@ def post_bytes(path: str, *, data: bytes, timeout: int = DEFAULT_TIMEOUT_SECONDS
     return resp.json()
 
 
+def post_multipart(path: str, *, files: Mapping[str, Any], timeout: int = DEFAULT_TIMEOUT_SECONDS) -> Any:
+    """
+    Post multipart/form-data.
+
+    `files` should be in the format expected by `requests`, e.g.:
+      {"file": ("transactions.csv", content_bytes, "text/csv")}
+    """
+    url = _build_url(path)
+    resp = requests.post(url, files=files, timeout=timeout)
+    _raise_for_status(resp)
+    return resp.json()
+
+
 def patch(path: str, *, json: Mapping[str, Any] | None = None, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> Any:
     url = _build_url(path)
     resp = requests.patch(url, json=json, timeout=timeout)
