@@ -43,11 +43,12 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
 
 ### Chat package (`chat/`)
 
-- `utils/readonly_sql.py`: SQL executor with guardrails focused on safety (single statement only, no SQL comments). Used by agent tools; by default uses pooled connections from `common.database.get_connection()`. Supports an optional session connection via `set_agent_connection()`, but the current Streamlit app does not set this.
 - `agent/`:
   - `graph.py`: constructs the LangGraph graph and exposes `run_agent`.
   - `nodes.py`: defines the core agent node and tool orchestration.
-  - `tools.py`: tools for listing tables, inspecting schema, and executing safe SQL.
+  - `tools.py`: `list_tables`, `get_table_schema`, `query_checker`, `execute_query`, `get_current_date`; `execute_query` uses `common.database.get_connection()`.
+  - `db_config.py`: table names and schema text for the agent.
+  - `schema.py`: Pydantic `args_schema` models for tools.
   - `state.py`: the agent state (e.g., messages list).
   - `prompt.py`: system prompt and instructions for the agent.
   - `llm.py`: Gemini LLM wrapper and configuration.
@@ -76,13 +77,12 @@ flowchart TD
   trackerRouter --> trackerDb["tracker.utils.db"]
   trackerDb --> commonDB
   chatRouter --> chatAgent["chat.agent.graph (run_agent)"]
-  chatAgent --> chatReadonly["chat.utils.readonly_sql"]
-  chatReadonly --> commonDB
+  chatAgent --> commonDB
 ```
 
 This layout is designed so that:
 
-- The **connection** is in `common.database`; **execute helpers** live in `tracker.utils.db` (tracker) and `chat.utils.readonly_sql` (chat).
+- The **connection** is in `common.database`; **execute helpers** live in `tracker.utils.db` (tracker); the chat agent runs SQL from `chat.agent.tools.execute_query` via the same pool.
 - **Feature code** for transactions and chat lives in separate, clearly named packages.
 - **UI layers** (FastAPI and Streamlit) depend on feature packages via HTTP APIs and shared clients, not the other way around.
 

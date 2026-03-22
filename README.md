@@ -6,7 +6,7 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 
 - **FastAPI** — REST API for transactions: create, search, update (PATCH), delete; plus **Chat API** (invoke, resume, exit).
 - **Streamlit** — Frontend for transactions management and the finance chat.
-- **Chat / Finance Assistant** — Natural language questions about your transactions. Uses a LangGraph SQL agent (Gemini LLM) with tools: list tables, get schema, generate SQL, execute SQL with guardrails (single statement, no comments). Answers summarize spending, breakdowns by category, and similar queries.
+- **Chat / Finance Assistant** — Natural language questions about your transactions. Uses a LangGraph SQL agent (Gemini LLM) with tools: `list_tables`, `get_table_schema`, `query_checker`, `execute_query`, `get_current_date`. Answers summarize spending, breakdowns by category, and similar queries.
 - **Import from CSV** — Bulk-import transactions from a CSV with validation and row-level errors (API: `POST /transactions/import`).
 - **Export to CSV** — Export matching transactions as CSV for a date range and optional category (API: `GET /transactions/export`).
 - **Database** — Connects directly to PostgreSQL via `DATABASE_URL` for both tracker (CRUD) and chat (SQL tools). No Supabase client or RLS required for the app. A shared connection pool is used for API and Chat.
@@ -40,15 +40,16 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 │           ├── search_filters.py       # Date/category/sort + Search + Export to CSV
 │           └── search_results.py      # Results table with edit/delete
 ├── chat/                       # Finance assistant
-│   ├── utils/
-│   │   └── readonly_sql.py     # SQL executor with guardrails (single statement, no comments; pooled connection)
+│   ├── utils/                  # (reserved for shared chat helpers)
 │   ├── router.py               # Chat API routes (invoke, resume, exit)
 │   ├── agent/
 │   │   ├── graph.py            # Edgeless StateGraph, run_agent()
 │   │   ├── nodes.py            # agent_node (create_agent + tools)
-│   │   ├── tools.py            # list_tables, get_schema, execute_sql
+│   │   ├── tools.py            # list_tables, get_table_schema, query_checker, execute_query, get_current_date
+│   │   ├── db_config.py        # Table names + schema text for tools
+│   │   ├── schema.py           # Pydantic args_schema for tools
 │   │   ├── state.py            # AgentState (messages)
-│   │   ├── prompt.py           # System prompt for the agent
+│   │   ├── prompt.py           # System prompt + query_checker template
 │   │   └── llm.py              # Gemini LLM (get_llm)
 │   └── ui/
 │       └── chat_tab.py         # Chat frontend, calls FastAPI chat router via HTTP client
