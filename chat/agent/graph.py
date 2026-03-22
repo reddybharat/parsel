@@ -71,3 +71,19 @@ def run_agent(chat_history: list[dict]) -> str:
         return ai_messages[-1].text
 
     return "I wasn't able to process that request. Could you try rephrasing your question?"
+
+
+# #NEW
+# def _build_agent_graph() -> StateGraph:
+#     """Build the base graph."""
+#     builder = StateGraph(AgentState)
+#     builder.add_node("agent", agent_node)
+#     builder.set_entry_point("agent")
+#     return builder
+
+
+# #NEW
+# def build_agent_graph(checkpointer):
+#     """Build the graph with the checkpointer."""
+#     builder = _build_agent_graph()
+#     return builder.compile(checkpointer=checkpointer)

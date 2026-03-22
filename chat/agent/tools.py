@@ -1,165 +1,146 @@
 """
 Custom tools for the SQL agent.
 
-Tools: list_tables, get_schema, generate_sql, execute_sql.
-- get_schema: only fetches table schema (column names, types).
-- generate_sql: generates a SELECT query from the user question and schema info.
-Each is a LangChain-compatible tool via @tool decorator.
+Workflow: list_tables → get_table_schema → draft SELECT → query_checker → execute_query.
+Also get_current_date for relative dates.
+
+Table catalog: db_config.py (SQL_TABLE_NAMES_LIST, SQL_TABLES_SCHEMA_DICT).
 """
 
 import json
-import re
+from datetime import datetime, timezone
+from typing import List
 
-from langchain_core.messages import HumanMessage, SystemMessage
+import psycopg2
+import psycopg2.extras
+from langchain_core.prompts import PromptTemplate
 from langchain_core.tools import tool
 
 from chat.agent.llm import get_llm
-from common.database import is_database_configured
-from chat.utils.readonly_sql import SQLSecurityError, execute_readonly_query
+from chat.agent.prompt import QUERY_CHECKER_PROMPT_TEMPLATE
+from chat.agent.db_config import (
+    SQL_DIALECT,
+    SQL_TABLE_NAMES_LIST,
+    SQL_TABLES_SCHEMA_DICT,
+)
+from chat.agent.schema import (
+    ExecuteQueryInputSchema,
+    GetCurrentDateInputSchema,
+    GetTableSchemaInputSchema,
+    ListTablesInputSchema,
+    QueryCheckerInputSchema,
+)
+from common.database import get_connection, is_database_configured
 from common.logger import get_logger
 
 logger = get_logger(__name__)
 
-ALLOWED_TABLES = ["transactions"]
 
-_SCHEMA_CACHE: dict[str, str] = {}
-
-
-@tool
-def list_tables() -> str:
-    """List all database tables available for querying.
-
-    Returns a JSON list of table names that the agent is allowed to query.
-    Use this first to discover which tables exist before writing SQL.
-    """
+@tool("list_tables", args_schema=ListTablesInputSchema)
+def list_tables(tool_input: str = "") -> str:
+    """Input is an empty string; output is a list of table names you may query."""
     logger.info("list_tables called")
-    return json.dumps(ALLOWED_TABLES)
+    return str(SQL_TABLE_NAMES_LIST)
 
 
-@tool
-def get_schema(table_name: str) -> str:
-    """Fetch the schema only: column names and data types for a given table.
-
-    Does not generate any query. Use this to know exact column names and types
-    before calling generate_sql or writing SQL.
-
-    Args:
-        table_name: Name of the table (must be one of the allowed tables).
-
-    Returns a JSON list of objects with 'column_name' and 'data_type' keys.
+@tool("get_table_schema", args_schema=GetTableSchemaInputSchema)
+def get_table_schema(table_names: List[str]) -> str:
     """
-    logger.info("get_schema called for table: %s", table_name)
-
-    if table_name not in ALLOWED_TABLES:
-        logger.warning("Table '%s' not in allowed list", table_name)
-        return json.dumps({
-            "error": f"Table '{table_name}' is not accessible. "
-                     f"Allowed tables: {', '.join(ALLOWED_TABLES)}"
-        })
-
-    if table_name in _SCHEMA_CACHE:
-        logger.info("Returning cached schema for '%s'", table_name)
-        return _SCHEMA_CACHE[table_name]
-
-    if not is_database_configured():
-        logger.error("Database not configured for get_schema")
-        return json.dumps({
-            "error": "Database is not configured. Cannot retrieve schema."
-        })
-
-    try:
-        rows = execute_readonly_query(
-            "SELECT column_name, data_type "
-            "FROM information_schema.columns "
-            "WHERE table_schema = 'public' AND table_name = %s "
-            "ORDER BY ordinal_position",
-            max_rows=50,
-            params=(table_name,),
-        )
-        logger.info("Schema retrieved: %d columns for '%s'", len(rows), table_name)
-        result = json.dumps(rows, default=str)
-        _SCHEMA_CACHE[table_name] = result
-        return result
-    except SQLSecurityError as e:
-        logger.error("get_schema failed: %s", e)
-        return json.dumps({"error": str(e)})
-
-
-@tool
-def generate_sql(question: str, schema_info: str) -> str:
-    """Generate a single SELECT query from the user question and table schema.
-
-    Use the output of get_schema for schema_info. Returns only the SQL string,
-    no explanation. The query must be a read-only SELECT; no INSERT/UPDATE/DELETE.
-
-    Args:
-        question: The user's natural language question about the data.
-        schema_info: JSON string from get_schema (column_name, data_type per column).
-
-    Returns the generated SELECT statement as a string, or a JSON object with
-    an 'error' key if generation fails.
+    Input is a list of table names; output is schema and notes for those tables.
+    Call list_tables first to ensure the tables exist.
+    After this, draft your SELECT in your reasoning, then call query_checker.
     """
-    logger.info("generate_sql called for question: %s", question[:80])
+    logger.info("get_table_schema called for: %s", table_names)
+    if not table_names:
+        return "No table names provided. Call list_tables, then pass one or more names."
+    parts: list[str] = []
+    for i, name in enumerate(table_names):
+        if name not in SQL_TABLES_SCHEMA_DICT:
+            return (
+                f"Unknown table '{name}'. Valid tables: {SQL_TABLE_NAMES_LIST}. "
+                "Call list_tables first."
+            )
+        parts.append(SQL_TABLES_SCHEMA_DICT[name])
+        if i < len(table_names) - 1:
+            parts.append("\n" + "-" * 80 + "\n")
+    return "".join(parts)
+
+
+@tool("query_checker", args_schema=QueryCheckerInputSchema)
+async def query_checker(query: str) -> str:
+    """
+    Review the draft query before execution. Always call this before execute_query.
+    The tool may return corrected SQL; use that string as the input to execute_query.
+    """
+    logger.info("query_checker called: %s", query[:200])
     try:
         llm = get_llm()
-        system = (
-            "You are a SQL generator. Given a user question and a table schema (JSON with "
-            "column_name and data_type), output exactly one SELECT statement. "
-            "Output only the SQL, no markdown, no explanation, no backticks. "
-            "Use only the columns and tables described in the schema. "
-            "All amounts are in INR. Return only valid PostgreSQL SELECT."
+        allowed_tables = ", ".join(SQL_TABLE_NAMES_LIST)
+        schema_context = "\n\n".join(
+            SQL_TABLES_SCHEMA_DICT[t] for t in SQL_TABLE_NAMES_LIST if t in SQL_TABLES_SCHEMA_DICT
         )
-        messages = [
-            SystemMessage(content=system),
-            HumanMessage(
-                content=f"Question: {question}\n\nSchema:\n{schema_info}\n\nGenerate a single SELECT query:"
-            ),
-        ]
-        response = llm.invoke(messages)
-        sql = (response.content or "").strip()
-        # Strip markdown code blocks if present
-        if sql.startswith("```"):
-            sql = re.sub(r"^```\w*\n?", "", sql)
-            sql = re.sub(r"\n?```\s*$", "", sql)
-        sql = sql.strip()
-        if not sql.upper().startswith("SELECT"):
-            return json.dumps({"error": "Generated statement is not a SELECT query."})
-        return sql
+        query_checker_prompt_template = PromptTemplate.from_template(QUERY_CHECKER_PROMPT_TEMPLATE)
+        query_checker_prompt = query_checker_prompt_template.format(
+            dialect=SQL_DIALECT,
+            allowed_tables=allowed_tables,
+            schema_context=schema_context,
+            query=query.strip(),
+        )
+        response = await llm.ainvoke(query_checker_prompt)
+        return response.content or ""
     except Exception as e:
-        logger.error("generate_sql failed: %s", e)
+        logger.error("query_checker failed: %s", e)
         return json.dumps({"error": str(e)})
 
 
-@tool
-def execute_sql(sql: str) -> str:
-    """Execute a read-only SQL SELECT query against the database.
-
-    Args:
-        sql: A single SELECT statement. Only SELECT queries are allowed.
-             INSERT, UPDATE, DELETE, DROP, and other modifying statements
-             will be rejected. Results are limited to 500 rows.
-
-    Returns the query results as a JSON string with 'row_count' and 'rows' keys,
-    or an error message if the query is invalid or fails.
+@tool("execute_query", args_schema=ExecuteQueryInputSchema)
+def execute_query(query: str) -> str:
     """
-    logger.info("execute_sql called with query: %s", sql[:200])
+    Run SQL against the database. On error, fix the query with query_checker
+    and retry, or call get_table_schema if columns are wrong.
+    Prefer passing the SQL returned from query_checker.
+    """
+    logger.info("execute_query called: %s", query[:200])
 
     if not is_database_configured():
-        logger.error("Database not configured for execute_sql")
-        return json.dumps({
-            "error": "Database is not configured. Set DATABASE_URL in .env."
-        })
+        logger.error("Database not configured for execute_query")
+        return json.dumps(
+            {"error": "Database is not configured. Set DATABASE_URL in .env."}
+        )
 
     try:
-        rows = execute_readonly_query(sql)
+        # --- pooled connection ---
+        with get_connection() as conn:
+            # --- execute & fetch ---
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(query.strip())
+                fetched = cur.fetchall()
+
+        rows = [dict(row) for row in fetched]
         logger.info("Query returned %d rows", len(rows))
+        return json.dumps({"row_count": len(rows), "rows": rows}, default=str)
+    except psycopg2.Error as e:
+        logger.error("execute_query failed: %s", e)
         return json.dumps(
-            {"row_count": len(rows), "rows": rows},
-            default=str,
+            {"error": "Query execution failed. Please check your query and try again."}
         )
-    except SQLSecurityError as e:
-        logger.error("execute_sql failed: %s", e)
-        return json.dumps({"error": str(e)})
+    except Exception as e:
+        logger.error("execute_query unexpected error: %s", e)
+        return json.dumps({"error": "An unexpected error occurred."})
 
 
-ALL_TOOLS = [list_tables, get_schema, generate_sql, execute_sql]
+@tool("get_current_date", args_schema=GetCurrentDateInputSchema)
+def get_current_date(tool_input: str = "") -> str:
+    """Current UTC date and time for relative date questions (e.g. 'this month')."""
+    current_time_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    logger.info("get_current_date called")
+    return f"The current UTC date and time is: {current_time_utc}"
+
+
+ALL_TOOLS = [
+    list_tables,
+    get_table_schema,
+    query_checker,
+    execute_query,
+    get_current_date,
+]
