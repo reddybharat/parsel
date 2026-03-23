@@ -16,7 +16,7 @@ import psycopg2.extras
 from langchain_core.prompts import PromptTemplate
 from langchain_core.tools import tool
 
-from chat.agent.llm import get_llm
+from chat.agent.llm import ainvoke_with_retry, get_llm
 from chat.agent.prompt import QUERY_CHECKER_PROMPT_TEMPLATE
 from chat.agent.db_config import (
     SQL_DIALECT,
@@ -86,10 +86,15 @@ async def query_checker(query: str) -> str:
             schema_context=schema_context,
             query=query.strip(),
         )
-        response = await llm.ainvoke(query_checker_prompt)
+        response = await ainvoke_with_retry(llm, query_checker_prompt)
         return response.content or ""
     except Exception as e:
         logger.error("query_checker failed: %s", e)
+        if "429" in str(e) or "too many requests" in str(e).lower():
+            return (
+                "The model is temporarily rate-limited right now. "
+                "Please retry in a few seconds."
+            )
         return json.dumps({"error": str(e)})
 
 
