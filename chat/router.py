@@ -2,7 +2,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from chat.agent.graph import run_agent
+from chat.agent.graph import run_agent_async
 from common.logger import get_logger
 
 
@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 
 
 @router.post("/invoke")
-def chat_invoke(body: dict[str, Any]) -> dict:
+async def chat_invoke(body: dict[str, Any]) -> dict:
     messages = body.get("messages") if isinstance(body, dict) else None
     if not messages or not isinstance(messages, list):
         raise HTTPException(
@@ -19,7 +19,7 @@ def chat_invoke(body: dict[str, Any]) -> dict:
             detail="Request body must include 'messages' (list of {role, content}).",
         )
     try:
-        reply = run_agent(messages)
+        reply = await run_agent_async(messages)
         return {"reply": reply}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

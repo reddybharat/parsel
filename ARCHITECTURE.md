@@ -16,10 +16,9 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
   - Legacy modules `tracker.api.transactions` and `chat.api.chat` exist only as thin re-export stubs of these routers for backward compatibility.
 - **Streamlit (`app.py`)**
   - Uses `common.logger.get_logger` to configure logging on startup.
-  - Renders three main tabs:
-    - `tracker.ui.tabs.add_txn_tab.render_add_transaction`
-    - `tracker.ui.tabs.search_tab.render_search`
-    - `chat.ui.chat_tab.render_chat`
+  - Renders two main tabs:
+    - `Transactions` tab: `tracker.ui.tabs.search_tab.render_search` and `tracker.ui.tabs.add_txn_tab.render_add_transaction`
+    - `Chat` tab: `chat.ui.chat_tab.render_chat`
   - Communicates with FastAPI exclusively over HTTP via the client layer (`tracker.client`, `chat.client`, and `common.api_client`).
 ### Common package (`common/`)
 
@@ -44,11 +43,12 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
 
 ### Chat package (`chat/`)
 
-- `utils/readonly_sql.py`: SQL executor with guardrails focused on safety (single statement only, no SQL comments). Used by agent tools; by default uses pooled connections from `common.database.get_connection()`. Supports an optional session connection via `set_agent_connection()`, but the current Streamlit app does not set this.
 - `agent/`:
   - `graph.py`: constructs the LangGraph graph and exposes `run_agent`.
   - `nodes.py`: defines the core agent node and tool orchestration.
-  - `tools.py`: tools for listing tables, inspecting schema, and executing safe SQL.
+  - `tools.py`: `list_tables`, `get_table_schema`, `query_checker`, `execute_query`, `get_current_date`; `execute_query` uses `common.database.get_connection()`.
+  - `db_config.py`: table names and schema text for the agent.
+  - `schema.py`: Pydantic `args_schema` models for tools.
   - `state.py`: the agent state (e.g., messages list).
   - `prompt.py`: system prompt and instructions for the agent.
   - `llm.py`: Gemini LLM wrapper and configuration.
@@ -64,7 +64,7 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
 
 ```mermaid
 flowchart TD
-  streamlitApp["Streamlit app.py"] --> trackerUI["tracker.ui.tabs (Add, Search)"]
+  streamlitApp["Streamlit app.py"] --> trackerUI["Transactions tab (Search, Add)"]
   streamlitApp --> chatUI["chat.ui.chat_tab"]
   trackerUI --> trackerClient["tracker.client"]
   chatUI --> chatClient["chat.client"]
@@ -77,13 +77,12 @@ flowchart TD
   trackerRouter --> trackerDb["tracker.utils.db"]
   trackerDb --> commonDB
   chatRouter --> chatAgent["chat.agent.graph (run_agent)"]
-  chatAgent --> chatReadonly["chat.utils.readonly_sql"]
-  chatReadonly --> commonDB
+  chatAgent --> commonDB
 ```
 
 This layout is designed so that:
 
-- The **connection** is in `common.database`; **execute helpers** live in `tracker.utils.db` (tracker) and `chat.utils.readonly_sql` (chat).
+- The **connection** is in `common.database`; **execute helpers** live in `tracker.utils.db` (tracker); the chat agent runs SQL from `chat.agent.tools.execute_query` via the same pool.
 - **Feature code** for transactions and chat lives in separate, clearly named packages.
 - **UI layers** (FastAPI and Streamlit) depend on feature packages via HTTP APIs and shared clients, not the other way around.
 

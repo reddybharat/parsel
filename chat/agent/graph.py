@@ -71,3 +71,51 @@ def run_agent(chat_history: list[dict]) -> str:
         return ai_messages[-1].text
 
     return "I wasn't able to process that request. Could you try rephrasing your question?"
+
+
+async def run_agent_async(chat_history: list[dict]) -> str:
+    """Async run of the agent graph with the given chat history.
+
+    Uses `ainvoke` so async-only tools can be executed.
+    """
+    graph = _get_graph()
+
+    messages = []
+    for msg in chat_history:
+        if msg["role"] == "user":
+            messages.append(HumanMessage(content=msg["content"]))
+        elif msg["role"] == "assistant":
+            messages.append(AIMessage(content=msg["content"]))
+
+    logger.info("Invoking async graph with %d messages", len(messages))
+    result = await graph.ainvoke({"messages": messages})
+    logger.info(
+        "Async graph returned %d messages", len(result.get("messages", []))
+    )
+
+    ai_messages = [
+        m for m in result["messages"]
+        if isinstance(m, AIMessage) and m.content and not getattr(m, "tool_calls", None)
+    ]
+
+    logger.info("Found %d final AI messages", len(ai_messages))
+    if ai_messages:
+        return ai_messages[-1].text
+
+    return "I wasn't able to process that request. Could you try rephrasing your question?"
+
+
+# #NEW
+# def _build_agent_graph() -> StateGraph:
+#     """Build the base graph."""
+#     builder = StateGraph(AgentState)
+#     builder.add_node("agent", agent_node)
+#     builder.set_entry_point("agent")
+#     return builder
+
+
+# #NEW
+# def build_agent_graph(checkpointer):
+#     """Build the graph with the checkpointer."""
+#     builder = _build_agent_graph()
+#     return builder.compile(checkpointer=checkpointer)

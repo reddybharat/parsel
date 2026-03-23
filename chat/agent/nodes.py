@@ -33,7 +33,7 @@ def _get_inner_agent():
     return _inner_agent
 
 
-def agent_node(state: AgentState) -> Command:
+async def agent_node(state: AgentState) -> Command:
     """Single agent node: invoke the LLM agent with full message history.
 
     The inner agent handles its own tool-calling loop internally
@@ -45,7 +45,7 @@ def agent_node(state: AgentState) -> Command:
     inner = _get_inner_agent()
 
     logger.info("Invoking inner agent...")
-    result = inner.invoke({"messages": state["messages"]})
+    result = await inner.ainvoke({"messages": state["messages"]})
     result_messages = result.get("messages", [])
     logger.info("Inner agent returned %d messages", len(result_messages))
 
