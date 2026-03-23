@@ -5,7 +5,7 @@ Uses tracker.utils.db and tracker.schemas; no UI dependencies.
 
 import csv
 import io
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from common.database import get_connection
@@ -282,3 +282,179 @@ def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
         inserted_count = len(rows_to_insert)
 
     return inserted_count, errors
+
+
+def _month_start(d: date) -> date:
+    return d.replace(day=1)
+
+
+def _next_month_start(d: date) -> date:
+    if d.month == 12:
+        return date(d.year + 1, 1, 1)
+    return date(d.year, d.month + 1, 1)
+
+
+def _add_months(start: date, delta: int) -> date:
+    total = (start.year * 12 + (start.month - 1)) + delta
+    year = total // 12
+    month = (total % 12) + 1
+    return date(year, month, 1)
+
+
+def get_dashboard_summary() -> dict:
+    """Return portfolio net and month-over-month spend summary."""
+    today = date.today()
+    month_now_start = _month_start(today)
+    month_next_start = _next_month_start(month_now_start)
+    month_now_end = month_next_start - timedelta(days=1)
+    month_prev_start = _add_months(month_now_start, -1)
+    month_prev_end = month_now_start - timedelta(days=1)
+
+    summary_sql = """
+        SELECT
+            COALESCE(SUM(CASE WHEN is_debit THEN -amount ELSE amount END), 0) AS portfolio_net,
+            COALESCE(SUM(CASE
+                WHEN is_debit = TRUE AND transaction_date >= %s AND transaction_date <= %s THEN amount
+                ELSE 0
+            END), 0) AS current_month_spend,
+            COALESCE(SUM(CASE
+                WHEN is_debit = TRUE AND transaction_date >= %s AND transaction_date <= %s THEN amount
+                ELSE 0
+            END), 0) AS previous_month_spend
+        FROM transactions
+    """
+    params = (
+        month_now_start.isoformat(),
+        month_now_end.isoformat(),
+        month_prev_start.isoformat(),
+        month_prev_end.isoformat(),
+    )
+    with get_connection() as conn:
+        rows = execute_query(summary_sql, params, conn=conn)
+    row = rows[0] if rows else {}
+
+    current_month_spend = float(row.get("current_month_spend", 0) or 0)
+    previous_month_spend = float(row.get("previous_month_spend", 0) or 0)
+    spend_delta_pct: Optional[float]
+    if previous_month_spend > 0:
+        spend_delta_pct = ((current_month_spend - previous_month_spend) / previous_month_spend) * 100.0
+    else:
+        spend_delta_pct = None
+
+    return {
+        "portfolio_net": float(row.get("portfolio_net", 0) or 0),
+        "current_month_spend": current_month_spend,
+        "previous_month_spend": previous_month_spend,
+        "spend_delta_pct": spend_delta_pct,
+    }
+
+
+def get_dashboard_trend(months: int = 6) -> dict:
+    """Return debit spend trend points for the last `months` months."""
+    months = max(1, min(int(months), 24))
+    today = date.today()
+    current_month_start = _month_start(today)
+    start_month = _add_months(current_month_start, -(months - 1))
+    end_month = _next_month_start(current_month_start) - timedelta(days=1)
+
+    sql = """
+        SELECT date_trunc('month', transaction_date)::date AS month_start,
+               COALESCE(SUM(amount), 0) AS spend
+        FROM transactions
+        WHERE is_debit = TRUE
+          AND transaction_date >= %s
+          AND transaction_date <= %s
+        GROUP BY month_start
+        ORDER BY month_start ASC
+    """
+    with get_connection() as conn:
+        rows = execute_query(sql, (start_month.isoformat(), end_month.isoformat()), conn=conn)
+
+    by_month: dict[str, float] = {}
+    for r in rows:
+        month_start = r.get("month_start")
+        if month_start is None:
+            continue
+        month_key = month_start.isoformat() if hasattr(month_start, "isoformat") else str(month_start)
+        by_month[month_key] = float(r.get("spend", 0) or 0)
+
+    points: list[dict] = []
+    for i in range(months):
+        m = _add_months(start_month, i)
+        key = m.isoformat()
+        points.append({"month_label": m.strftime("%b"), "spend": by_month.get(key, 0.0)})
+    return {"months": months, "points": points}
+
+
+def get_dashboard_recent(limit: int = 5) -> dict:
+    """Return most recent transactions for dashboard list."""
+    limit = max(1, min(int(limit), 20))
+    sql = """
+        SELECT id, transaction_date, category, amount, is_debit, description
+        FROM transactions
+        ORDER BY transaction_date DESC, created_at DESC
+        LIMIT %s
+    """
+    with get_connection() as conn:
+        rows = execute_query(sql, (limit,), conn=conn)
+
+    items: list[dict] = []
+    for row in rows:
+        tx_date = row.get("transaction_date")
+        parsed_date = tx_date if isinstance(tx_date, date) else date.fromisoformat(str(tx_date))
+        items.append(
+            {
+                "id": str(row.get("id")),
+                "transaction_date": parsed_date,
+                "category": str(row.get("category") or ""),
+                "amount": float(row.get("amount", 0) or 0),
+                "is_debit": bool(row.get("is_debit", True)),
+                "description": row.get("description"),
+            }
+        )
+    return {"items": items}
+
+
+def get_dashboard_highlights() -> dict:
+    """Return current-month top category by spend plus total inflow/outflow."""
+    today = date.today()
+    month_start = _month_start(today)
+    month_end = _next_month_start(month_start) - timedelta(days=1)
+    with get_connection() as conn:
+        top_category_rows = execute_query(
+            """
+            SELECT category, COALESCE(SUM(amount), 0) AS spend
+            FROM transactions
+            WHERE is_debit = TRUE
+              AND transaction_date >= %s
+              AND transaction_date <= %s
+            GROUP BY category
+            ORDER BY spend DESC
+            LIMIT 1
+            """,
+            (month_start.isoformat(), month_end.isoformat()),
+            conn=conn,
+        )
+        totals_rows = execute_query(
+            """
+            SELECT
+                COALESCE(SUM(CASE WHEN is_debit = FALSE THEN amount ELSE 0 END), 0) AS total_inflow,
+                COALESCE(SUM(CASE WHEN is_debit = TRUE THEN amount ELSE 0 END), 0) AS total_outflow
+            FROM transactions
+            WHERE transaction_date >= %s
+              AND transaction_date <= %s
+            """,
+            (month_start.isoformat(), month_end.isoformat()),
+            conn=conn,
+        )
+
+    top_category = top_category_rows[0] if top_category_rows else {}
+    totals = totals_rows[0] if totals_rows else {}
+    return {
+        "top_category": {
+            "category": top_category.get("category"),
+            "spend": float(top_category.get("spend", 0) or 0),
+        },
+        "total_inflow": float(totals.get("total_inflow", 0) or 0),
+        "total_outflow": float(totals.get("total_outflow", 0) or 0),
+    }

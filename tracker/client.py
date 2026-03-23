@@ -100,3 +100,19 @@ def update_transaction(
 def delete_transaction(*, transaction_id: str) -> None:
     delete(f"/transactions/{transaction_id}")
 
+
+def get_dashboard_summary() -> dict[str, Any]:
+    return get("/dashboard/summary")
+
+
+def get_dashboard_trend(*, months: int = 6) -> dict[str, Any]:
+    return get("/dashboard/trend", params={"months": months})
+
+
+def get_dashboard_recent(*, limit: int = 5) -> dict[str, Any]:
+    return get("/dashboard/recent", params={"limit": limit})
+
+
+def get_dashboard_highlights() -> dict[str, Any]:
+    return get("/dashboard/highlights")
+

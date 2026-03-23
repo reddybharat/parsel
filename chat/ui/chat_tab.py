@@ -19,21 +19,10 @@ _SUGGESTED_QUESTIONS = [
 def render_chat() -> None:
     _ensure_state()
 
-    # Custom CSS scoped to the chat tab; keep colors close to default Streamlit light theme.
+    # Keep chat-specific layout minimal; visual theme comes from global coffee theme.
     st.markdown(
         """
         <style>
-            .chat-main-header {
-                padding: 0.5rem 1.1rem;
-                border-radius: 0.6rem;
-                background: linear-gradient(135deg, #f9fafb 0%, #e5e7eb 100%);
-                border: 1px solid #e5e7eb;
-                margin-bottom: 0.8rem;
-            }
-            .chat-main-header h2 {
-                margin: 0;
-                font-size: 1.4rem;
-            }
             .chat-block-container {
                 max-width: 900px;
                 margin-left: auto;
@@ -42,21 +31,12 @@ def render_chat() -> None:
             .chat-suggest-label {
                 font-weight: 600;
                 margin-bottom: 0.4rem;
+                color: var(--coffee-text);
             }
         </style>
         """,
         unsafe_allow_html=True,
     )
-
-    with st.container():
-        st.markdown(
-            """
-            <div class="chat-main-header">
-                <h2>Finance Assistant</h2>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
 
     with st.container():
         st.markdown('<div class="chat-block-container">', unsafe_allow_html=True)

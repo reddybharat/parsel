@@ -7,21 +7,20 @@ from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile
 
 from common.database import get_connection
 from common.logger import get_logger
-from tracker.services import export_transactions_csv, import_transactions_from_csv
 from tracker.schemas import (
     TransactionCreate,
     TransactionResponse,
-    TransactionUpdate,
     TransactionsSearchResult,
+    TransactionUpdate,
 )
-from tracker.validations import validate_transaction_date
+from tracker.services import export_transactions_csv, import_transactions_from_csv
 from tracker.utils.db import (
     execute_insert,
     execute_query,
     execute_update_delete,
     execute_update_returning,
 )
-
+from tracker.validations import validate_transaction_date
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -80,7 +79,6 @@ def search_transactions(
         )
 
     order_dir = "DESC" if sort_desc else "ASC"
-    # Store amounts as positive in DB; apply sign for Debit/Credit using is_debit.
     if sort_column == "amount":
         order_clause = f"ORDER BY CASE WHEN is_debit THEN -amount ELSE amount END {order_dir}"
     else:
@@ -113,7 +111,14 @@ def search_transactions(
                 "category = %s",
                 "category = %s AND is_debit = %s",
             )
-            data_params = (start_date.isoformat(), end_date.isoformat(), category, bool(is_debit), page_size, offset_start)
+            data_params = (
+                start_date.isoformat(),
+                end_date.isoformat(),
+                category,
+                bool(is_debit),
+                page_size,
+                offset_start,
+            )
     else:
         count_sql = """
             SELECT COUNT(*) AS n FROM transactions
@@ -164,12 +169,7 @@ def search_transactions(
         sort_column,
         "DESC" if sort_desc else "ASC",
     )
-    return TransactionsSearchResult(
-        total=total_count,
-        page=page,
-        page_size=page_size,
-        items=items,
-    )
+    return TransactionsSearchResult(total=total_count, page=page, page_size=page_size, items=items)
 
 
 @router.get("/export")
@@ -292,6 +292,3 @@ def delete_transaction(transaction_id: UUID) -> None:
         raise HTTPException(status_code=404, detail="Transaction not found")
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info("delete_transaction completed in %.1f ms (id=%s)", elapsed_ms, transaction_id)
-
-
-

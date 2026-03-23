@@ -11,9 +11,9 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
 ### Runtime components
 
 - **FastAPI (`main.py`)**
-  - Includes `tracker.router` for all `/transactions` endpoints.
-  - Includes `chat.router` for `/chat/invoke`, `/chat/resume`, and `/chat/exit`.
-  - Legacy modules `tracker.api.transactions` and `chat.api.chat` exist only as thin re-export stubs of these routers for backward compatibility.
+  - Includes `tracker.router.transactions` for `/transactions` endpoints.
+  - Includes `tracker.router.dashboard` for `/dashboard` endpoints.
+  - Includes `chat.router.chat` for `/chat/invoke`, `/chat/resume`, and `/chat/exit`.
 - **Streamlit (`app.py`)**
   - Uses `common.logger.get_logger` to configure logging on startup.
   - Renders two main tabs:
@@ -33,8 +33,8 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
 - `constants.py`: fixed list of allowed categories and any other domain constants.
 - `validations.py`: shared validation helpers (amount > 0, category required, date not in future, etc.).
 - `services.py`: CSV-related logic (export, template, import) using `tracker.utils.db` and `tracker.schemas`.
-- `router.py`: FastAPI router exposing CRUD endpoints for `/transactions` (search, export, import, create, update, delete); uses `common.database.get_connection` and `tracker.utils.db` execute helpers.
-- `api/transactions.py`: legacy module that only re-exports `router` from `tracker.router` for existing imports.
+- `router/transactions.py`: FastAPI router exposing CRUD endpoints for `/transactions` (search, export, import, create, update, delete); uses `common.database.get_connection` and `tracker.utils.db` execute helpers.
+- `router/dashboard.py`: FastAPI router exposing dashboard endpoints under `/dashboard`.
 - `client.py`: HTTP client wrapper around the `/transactions` API (`search_transactions`, `create_transaction`, `export_transactions_csv`, `import_transactions_csv`, `update_transaction`, `delete_transaction`); used by the Streamlit Add and Search tabs.
 - `ui/`:
   - `common.py`: shared Streamlit helpers and common error messaging.
@@ -52,11 +52,10 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
   - `state.py`: the agent state (e.g., messages list).
   - `prompt.py`: system prompt and instructions for the agent.
   - `llm.py`: Gemini LLM wrapper and configuration.
-- `router.py`: FastAPI router for:
+- `router/chat.py`: FastAPI router for:
   - `POST /chat/invoke` → calls `run_agent` with the provided chat history and returns `{ "reply": "..." }`.
   - `POST /chat/resume` → stub endpoint signalling that resume is not yet implemented.
   - `POST /chat/exit` → stub endpoint for ending a session.
-- `api/chat.py`: legacy module that only re-exports `router` from `chat.router` for existing imports.
 - `client.py`: HTTP client wrapper for the chat API (`chat_invoke`, `chat_resume`, `chat_exit`); used by the Streamlit Chat tab.
 - `ui/chat_tab.py`: Streamlit tab that calls the chat API via `chat.client` and displays the conversation.
 
@@ -71,8 +70,9 @@ flowchart TD
   trackerClient --> apiClient["common.api_client (HTTP)"]
   chatClient --> apiClient
   apiClient --> mainApp["FastAPI main.py"]
-  mainApp --> trackerRouter["tracker.router"]
-  mainApp --> chatRouter["chat.router"]
+  mainApp --> trackerRouter["tracker.router.transactions"]
+  mainApp --> dashboardRouter["tracker.router.dashboard"]
+  mainApp --> chatRouter["chat.router.chat"]
   trackerRouter --> commonDB["common.database"]
   trackerRouter --> trackerDb["tracker.utils.db"]
   trackerDb --> commonDB
