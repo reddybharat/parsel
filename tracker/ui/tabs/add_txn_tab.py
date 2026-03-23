@@ -37,6 +37,13 @@ def render_add_transaction(show_header: bool = True) -> None:
             help="Enter amount in INR",
             label_visibility="collapsed",
         )
+        st.markdown("Credit/Debit " + REQUIRED_LABEL, unsafe_allow_html=True)
+        credit_debit = st.selectbox(
+            "Credit/Debit",
+            options=["Debit", "Credit"],
+            index=0,
+            label_visibility="collapsed",
+        )
         st.markdown(f"Category {REQUIRED_LABEL}", unsafe_allow_html=True)
         category = st.selectbox(
             "Category",
@@ -52,6 +59,7 @@ def render_add_transaction(show_header: bool = True) -> None:
 
     if submitted:
         errors: list[str] = []
+        is_debit = credit_debit == "Debit"
         try:
             validate_amount(amount)
         except ValueError as e:
@@ -75,8 +83,12 @@ def render_add_transaction(show_header: bool = True) -> None:
                     category=category.strip(),
                     transaction_date=transaction_date,
                     description=description.strip() or None,
+                    is_debit=is_debit,
                 )
-                st.success(f"Saved: ₹{amount:,.2f} — {category} on {transaction_date}")
+                signed_amount = -amount if is_debit else amount
+                st.success(
+                    f"Saved: ₹{signed_amount:,.2f} — {category} on {transaction_date}"
+                )
             except ApiClientError as e:
                 logger.error("Add transaction API error: %s", e, exc_info=True)
                 st.error(GENERIC_ERROR_MSG)

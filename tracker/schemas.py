@@ -16,6 +16,9 @@ class TransactionCreate(BaseModel):
     category: str = Field(..., min_length=1)
     transaction_date: date = Field(default_factory=date.today)
     description: Optional[str] = None
+    # When True => Debit (rendered as negative amount in UI).
+    # When False => Credit (rendered as positive amount in UI).
+    is_debit: bool = True
 
     @field_validator("category")
     @classmethod
@@ -35,6 +38,7 @@ class TransactionUpdate(BaseModel):
     category: Optional[str] = None
     transaction_date: Optional[date] = None
     description: Optional[str] = None
+    is_debit: Optional[bool] = None
 
     @field_validator("category")
     @classmethod
@@ -52,6 +56,7 @@ class TransactionUpdate(BaseModel):
 class TransactionResponse(BaseModel):
     id: str
     amount: float
+    is_debit: bool
     category: str
     transaction_date: date
     description: Optional[str] = None

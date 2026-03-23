@@ -33,7 +33,16 @@ def render_search() -> None:
     if "deleting_transaction" not in st.session_state:
         st.session_state.deleting_transaction = None
     try:
-        start_date, end_date, category, page_size, sort_column, sort_desc_bool, search_clicked = render_search_filters()
+        (
+            start_date,
+            end_date,
+            category,
+            is_debit_filter,
+            page_size,
+            sort_column,
+            _sort_desc_bool,
+            search_clicked,
+        ) = render_search_filters()
 
         if start_date > end_date:
             st.error("From date must be on or before To date.")
@@ -57,6 +66,7 @@ def render_search() -> None:
                     start_date=start_date,
                     end_date=end_date,
                     category=category,
+                    is_debit=is_debit_filter,
                     sort_column=sort_col,
                     sort_desc=sort_desc,
                     page=page,

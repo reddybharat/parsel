@@ -62,6 +62,12 @@ def _render_edit_form(row: dict, conn: Optional[Any] = None) -> None:
             format="%.2f",
             key="edit_amount",
         )
+        credit_debit = st.selectbox(
+            "Credit/Debit",
+            options=["Debit", "Credit"],
+            index=0 if row.get("is_debit", True) else 1,
+            key="edit_credit_debit",
+        )
         category = st.selectbox(
             "Category",
             options=CATEGORIES,
@@ -88,6 +94,7 @@ def _render_edit_form(row: dict, conn: Optional[Any] = None) -> None:
                 del st.session_state.editing_transaction
             st.rerun()
         if submitted:
+            is_debit = credit_debit == "Debit"
             try:
                 validate_amount(amount)
                 validate_category(category)
@@ -102,6 +109,7 @@ def _render_edit_form(row: dict, conn: Optional[Any] = None) -> None:
                     category=category.strip(),
                     transaction_date=txn_date,
                     description=(description or "").strip() or None,
+                    is_debit=is_debit,
                 )
                 if "editing_transaction" in st.session_state:
                     del st.session_state.editing_transaction
@@ -120,8 +128,10 @@ def _render_delete_confirm(row: dict, conn: Optional[Any] = None) -> None:
     if not row_id:
         return
     amt = row.get("amount", 0)
+    is_debit = row.get("is_debit", True)
     cat = row.get("category", "")
-    st.warning(f"Delete this transaction? **₹{float(amt):,.2f}** — {cat}")
+    signed_amount = -float(amt) if is_debit else float(amt)
+    st.warning(f"Delete this transaction? **₹{signed_amount:,.2f}** — {cat}")
     col1, col2, _ = st.columns([1, 1, 2])
     with col1:
         if st.button("Confirm delete", type="primary", key="confirm_del"):
@@ -194,11 +204,14 @@ def render_search_results(rows: list[dict], total_count: int | None, page_size: 
         row_id = r.get("id")
         if not row_id:
             continue
+        amt = float(r.get("amount", 0))
+        is_debit = r.get("is_debit", True)
+        signed_amount = -amt if is_debit else amt
         cols = st.columns([1, 1, 1, 2, 2])
         with cols[0]:
             st.text(r.get("transaction_date", ""))
         with cols[1]:
-            st.text(f"₹{float(r.get('amount', 0)):,.2f}")
+            st.text(f"₹{signed_amount:,.2f}")
         with cols[2]:
             st.text(r.get("category", ""))
         with cols[3]:

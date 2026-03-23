@@ -27,7 +27,8 @@ def render_import_csv_section() -> None:
         )
         st.caption(
             "Template has correct headers and example rows. Use YYYY-MM-DD for dates; "
-            f"category must be one of: {', '.join(CATEGORIES)}."
+            f"category must be one of: {', '.join(CATEGORIES)}; "
+            "is_debit should be true for Debit (shown as negative) and false for Credit."
         )
         uploaded_file: Optional["UploadedFile"] = st.file_uploader(
             "Import CSV",

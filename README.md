@@ -10,7 +10,7 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 - **Import from CSV** — Bulk-import transactions from a CSV with validation and row-level errors (API: `POST /transactions/import`).
 - **Export to CSV** — Export matching transactions as CSV for a date range and optional category (API: `GET /transactions/export`).
 - **Database** — Connects directly to PostgreSQL via `DATABASE_URL` for both tracker (CRUD) and chat (SQL tools). No Supabase client or RLS required for the app. A shared connection pool is used for API and Chat.
-- **Fixed categories** — Transactions use one of: Grocery, Dining, Transportation, Utilities, Entertainment, Health, Housing, Personal, Investments, Misc (enforced in app and API)
+- **Fixed categories** — Transactions use one of: Grocery, Dining, Transportation, Utilities, Entertainment, Health, Housing, Personal, Investments, Misc, Income, Other Income, Refunds, Travel, Shopping, Subscriptions, Gifts, EMI, Rent (enforced in app and API)
 - **Validations** — Shared rules in `tracker.validations`: amount must be > 0, category required, transaction date cannot be in the future (enforced in app and API)
 - **Audit fields** — Transactions have `created_at`, `updated_at`, and `version_no`; the app sets them on insert/update (no DB triggers). API and search return and display them.
 
@@ -73,6 +73,7 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 | id                 | uuid                     | NOT NULL | gen_random_uuid()  |
 | created_at         | timestamp with time zone | NOT NULL | now()              |
 | amount             | numeric                  | NOT NULL | —                  |
+| is_debit           | boolean                  | NOT NULL | true               |
 | category           | text                     | NOT NULL | —                  |
 | transaction_date   | date                     | NOT NULL | —                  |
 | description        | text                     | NULL     | —                  |

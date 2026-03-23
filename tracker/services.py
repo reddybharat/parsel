@@ -13,7 +13,18 @@ from tracker.utils.db import execute_query
 from tracker.schemas import TransactionCreate
 
 # CSV column names (used for export, template, and import)
-CSV_FIELDS = ["transaction_date", "category", "amount", "description"]
+CSV_FIELDS = ["transaction_date", "category", "amount", "is_debit", "description"]
+
+
+def _parse_is_debit(raw: Optional[str]) -> bool:
+    s = (raw or "").strip().lower()
+    if not s:
+        raise ValueError("is_debit is required when the column is present.")
+    if s in {"true", "t", "1", "yes", "y"}:
+        return True
+    if s in {"false", "f", "0", "no", "n"}:
+        return False
+    raise ValueError(f"Invalid is_debit value '{raw}'. Expected true/false.")
 
 
 def _parse_transaction_date(raw_date: str) -> date:
@@ -113,7 +124,7 @@ def export_transactions_csv(
 ) -> str:
     """Return CSV string for all transactions matching the given filters."""
     sql = """
-        SELECT transaction_date, category, amount, description
+        SELECT transaction_date, category, amount, is_debit, description
         FROM transactions
         WHERE transaction_date >= %s AND transaction_date <= %s
         ORDER BY transaction_date ASC
@@ -121,7 +132,7 @@ def export_transactions_csv(
     params: tuple = (start_date.isoformat(), end_date.isoformat())
     if category and category != "All":
         sql = """
-            SELECT transaction_date, category, amount, description
+            SELECT transaction_date, category, amount, is_debit, description
             FROM transactions
             WHERE transaction_date >= %s AND transaction_date <= %s AND category = %s
             ORDER BY transaction_date ASC
@@ -139,6 +150,7 @@ def export_transactions_csv(
                 "transaction_date": row.get("transaction_date", ""),
                 "category": row.get("category", ""),
                 "amount": row.get("amount", ""),
+                "is_debit": str(bool(row.get("is_debit", True))).lower(),
                 "description": row.get("description") or "",
             }
         )
@@ -155,18 +167,21 @@ def transactions_csv_template() -> str:
             "transaction_date": "2026-03-01",
             "category": "Grocery",
             "amount": "1250.50",
+            "is_debit": "true",
             "description": "Weekly groceries",
         },
         {
             "transaction_date": "2026-03-02",
             "category": "Dining",
             "amount": "450",
+            "is_debit": "true",
             "description": "Lunch",
         },
         {
             "transaction_date": "2026-03-03",
             "category": "Transportation",
             "amount": "320",
+            "is_debit": "false",
             "description": "",
         },
     ]
@@ -179,7 +194,8 @@ def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
     """
     Parse CSV content and insert valid rows into the transactions table.
 
-    Expected columns (case-insensitive): transaction_date (YYYY-MM-DD), category, amount, description (optional).
+    Expected columns (case-insensitive):
+    transaction_date (YYYY-MM-DD), category, amount, is_debit (optional but recommended), description (optional).
     Returns (inserted_count, list of error messages for failed rows).
     """
     text = content.decode("utf-8-sig")
@@ -211,6 +227,11 @@ def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
                 if "description" in header_map
                 else None
             )
+            raw_is_debit = (
+                (row.get(header_map["is_debit"]) or "").strip()
+                if "is_debit" in header_map
+                else ""
+            )
 
             if not raw_date or not raw_category or not raw_amount:
                 raise ValueError(
@@ -224,16 +245,23 @@ def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
                 raise ValueError(
                     f"Invalid amount '{raw_amount}'. Must be a number."
                 )
+            if "is_debit" in header_map:
+                parsed_is_debit = _parse_is_debit(raw_is_debit)
+            else:
+                # Backward compatible default for older CSVs.
+                parsed_is_debit = True
 
             tx = TransactionCreate(
                 amount=parsed_amount,
                 category=raw_category,
                 transaction_date=parsed_date,
                 description=raw_description,
+                is_debit=parsed_is_debit,
             )
             rows_to_insert.append(
                 (
                     float(tx.amount),
+                    bool(tx.is_debit),
                     tx.category.strip(),
                     tx.transaction_date.isoformat(),
                     tx.description,
@@ -245,8 +273,8 @@ def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
     inserted_count = 0
     if rows_to_insert:
         sql = """
-            INSERT INTO transactions (amount, category, transaction_date, description)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO transactions (amount, is_debit, category, transaction_date, description)
+            VALUES (%s, %s, %s, %s, %s)
         """
         with get_connection() as conn:
             with conn.cursor() as cur:
