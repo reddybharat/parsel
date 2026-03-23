@@ -54,31 +54,38 @@ def _render_edit_form(row: dict, conn: Optional[Any] = None) -> None:
                 f"Updated: {_format_audit_ts(row.get('updated_at'))} | "
                 f"Version: {row.get('version_no', '—')}"
             )
-        amount = st.number_input(
-            "Amount (₹)",
-            min_value=0.01,
-            value=float(row.get("amount", 0)),
-            step=0.01,
-            format="%.2f",
-            key="edit_amount",
-        )
-        credit_debit = st.selectbox(
-            "Credit/Debit",
-            options=["Debit", "Credit"],
-            index=0 if row.get("is_debit", True) else 1,
-            key="edit_credit_debit",
-        )
-        category = st.selectbox(
-            "Category",
-            options=CATEGORIES,
-            index=CATEGORIES.index(row["category"]) if row.get("category") in CATEGORIES else 0,
-            key="edit_category",
-        )
-        txn_date = st.date_input(
-            "Date",
-            value=date.fromisoformat(row["transaction_date"]) if isinstance(row.get("transaction_date"), str) else date.today(),
-            key="edit_date",
-        )
+        col_credit_debit, col_amount = st.columns(2)
+        with col_credit_debit:
+            credit_debit = st.selectbox(
+                "Credit/Debit",
+                options=["Debit", "Credit"],
+                index=0 if row.get("is_debit", True) else 1,
+                key="edit_credit_debit",
+            )
+        with col_amount:
+            amount = st.number_input(
+                "Amount (₹)",
+                min_value=0.01,
+                value=float(row.get("amount", 0)),
+                step=0.01,
+                format="%.2f",
+                key="edit_amount",
+            )
+
+        col_category, col_date = st.columns(2)
+        with col_category:
+            category = st.selectbox(
+                "Category",
+                options=CATEGORIES,
+                index=CATEGORIES.index(row["category"]) if row.get("category") in CATEGORIES else 0,
+                key="edit_category",
+            )
+        with col_date:
+            txn_date = st.date_input(
+                "Date",
+                value=date.fromisoformat(row["transaction_date"]) if isinstance(row.get("transaction_date"), str) else date.today(),
+                key="edit_date",
+            )
         description = st.text_input(
             "Description (optional)",
             value=row.get("description") or "",

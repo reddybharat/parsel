@@ -28,32 +28,40 @@ def render_add_transaction(show_header: bool = True) -> None:
             unsafe_allow_html=True,
         )
     with st.form("transaction_form", clear_on_submit=True):
-        st.markdown(f"Amount (₹) {REQUIRED_LABEL}", unsafe_allow_html=True)
-        amount = st.number_input(
-            "Amount (₹)",
-            min_value=0.00,
-            step=100.00,
-            format="%.2f",
-            help="Enter amount in INR",
-            label_visibility="collapsed",
-        )
-        st.markdown("Credit/Debit " + REQUIRED_LABEL, unsafe_allow_html=True)
-        credit_debit = st.selectbox(
-            "Credit/Debit",
-            options=["Debit", "Credit"],
-            index=0,
-            label_visibility="collapsed",
-        )
-        st.markdown(f"Category {REQUIRED_LABEL}", unsafe_allow_html=True)
-        category = st.selectbox(
-            "Category",
-            options=CATEGORIES,
-            index=None,
-            placeholder="Select category",
-            label_visibility="collapsed",
-        )
-        st.markdown(f"Date {REQUIRED_LABEL}", unsafe_allow_html=True)
-        transaction_date = st.date_input("Date", value=date.today(), label_visibility="collapsed")
+        col_credit_debit, col_amount = st.columns(2)
+        with col_credit_debit:
+            st.markdown("Credit/Debit " + REQUIRED_LABEL, unsafe_allow_html=True)
+            credit_debit = st.selectbox(
+                "Credit/Debit",
+                options=["Debit", "Credit"],
+                index=0,
+                label_visibility="collapsed",
+            )
+        with col_amount:
+            st.markdown(f"Amount (₹) {REQUIRED_LABEL}", unsafe_allow_html=True)
+            amount = st.number_input(
+                "Amount (₹)",
+                min_value=0.00,
+                step=100.00,
+                format="%.2f",
+                help="Enter amount in INR",
+                label_visibility="collapsed",
+            )
+
+        col_category, col_date = st.columns(2)
+        with col_category:
+            st.markdown(f"Category {REQUIRED_LABEL}", unsafe_allow_html=True)
+            category = st.selectbox(
+                "Category",
+                options=CATEGORIES,
+                index=None,
+                placeholder="Select category",
+                label_visibility="collapsed",
+            )
+        with col_date:
+            st.markdown(f"Date {REQUIRED_LABEL}", unsafe_allow_html=True)
+            transaction_date = st.date_input("Date", value=date.today(), label_visibility="collapsed")
+
         description = st.text_input("Description (optional)", placeholder="Short note")
         submitted = st.form_submit_button("Save transaction")
 
