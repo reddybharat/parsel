@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import math
 from html import escape
 
+import altair as alt
 import streamlit as st
 
 from common.api_client import ApiClientError
@@ -115,17 +117,46 @@ def render_dashboard_overview() -> None:
     with st.container(border=True):
         st.subheader("Spending Trend (Last 6 Months)")
         trend_points = trend.get("points", []) or []
-        max_spend = max((float(p.get("spend", 0) or 0) for p in trend_points), default=0.0)
-        trend_cols = st.columns(6)
+        chart_rows = []
         for idx in range(6):
             point = trend_points[idx] if idx < len(trend_points) else {"month_label": "-", "spend": 0}
-            label = str(point.get("month_label", "-"))
-            value = float(point.get("spend", 0) or 0)
-            with trend_cols[idx]:
-                st.caption(label)
-                ratio = 0.0 if max_spend == 0 else (value / max_spend)
-                st.progress(ratio)
-                st.caption(f"₹{value:,.0f}")
+            raw_spend = float(point.get("spend", 0) or 0)
+            spend = abs(raw_spend) if math.isfinite(raw_spend) else 0.0
+            chart_rows.append(
+                {
+                    "month": str(point.get("month_label", "-")),
+                    "spend": spend,
+                }
+            )
+
+        max_spend = max((row["spend"] for row in chart_rows), default=0.0)
+        y_axis_max = max(max_spend + 30000.0, 30000.0)
+
+        trend_chart = (
+            alt.Chart(alt.Data(values=chart_rows))
+            .mark_bar(cornerRadiusTopLeft=6, cornerRadiusTopRight=6, color="#8D6E63")
+            .encode(
+                x=alt.X(
+                    "month:N",
+                    title=None,
+                    sort=None,
+                    axis=alt.Axis(labelAngle=0, labelPadding=8, tickSize=0),
+                ),
+                y=alt.Y(
+                    "spend:Q",
+                    title=None,
+                    scale=alt.Scale(domain=[0, y_axis_max]),
+                    axis=alt.Axis(format=",.0f", gridColor="#EAEAEA", tickCount=5),
+                ),
+                tooltip=[
+                    alt.Tooltip("month:N", title="Month"),
+                    alt.Tooltip("spend:Q", title="Spend (INR)", format=",.2f"),
+                ],
+            )
+            .properties(height=320)
+            .configure_view(strokeWidth=0)
+        )
+        st.altair_chart(trend_chart, width="stretch")
 
     left, right = st.columns([1.8, 1.2], gap="large")
     with left:
