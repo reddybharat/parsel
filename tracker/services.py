@@ -5,7 +5,8 @@ Uses tracker.utils.db and tracker.schemas; no UI dependencies.
 
 import csv
 import io
-from datetime import date, datetime, timedelta
+import json
+from datetime import date, datetime
 from typing import Optional
 
 from common.database import get_connection
@@ -284,177 +285,145 @@ def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
     return inserted_count, errors
 
 
-def _month_start(d: date) -> date:
-    return d.replace(day=1)
-
-
-def _next_month_start(d: date) -> date:
-    if d.month == 12:
-        return date(d.year + 1, 1, 1)
-    return date(d.year, d.month + 1, 1)
-
-
-def _add_months(start: date, delta: int) -> date:
-    total = (start.year * 12 + (start.month - 1)) + delta
-    year = total // 12
-    month = (total % 12) + 1
-    return date(year, month, 1)
-
-
-def get_dashboard_summary() -> dict:
-    """Return portfolio net and month-over-month spend summary."""
-    today = date.today()
-    month_now_start = _month_start(today)
-    month_next_start = _next_month_start(month_now_start)
-    month_now_end = month_next_start - timedelta(days=1)
-    month_prev_start = _add_months(month_now_start, -1)
-    month_prev_end = month_now_start - timedelta(days=1)
-
-    summary_sql = """
-        SELECT
-            COALESCE(SUM(CASE WHEN is_debit THEN -amount ELSE amount END), 0) AS portfolio_net,
-            COALESCE(SUM(CASE
-                WHEN is_debit = TRUE AND transaction_date >= %s AND transaction_date <= %s THEN amount
-                ELSE 0
-            END), 0) AS current_month_spend,
-            COALESCE(SUM(CASE
-                WHEN is_debit = TRUE AND transaction_date >= %s AND transaction_date <= %s THEN amount
-                ELSE 0
-            END), 0) AS previous_month_spend
-        FROM transactions
-    """
-    params = (
-        month_now_start.isoformat(),
-        month_now_end.isoformat(),
-        month_prev_start.isoformat(),
-        month_prev_end.isoformat(),
-    )
-    with get_connection() as conn:
-        rows = execute_query(summary_sql, params, conn=conn)
-    row = rows[0] if rows else {}
-
-    current_month_spend = float(row.get("current_month_spend", 0) or 0)
-    previous_month_spend = float(row.get("previous_month_spend", 0) or 0)
-    spend_delta_pct: Optional[float]
-    if previous_month_spend > 0:
-        spend_delta_pct = ((current_month_spend - previous_month_spend) / previous_month_spend) * 100.0
-    else:
-        spend_delta_pct = None
-
-    return {
-        "portfolio_net": float(row.get("portfolio_net", 0) or 0),
-        "current_month_spend": current_month_spend,
-        "previous_month_spend": previous_month_spend,
-        "spend_delta_pct": spend_delta_pct,
-    }
-
-
-def get_dashboard_trend(months: int = 6) -> dict:
-    """Return debit spend trend points for the last `months` months."""
+def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict:
+    """Return dashboard summary, trend, recent, and highlights in one query."""
     months = max(1, min(int(months), 24))
-    today = date.today()
-    current_month_start = _month_start(today)
-    start_month = _add_months(current_month_start, -(months - 1))
-    end_month = _next_month_start(current_month_start) - timedelta(days=1)
+    recent_limit = max(1, min(int(recent_limit), 20))
+    trend_offset = months - 1
 
     sql = """
-        SELECT date_trunc('month', transaction_date)::date AS month_start,
-               COALESCE(SUM(amount), 0) AS spend
-        FROM transactions
-        WHERE is_debit = TRUE
-          AND transaction_date >= %s
-          AND transaction_date <= %s
-        GROUP BY month_start
-        ORDER BY month_start ASC
+        WITH bounds AS (
+          SELECT
+            date_trunc('month', CURRENT_DATE)::date AS month_now_start,
+            (date_trunc('month', CURRENT_DATE) + interval '1 month')::date AS month_next_start,
+            (date_trunc('month', CURRENT_DATE) - (%s::int * interval '1 month'))::date AS trend_start
+        ),
+        summary AS (
+          SELECT
+            COALESCE(SUM(CASE WHEN t.is_debit THEN -t.amount ELSE t.amount END), 0)::float8 AS portfolio_net,
+            COALESCE(SUM(CASE
+              WHEN t.is_debit = TRUE
+               AND t.transaction_date >= b.month_now_start
+               AND t.transaction_date <  b.month_next_start
+              THEN t.amount ELSE 0 END), 0)::float8 AS current_month_spend,
+            COALESCE(SUM(CASE
+              WHEN t.is_debit = TRUE
+               AND t.transaction_date >= (b.month_now_start - interval '1 month')::date
+               AND t.transaction_date <  b.month_now_start
+              THEN t.amount ELSE 0 END), 0)::float8 AS previous_month_spend
+          FROM transactions t
+          CROSS JOIN bounds b
+        ),
+        trend_agg AS (
+          SELECT
+            date_trunc('month', t.transaction_date)::date AS month_start,
+            COALESCE(SUM(t.amount), 0)::float8 AS spend
+          FROM transactions t
+          CROSS JOIN bounds b
+          WHERE t.is_debit = TRUE
+            AND t.transaction_date >= b.trend_start
+            AND t.transaction_date <  b.month_next_start
+          GROUP BY 1
+        ),
+        trend_series AS (
+          SELECT generate_series(
+            (SELECT trend_start FROM bounds),
+            (SELECT month_now_start FROM bounds),
+            interval '1 month'
+          )::date AS month_start
+        ),
+        trend AS (
+          SELECT json_agg(
+            json_build_object(
+              'month_label', to_char(ts.month_start, 'Mon'),
+              'spend', COALESCE(ta.spend, 0)
+            )
+            ORDER BY ts.month_start
+          ) AS points
+          FROM trend_series ts
+          LEFT JOIN trend_agg ta USING (month_start)
+        ),
+        recent AS (
+          SELECT json_agg(
+            json_build_object(
+              'id', x.id::text,
+              'transaction_date', x.transaction_date,
+              'category', x.category,
+              'amount', x.amount::float8,
+              'is_debit', x.is_debit,
+              'description', x.description
+            )
+            ORDER BY x.transaction_date DESC, x.created_at DESC
+          ) AS items
+          FROM (
+            SELECT id, transaction_date, category, amount, is_debit, description, created_at
+            FROM transactions
+            ORDER BY transaction_date DESC, created_at DESC
+            LIMIT %s
+          ) x
+        ),
+        top_category AS (
+          SELECT t.category, COALESCE(SUM(t.amount), 0)::float8 AS spend
+          FROM transactions t
+          CROSS JOIN bounds b
+          WHERE t.is_debit = TRUE
+            AND t.transaction_date >= b.month_now_start
+            AND t.transaction_date <  b.month_next_start
+          GROUP BY t.category
+          ORDER BY spend DESC
+          LIMIT 1
+        ),
+        totals AS (
+          SELECT
+            COALESCE(SUM(CASE WHEN t.is_debit = FALSE THEN t.amount ELSE 0 END), 0)::float8 AS total_inflow,
+            COALESCE(SUM(CASE WHEN t.is_debit = TRUE  THEN t.amount ELSE 0 END), 0)::float8 AS total_outflow
+          FROM transactions t
+          CROSS JOIN bounds b
+          WHERE t.transaction_date >= b.month_now_start
+            AND t.transaction_date <  b.month_next_start
+        )
+        SELECT
+          json_build_object(
+            'summary', json_build_object(
+              'portfolio_net', s.portfolio_net,
+              'current_month_spend', s.current_month_spend,
+              'previous_month_spend', s.previous_month_spend,
+              'spend_delta_pct', CASE
+                WHEN s.previous_month_spend > 0
+                THEN ((s.current_month_spend - s.previous_month_spend) / s.previous_month_spend) * 100.0
+                ELSE NULL
+              END
+            ),
+            'trend', json_build_object(
+              'months', %s,
+              'points', COALESCE(t.points, '[]'::json)
+            ),
+            'recent', json_build_object(
+              'items', COALESCE(r.items, '[]'::json)
+            ),
+            'highlights', json_build_object(
+              'top_category', COALESCE(
+                (SELECT json_build_object('category', tc.category, 'spend', tc.spend) FROM top_category tc),
+                json_build_object('category', NULL, 'spend', 0.0)
+              ),
+              'total_inflow', tt.total_inflow,
+              'total_outflow', tt.total_outflow
+            )
+          ) AS overview
+        FROM summary s
+        CROSS JOIN trend t
+        CROSS JOIN recent r
+        CROSS JOIN totals tt
     """
     with get_connection() as conn:
-        rows = execute_query(sql, (start_month.isoformat(), end_month.isoformat()), conn=conn)
-
-    by_month: dict[str, float] = {}
-    for r in rows:
-        month_start = r.get("month_start")
-        if month_start is None:
-            continue
-        month_key = month_start.isoformat() if hasattr(month_start, "isoformat") else str(month_start)
-        by_month[month_key] = float(r.get("spend", 0) or 0)
-
-    points: list[dict] = []
-    for i in range(months):
-        m = _add_months(start_month, i)
-        key = m.isoformat()
-        points.append({"month_label": m.strftime("%b"), "spend": by_month.get(key, 0.0)})
-    return {"months": months, "points": points}
-
-
-def get_dashboard_recent(limit: int = 5) -> dict:
-    """Return most recent transactions for dashboard list."""
-    limit = max(1, min(int(limit), 20))
-    sql = """
-        SELECT id, transaction_date, category, amount, is_debit, description
-        FROM transactions
-        ORDER BY transaction_date DESC, created_at DESC
-        LIMIT %s
-    """
-    with get_connection() as conn:
-        rows = execute_query(sql, (limit,), conn=conn)
-
-    items: list[dict] = []
-    for row in rows:
-        tx_date = row.get("transaction_date")
-        parsed_date = tx_date if isinstance(tx_date, date) else date.fromisoformat(str(tx_date))
-        items.append(
-            {
-                "id": str(row.get("id")),
-                "transaction_date": parsed_date,
-                "category": str(row.get("category") or ""),
-                "amount": float(row.get("amount", 0) or 0),
-                "is_debit": bool(row.get("is_debit", True)),
-                "description": row.get("description"),
-            }
-        )
-    return {"items": items}
-
-
-def get_dashboard_highlights() -> dict:
-    """Return current-month top category by spend plus total inflow/outflow."""
-    today = date.today()
-    month_start = _month_start(today)
-    month_end = _next_month_start(month_start) - timedelta(days=1)
-    with get_connection() as conn:
-        top_category_rows = execute_query(
-            """
-            SELECT category, COALESCE(SUM(amount), 0) AS spend
-            FROM transactions
-            WHERE is_debit = TRUE
-              AND transaction_date >= %s
-              AND transaction_date <= %s
-            GROUP BY category
-            ORDER BY spend DESC
-            LIMIT 1
-            """,
-            (month_start.isoformat(), month_end.isoformat()),
+        rows = execute_query(
+            sql,
+            (trend_offset, recent_limit, months),
             conn=conn,
         )
-        totals_rows = execute_query(
-            """
-            SELECT
-                COALESCE(SUM(CASE WHEN is_debit = FALSE THEN amount ELSE 0 END), 0) AS total_inflow,
-                COALESCE(SUM(CASE WHEN is_debit = TRUE THEN amount ELSE 0 END), 0) AS total_outflow
-            FROM transactions
-            WHERE transaction_date >= %s
-              AND transaction_date <= %s
-            """,
-            (month_start.isoformat(), month_end.isoformat()),
-            conn=conn,
-        )
-
-    top_category = top_category_rows[0] if top_category_rows else {}
-    totals = totals_rows[0] if totals_rows else {}
-    return {
-        "top_category": {
-            "category": top_category.get("category"),
-            "spend": float(top_category.get("spend", 0) or 0),
-        },
-        "total_inflow": float(totals.get("total_inflow", 0) or 0),
-        "total_outflow": float(totals.get("total_outflow", 0) or 0),
-    }
+    raw_overview = (rows[0] if rows else {}).get("overview", {})
+    if isinstance(raw_overview, str):
+        return json.loads(raw_overview)
+    if isinstance(raw_overview, dict):
+        return raw_overview
+    return {}

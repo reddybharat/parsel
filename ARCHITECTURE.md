@@ -12,7 +12,7 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
 
 - **FastAPI (`main.py`)**
   - Includes `tracker.router.transactions` for `/transactions` endpoints.
-  - Includes `tracker.router.dashboard` for `/dashboard` endpoints.
+  - Includes `tracker.router.dashboard` for `/dashboard/overview` (single consolidated overview endpoint).
   - Includes `chat.router.chat` for `/chat/invoke`, `/chat/resume`, and `/chat/exit`.
 - **Streamlit (`app.py`)**
   - Uses `common.logger.get_logger` to configure logging on startup.
@@ -35,7 +35,7 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
 - `validations.py`: shared validation helpers (amount > 0, category required, date not in future, etc.).
 - `services.py`: CSV-related logic (export, template, import) using `tracker.utils.db` and `tracker.schemas`.
 - `router/transactions.py`: FastAPI router exposing CRUD endpoints for `/transactions` (search, export, import, create, update, delete); uses `common.database.get_connection` and `tracker.utils.db` execute helpers.
-- `router/dashboard.py`: FastAPI router exposing dashboard endpoints under `/dashboard`.
+- `router/dashboard.py`: FastAPI router exposing a single overview endpoint under `/dashboard/overview`.
 - `client.py`: HTTP client wrapper around the `/transactions` API (`search_transactions`, `create_transaction`, `export_transactions_csv`, `import_transactions_csv`, `update_transaction`, `delete_transaction`); used by the Streamlit Add and Search tabs.
 - `ui/`:
   - `common.py`: shared Streamlit helpers and common error messaging.

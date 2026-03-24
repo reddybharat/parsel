@@ -113,3 +113,10 @@ class DashboardHighlightsResponse(BaseModel):
     top_category: DashboardTopCategory
     total_inflow: float = 0.0
     total_outflow: float = 0.0
+
+
+class DashboardOverviewResponse(BaseModel):
+    summary: DashboardSummaryResponse
+    trend: DashboardTrendResponse
+    recent: DashboardRecentResponse
+    highlights: DashboardHighlightsResponse

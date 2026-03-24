@@ -6,7 +6,7 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 
 - **FastAPI** — REST API for transactions: create, search, update (PATCH), delete; plus **Chat API** (invoke, resume, exit).
 - **Streamlit** — Frontend for transactions management and the finance chat.
-- **Dashboard Overview** — A Streamlit overview tab with KPI cards, recent transactions, and a 6-month spending trend bar chart (clean styling, taller chart area, dynamic y-axis headroom of `max + ₹30,000`).
+- **Dashboard Overview** — A Streamlit overview tab with KPI cards, recent transactions, and a 6-month spending trend bar chart (clean styling, taller chart area, dynamic y-axis headroom of `max + ₹30,000`). Powered by a single consolidated API: `GET /dashboard/overview`.
 - **Chat / Finance Assistant** — Natural language questions about your transactions. Uses a LangGraph SQL agent (Gemini LLM) with tools: `list_tables`, `get_table_schema`, `query_checker`, `execute_query`, `get_current_date`. Answers summarize spending, breakdowns by category, and similar queries.
 - **Import from CSV** — Bulk-import transactions from a CSV with validation and row-level errors (API: `POST /transactions/import`).
 - **Export to CSV** — Export matching transactions as CSV for a date range and optional category (API: `GET /transactions/export`).
@@ -165,6 +165,12 @@ Opens at http://localhost:8501.
 | GET | `/transactions/search` | Search transactions by date range/category with pagination and sorting; returns `TransactionsSearchResult` wrapper with `total`, `page`, `page_size`, and `items` (list of `TransactionResponse`). |
 | GET | `/transactions/export` | Export matching transactions for the current filters (date range and category) as CSV. |
 | POST | `/transactions/import` | Import transactions from CSV bytes; returns `{ "inserted": int, "errors": [str, ...] }`. |
+
+### Dashboard
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/dashboard/overview` | Returns all Overview tab data in one payload: `summary`, `trend`, `recent`, and `highlights`. Query params: `months` (1-24), `recent_limit` (1-20). |
 
 ### Chat
 

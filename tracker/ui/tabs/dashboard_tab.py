@@ -11,10 +11,7 @@ import streamlit as st
 from common.api_client import ApiClientError
 from common.logger import get_logger
 from tracker.client import (
-    get_dashboard_highlights as api_get_dashboard_highlights,
-    get_dashboard_recent as api_get_dashboard_recent,
-    get_dashboard_summary as api_get_dashboard_summary,
-    get_dashboard_trend as api_get_dashboard_trend,
+    get_dashboard_overview as api_get_dashboard_overview,
 )
 
 GENERIC_ERROR_MSG = "Sorry, couldn't process your request due to a technical error. Please try again later."
@@ -34,23 +31,8 @@ def _fmt_signed(amount: float) -> str:
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def _get_dashboard_summary_cached() -> dict:
-    return api_get_dashboard_summary()
-
-
-@st.cache_data(ttl=60, show_spinner=False)
-def _get_dashboard_trend_cached(months: int) -> dict:
-    return api_get_dashboard_trend(months=months)
-
-
-@st.cache_data(ttl=30, show_spinner=False)
-def _get_dashboard_recent_cached(limit: int) -> dict:
-    return api_get_dashboard_recent(limit=limit)
-
-
-@st.cache_data(ttl=60, show_spinner=False)
-def _get_dashboard_highlights_cached() -> dict:
-    return api_get_dashboard_highlights()
+def _get_dashboard_overview_cached(months: int, recent_limit: int) -> dict:
+    return api_get_dashboard_overview(months=months, recent_limit=recent_limit)
 
 
 def render_dashboard_overview() -> None:
@@ -60,10 +42,7 @@ def render_dashboard_overview() -> None:
         st.rerun()
 
     try:
-        summary = _get_dashboard_summary_cached()
-        trend = _get_dashboard_trend_cached(months=6)
-        recent = _get_dashboard_recent_cached(limit=4)
-        highlights = _get_dashboard_highlights_cached()
+        overview = _get_dashboard_overview_cached(months=6, recent_limit=4)
     except ApiClientError as e:
         logger.error("Dashboard API error: %s", e, exc_info=True)
         st.error(GENERIC_ERROR_MSG)
@@ -72,6 +51,11 @@ def render_dashboard_overview() -> None:
         logger.error("Dashboard unexpected error: %s", e, exc_info=True)
         st.error(GENERIC_ERROR_MSG)
         return
+
+    summary = overview.get("summary", {}) or {}
+    trend = overview.get("trend", {}) or {}
+    recent = overview.get("recent", {}) or {}
+    highlights = overview.get("highlights", {}) or {}
 
     portfolio = float(summary.get("portfolio_net", 0.0))
     current_month_spend = float(summary.get("current_month_spend", 0.0))
