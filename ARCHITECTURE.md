@@ -2,7 +2,7 @@
 
 This project is organized around two feature packages — **tracker** and **chat** — plus a small **common** package for shared utilities.
 
-- **common/**: shared logging and database connection only (no execute helpers).
+- **common/**: shared logging and SQLAlchemy async database engine/session helpers.
 - **tracker/**: all transaction CRUD, validations, CSV import/export, FastAPI routes, and Streamlit UI tabs for Add/Search.
 - **chat/**: the LangGraph-based finance assistant (agent), its FastAPI APIs, and the Streamlit Chat tab.
 
@@ -23,18 +23,18 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
   - Communicates with FastAPI exclusively over HTTP via the client layer (`tracker.client`, `chat.client`, and `common.api_client`).
 ### Common package (`common/`)
 
-- `database.py`: shared PostgreSQL connection only — `get_database_url()`, `is_database_configured()`, `open_session_connection()`, `get_connection()`. No execute/query helpers.
+- `database.py`: shared SQLAlchemy async DB utilities — `get_database_url()`, `get_async_database_url()`, `is_database_configured()`, `get_async_engine()`, `get_sessionmaker()`, `get_connection()`, `get_db_session()`.
 - `logger.py`: shared logging configuration.
 - `api_client.py`: shared HTTP client used by Streamlit tabs (`tracker.client`, `chat.client`) to talk to the FastAPI app. Configured via `API_BASE_URL` (default `http://localhost:8000`), raising `ApiClientError` on non-2xx responses.
 
 ### Tracker package (`tracker/`)
 
-- `utils/db.py`: tracker execute helpers (execute_query, execute_insert, execute_update_delete, execute_update_returning). Require a connection from `common.database`.
+- `models.py`: SQLAlchemy ORM models (`Base`, `Transaction`) mapped to `transactions`.
 - `schemas.py`: Pydantic models for request/response payloads and internal use.
 - `constants.py`: fixed list of allowed categories and any other domain constants.
 - `validations.py`: shared validation helpers (amount > 0, category required, date not in future, etc.).
-- `services.py`: CSV-related logic (export, template, import) using `tracker.utils.db` and `tracker.schemas`.
-- `router/transactions.py`: FastAPI router exposing CRUD endpoints for `/transactions` (search, export, import, create, update, delete); uses `common.database.get_connection` and `tracker.utils.db` execute helpers.
+- `services.py`: async CSV and dashboard data logic using SQLAlchemy async sessions and ORM/text queries.
+- `router/transactions.py`: async FastAPI router exposing CRUD endpoints for `/transactions` (search, export, import, create, update, delete) using SQLAlchemy ORM + async session.
 - `router/dashboard.py`: FastAPI router exposing a single overview endpoint under `/dashboard/overview`.
 - `client.py`: HTTP client wrapper around the `/transactions` API (`search_transactions`, `create_transaction`, `export_transactions_csv`, `import_transactions_csv`, `update_transaction`, `delete_transaction`); used by the Streamlit Add and Search tabs.
 - `ui/`:
@@ -54,7 +54,7 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
 - `agent/`:
   - `graph.py`: constructs the LangGraph graph and exposes `run_agent`.
   - `nodes.py`: defines the core agent node and tool orchestration.
-  - `tools.py`: `list_tables`, `get_table_schema`, `query_checker`, `execute_query`, `get_current_date`; `execute_query` uses `common.database.get_connection()`.
+  - `tools.py`: `list_tables`, `get_table_schema`, `query_checker`, `execute_query`, `get_current_date`; `execute_query` uses async SQLAlchemy session from `common.database.get_connection()`.
   - `db_config.py`: table names and schema text for the agent.
   - `schema.py`: Pydantic `args_schema` models for tools.
   - `state.py`: the agent state (e.g., messages list).
@@ -81,16 +81,16 @@ flowchart TD
   mainApp --> trackerRouter["tracker.router.transactions"]
   mainApp --> dashboardRouter["tracker.router.dashboard"]
   mainApp --> chatRouter["chat.router.chat"]
-  trackerRouter --> commonDB["common.database"]
-  trackerRouter --> trackerDb["tracker.utils.db"]
-  trackerDb --> commonDB
+  trackerRouter --> commonDB["common.database_async_session"]
+  trackerRouter --> trackerModels["tracker.models_SQLAlchemyORM"]
+  trackerModels --> commonDB
   chatRouter --> chatAgent["chat.agent.graph (run_agent)"]
   chatAgent --> commonDB
 ```
 
 This layout is designed so that:
 
-- The **connection** is in `common.database`; **execute helpers** live in `tracker.utils.db` (tracker); the chat agent runs SQL from `chat.agent.tools.execute_query` via the same pool.
+- The async **engine/session lifecycle** is centralized in `common.database`; tracker routes/services use SQLAlchemy ORM and the chat agent runs SQL via async session execution.
 - **Feature code** for transactions and chat lives in separate, clearly named packages.
 - **UI layers** (FastAPI and Streamlit) depend on feature packages via HTTP APIs and shared clients, not the other way around.
 

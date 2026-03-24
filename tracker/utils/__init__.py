@@ -1,1 +1,1 @@
-"""Tracker utilities (DB execute helpers)."""
+"""Tracker utilities package."""

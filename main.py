@@ -16,7 +16,7 @@ app = FastAPI(title="Personal Finance Tracker", version="0.1.0")
 
 
 @app.get("/")
-def root():
+async def root():
     return {"message": "Personal Finance Tracker API", "docs": "/docs"}
 
 
