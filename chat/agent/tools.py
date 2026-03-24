@@ -69,7 +69,7 @@ def get_table_schema(table_names: List[str]) -> str:
 @tool("query_checker", args_schema=QueryCheckerInputSchema)
 async def query_checker(query: str) -> str:
     """
-    Review the draft query before execution. Always call this before execute_query.
+    Review the draft query before execution. Prefer calling this before execute_query.
     The tool may return corrected SQL; use that string as the input to execute_query.
     """
     logger.info("query_checker called: %s", query[:200])

@@ -5,6 +5,7 @@ Uses tracker.utils.db and tracker.schemas; no UI dependencies.
 
 import csv
 import io
+import json
 from datetime import date, datetime
 from typing import Optional
 
@@ -13,7 +14,18 @@ from tracker.utils.db import execute_query
 from tracker.schemas import TransactionCreate
 
 # CSV column names (used for export, template, and import)
-CSV_FIELDS = ["transaction_date", "category", "amount", "description"]
+CSV_FIELDS = ["transaction_date", "category", "amount", "is_debit", "description"]
+
+
+def _parse_is_debit(raw: Optional[str]) -> bool:
+    s = (raw or "").strip().lower()
+    if not s:
+        raise ValueError("is_debit is required when the column is present.")
+    if s in {"true", "t", "1", "yes", "y"}:
+        return True
+    if s in {"false", "f", "0", "no", "n"}:
+        return False
+    raise ValueError(f"Invalid is_debit value '{raw}'. Expected true/false.")
 
 
 def _parse_transaction_date(raw_date: str) -> date:
@@ -113,7 +125,7 @@ def export_transactions_csv(
 ) -> str:
     """Return CSV string for all transactions matching the given filters."""
     sql = """
-        SELECT transaction_date, category, amount, description
+        SELECT transaction_date, category, amount, is_debit, description
         FROM transactions
         WHERE transaction_date >= %s AND transaction_date <= %s
         ORDER BY transaction_date ASC
@@ -121,7 +133,7 @@ def export_transactions_csv(
     params: tuple = (start_date.isoformat(), end_date.isoformat())
     if category and category != "All":
         sql = """
-            SELECT transaction_date, category, amount, description
+            SELECT transaction_date, category, amount, is_debit, description
             FROM transactions
             WHERE transaction_date >= %s AND transaction_date <= %s AND category = %s
             ORDER BY transaction_date ASC
@@ -139,6 +151,7 @@ def export_transactions_csv(
                 "transaction_date": row.get("transaction_date", ""),
                 "category": row.get("category", ""),
                 "amount": row.get("amount", ""),
+                "is_debit": str(bool(row.get("is_debit", True))).lower(),
                 "description": row.get("description") or "",
             }
         )
@@ -155,18 +168,21 @@ def transactions_csv_template() -> str:
             "transaction_date": "2026-03-01",
             "category": "Grocery",
             "amount": "1250.50",
+            "is_debit": "true",
             "description": "Weekly groceries",
         },
         {
             "transaction_date": "2026-03-02",
             "category": "Dining",
             "amount": "450",
+            "is_debit": "true",
             "description": "Lunch",
         },
         {
             "transaction_date": "2026-03-03",
             "category": "Transportation",
             "amount": "320",
+            "is_debit": "false",
             "description": "",
         },
     ]
@@ -179,7 +195,8 @@ def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
     """
     Parse CSV content and insert valid rows into the transactions table.
 
-    Expected columns (case-insensitive): transaction_date (YYYY-MM-DD), category, amount, description (optional).
+    Expected columns (case-insensitive):
+    transaction_date (YYYY-MM-DD), category, amount, is_debit (optional but recommended), description (optional).
     Returns (inserted_count, list of error messages for failed rows).
     """
     text = content.decode("utf-8-sig")
@@ -211,6 +228,11 @@ def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
                 if "description" in header_map
                 else None
             )
+            raw_is_debit = (
+                (row.get(header_map["is_debit"]) or "").strip()
+                if "is_debit" in header_map
+                else ""
+            )
 
             if not raw_date or not raw_category or not raw_amount:
                 raise ValueError(
@@ -224,16 +246,23 @@ def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
                 raise ValueError(
                     f"Invalid amount '{raw_amount}'. Must be a number."
                 )
+            if "is_debit" in header_map:
+                parsed_is_debit = _parse_is_debit(raw_is_debit)
+            else:
+                # Backward compatible default for older CSVs.
+                parsed_is_debit = True
 
             tx = TransactionCreate(
                 amount=parsed_amount,
                 category=raw_category,
                 transaction_date=parsed_date,
                 description=raw_description,
+                is_debit=parsed_is_debit,
             )
             rows_to_insert.append(
                 (
                     float(tx.amount),
+                    bool(tx.is_debit),
                     tx.category.strip(),
                     tx.transaction_date.isoformat(),
                     tx.description,
@@ -245,8 +274,8 @@ def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
     inserted_count = 0
     if rows_to_insert:
         sql = """
-            INSERT INTO transactions (amount, category, transaction_date, description)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO transactions (amount, is_debit, category, transaction_date, description)
+            VALUES (%s, %s, %s, %s, %s)
         """
         with get_connection() as conn:
             with conn.cursor() as cur:
@@ -254,3 +283,147 @@ def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
         inserted_count = len(rows_to_insert)
 
     return inserted_count, errors
+
+
+def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict:
+    """Return dashboard summary, trend, recent, and highlights in one query."""
+    months = max(1, min(int(months), 24))
+    recent_limit = max(1, min(int(recent_limit), 20))
+    trend_offset = months - 1
+
+    sql = """
+        WITH bounds AS (
+          SELECT
+            date_trunc('month', CURRENT_DATE)::date AS month_now_start,
+            (date_trunc('month', CURRENT_DATE) + interval '1 month')::date AS month_next_start,
+            (date_trunc('month', CURRENT_DATE) - (%s::int * interval '1 month'))::date AS trend_start
+        ),
+        summary AS (
+          SELECT
+            COALESCE(SUM(CASE WHEN t.is_debit THEN -t.amount ELSE t.amount END), 0)::float8 AS portfolio_net,
+            COALESCE(SUM(CASE
+              WHEN t.is_debit = TRUE
+               AND t.transaction_date >= b.month_now_start
+               AND t.transaction_date <  b.month_next_start
+              THEN t.amount ELSE 0 END), 0)::float8 AS current_month_spend,
+            COALESCE(SUM(CASE
+              WHEN t.is_debit = TRUE
+               AND t.transaction_date >= (b.month_now_start - interval '1 month')::date
+               AND t.transaction_date <  b.month_now_start
+              THEN t.amount ELSE 0 END), 0)::float8 AS previous_month_spend
+          FROM transactions t
+          CROSS JOIN bounds b
+        ),
+        trend_agg AS (
+          SELECT
+            date_trunc('month', t.transaction_date)::date AS month_start,
+            COALESCE(SUM(t.amount), 0)::float8 AS spend
+          FROM transactions t
+          CROSS JOIN bounds b
+          WHERE t.is_debit = TRUE
+            AND t.transaction_date >= b.trend_start
+            AND t.transaction_date <  b.month_next_start
+          GROUP BY 1
+        ),
+        trend_series AS (
+          SELECT generate_series(
+            (SELECT trend_start FROM bounds),
+            (SELECT month_now_start FROM bounds),
+            interval '1 month'
+          )::date AS month_start
+        ),
+        trend AS (
+          SELECT json_agg(
+            json_build_object(
+              'month_label', to_char(ts.month_start, 'Mon'),
+              'spend', COALESCE(ta.spend, 0)
+            )
+            ORDER BY ts.month_start
+          ) AS points
+          FROM trend_series ts
+          LEFT JOIN trend_agg ta USING (month_start)
+        ),
+        recent AS (
+          SELECT json_agg(
+            json_build_object(
+              'id', x.id::text,
+              'transaction_date', x.transaction_date,
+              'category', x.category,
+              'amount', x.amount::float8,
+              'is_debit', x.is_debit,
+              'description', x.description
+            )
+            ORDER BY x.transaction_date DESC, x.created_at DESC
+          ) AS items
+          FROM (
+            SELECT id, transaction_date, category, amount, is_debit, description, created_at
+            FROM transactions
+            ORDER BY transaction_date DESC, created_at DESC
+            LIMIT %s
+          ) x
+        ),
+        top_category AS (
+          SELECT t.category, COALESCE(SUM(t.amount), 0)::float8 AS spend
+          FROM transactions t
+          CROSS JOIN bounds b
+          WHERE t.is_debit = TRUE
+            AND t.transaction_date >= b.month_now_start
+            AND t.transaction_date <  b.month_next_start
+          GROUP BY t.category
+          ORDER BY spend DESC
+          LIMIT 1
+        ),
+        totals AS (
+          SELECT
+            COALESCE(SUM(CASE WHEN t.is_debit = FALSE THEN t.amount ELSE 0 END), 0)::float8 AS total_inflow,
+            COALESCE(SUM(CASE WHEN t.is_debit = TRUE  THEN t.amount ELSE 0 END), 0)::float8 AS total_outflow
+          FROM transactions t
+          CROSS JOIN bounds b
+          WHERE t.transaction_date >= b.month_now_start
+            AND t.transaction_date <  b.month_next_start
+        )
+        SELECT
+          json_build_object(
+            'summary', json_build_object(
+              'portfolio_net', s.portfolio_net,
+              'current_month_spend', s.current_month_spend,
+              'previous_month_spend', s.previous_month_spend,
+              'spend_delta_pct', CASE
+                WHEN s.previous_month_spend > 0
+                THEN ((s.current_month_spend - s.previous_month_spend) / s.previous_month_spend) * 100.0
+                ELSE NULL
+              END
+            ),
+            'trend', json_build_object(
+              'months', %s,
+              'points', COALESCE(t.points, '[]'::json)
+            ),
+            'recent', json_build_object(
+              'items', COALESCE(r.items, '[]'::json)
+            ),
+            'highlights', json_build_object(
+              'top_category', COALESCE(
+                (SELECT json_build_object('category', tc.category, 'spend', tc.spend) FROM top_category tc),
+                json_build_object('category', NULL, 'spend', 0.0)
+              ),
+              'total_inflow', tt.total_inflow,
+              'total_outflow', tt.total_outflow
+            )
+          ) AS overview
+        FROM summary s
+        CROSS JOIN trend t
+        CROSS JOIN recent r
+        CROSS JOIN totals tt
+    """
+    with get_connection() as conn:
+        rows = execute_query(
+            sql,
+            (trend_offset, recent_limit, months),
+            conn=conn,
+        )
+    raw_overview = (rows[0] if rows else {}).get("overview", {})
+    if isinstance(raw_overview, str):
+        return json.loads(raw_overview)
+    if isinstance(raw_overview, dict):
+        return raw_overview
+    return {}

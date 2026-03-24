@@ -54,25 +54,38 @@ def _render_edit_form(row: dict, conn: Optional[Any] = None) -> None:
                 f"Updated: {_format_audit_ts(row.get('updated_at'))} | "
                 f"Version: {row.get('version_no', '—')}"
             )
-        amount = st.number_input(
-            "Amount (₹)",
-            min_value=0.01,
-            value=float(row.get("amount", 0)),
-            step=0.01,
-            format="%.2f",
-            key="edit_amount",
-        )
-        category = st.selectbox(
-            "Category",
-            options=CATEGORIES,
-            index=CATEGORIES.index(row["category"]) if row.get("category") in CATEGORIES else 0,
-            key="edit_category",
-        )
-        txn_date = st.date_input(
-            "Date",
-            value=date.fromisoformat(row["transaction_date"]) if isinstance(row.get("transaction_date"), str) else date.today(),
-            key="edit_date",
-        )
+        col_credit_debit, col_amount = st.columns(2)
+        with col_credit_debit:
+            credit_debit = st.selectbox(
+                "Credit/Debit",
+                options=["Debit", "Credit"],
+                index=0 if row.get("is_debit", True) else 1,
+                key="edit_credit_debit",
+            )
+        with col_amount:
+            amount = st.number_input(
+                "Amount (₹)",
+                min_value=0.01,
+                value=float(row.get("amount", 0)),
+                step=0.01,
+                format="%.2f",
+                key="edit_amount",
+            )
+
+        col_category, col_date = st.columns(2)
+        with col_category:
+            category = st.selectbox(
+                "Category",
+                options=CATEGORIES,
+                index=CATEGORIES.index(row["category"]) if row.get("category") in CATEGORIES else 0,
+                key="edit_category",
+            )
+        with col_date:
+            txn_date = st.date_input(
+                "Date",
+                value=date.fromisoformat(row["transaction_date"]) if isinstance(row.get("transaction_date"), str) else date.today(),
+                key="edit_date",
+            )
         description = st.text_input(
             "Description (optional)",
             value=row.get("description") or "",
@@ -88,6 +101,7 @@ def _render_edit_form(row: dict, conn: Optional[Any] = None) -> None:
                 del st.session_state.editing_transaction
             st.rerun()
         if submitted:
+            is_debit = credit_debit == "Debit"
             try:
                 validate_amount(amount)
                 validate_category(category)
@@ -102,6 +116,7 @@ def _render_edit_form(row: dict, conn: Optional[Any] = None) -> None:
                     category=category.strip(),
                     transaction_date=txn_date,
                     description=(description or "").strip() or None,
+                    is_debit=is_debit,
                 )
                 if "editing_transaction" in st.session_state:
                     del st.session_state.editing_transaction
@@ -120,8 +135,10 @@ def _render_delete_confirm(row: dict, conn: Optional[Any] = None) -> None:
     if not row_id:
         return
     amt = row.get("amount", 0)
+    is_debit = row.get("is_debit", True)
     cat = row.get("category", "")
-    st.warning(f"Delete this transaction? **₹{float(amt):,.2f}** — {cat}")
+    signed_amount = -float(amt) if is_debit else float(amt)
+    st.warning(f"Delete this transaction? **₹{signed_amount:,.2f}** — {cat}")
     col1, col2, _ = st.columns([1, 1, 2])
     with col1:
         if st.button("Confirm delete", type="primary", key="confirm_del"):
@@ -194,11 +211,14 @@ def render_search_results(rows: list[dict], total_count: int | None, page_size: 
         row_id = r.get("id")
         if not row_id:
             continue
+        amt = float(r.get("amount", 0))
+        is_debit = r.get("is_debit", True)
+        signed_amount = -amt if is_debit else amt
         cols = st.columns([1, 1, 1, 2, 2])
         with cols[0]:
             st.text(r.get("transaction_date", ""))
         with cols[1]:
-            st.text(f"₹{float(r.get('amount', 0)):,.2f}")
+            st.text(f"₹{signed_amount:,.2f}")
         with cols[2]:
             st.text(r.get("category", ""))
         with cols[3]:

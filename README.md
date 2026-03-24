@@ -6,11 +6,12 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 
 - **FastAPI** — REST API for transactions: create, search, update (PATCH), delete; plus **Chat API** (invoke, resume, exit).
 - **Streamlit** — Frontend for transactions management and the finance chat.
+- **Dashboard Overview** — A Streamlit overview tab with KPI cards, recent transactions, and a 6-month spending trend bar chart (clean styling, taller chart area, dynamic y-axis headroom of `max + ₹30,000`). Powered by a single consolidated API: `GET /dashboard/overview`.
 - **Chat / Finance Assistant** — Natural language questions about your transactions. Uses a LangGraph SQL agent (Gemini LLM) with tools: `list_tables`, `get_table_schema`, `query_checker`, `execute_query`, `get_current_date`. Answers summarize spending, breakdowns by category, and similar queries.
 - **Import from CSV** — Bulk-import transactions from a CSV with validation and row-level errors (API: `POST /transactions/import`).
 - **Export to CSV** — Export matching transactions as CSV for a date range and optional category (API: `GET /transactions/export`).
 - **Database** — Connects directly to PostgreSQL via `DATABASE_URL` for both tracker (CRUD) and chat (SQL tools). No Supabase client or RLS required for the app. A shared connection pool is used for API and Chat.
-- **Fixed categories** — Transactions use one of: Grocery, Dining, Transportation, Utilities, Entertainment, Health, Housing, Personal, Investments, Misc (enforced in app and API)
+- **Fixed categories** — Transactions use one of: Grocery, Dining, Transportation, Utilities, Entertainment, Health, Housing, Personal, Investments, Misc, Income, Other Income, Refunds, Travel, Shopping, Subscriptions, Gifts, EMI, Rent (enforced in app and API)
 - **Validations** — Shared rules in `tracker.validations`: amount must be > 0, category required, transaction date cannot be in the future (enforced in app and API)
 - **Audit fields** — Transactions have `created_at`, `updated_at`, and `version_no`; the app sets them on insert/update (no DB triggers). API and search return and display them.
 
@@ -34,6 +35,7 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 │       ├── common.py           # Shared frontend helpers
 │       ├── tabs/
 │       │   ├── add_txn_tab.py
+│       │   ├── dashboard_tab.py
 │       │   └── search_tab.py
 │       └── utils/
 │           ├── import_csv_section.py   # Import from CSV
@@ -73,6 +75,7 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 | id                 | uuid                     | NOT NULL | gen_random_uuid()  |
 | created_at         | timestamp with time zone | NOT NULL | now()              |
 | amount             | numeric                  | NOT NULL | —                  |
+| is_debit           | boolean                  | NOT NULL | true               |
 | category           | text                     | NOT NULL | —                  |
 | transaction_date   | date                     | NOT NULL | —                  |
 | description        | text                     | NULL     | —                  |
@@ -143,6 +146,12 @@ streamlit run app.py
 
 Opens at http://localhost:8501.
 
+### Dashboard chart behavior
+
+- Spending trend uses an Altair bar chart in `tracker/ui/tabs/dashboard_tab.py`.
+- Chart rendering now uses the Streamlit width API: `st.altair_chart(..., width="stretch")`.
+- Y-axis domain is explicitly set to `[0, max_spend + 30000]` to keep visual headroom above the tallest bar.
+
 ## API endpoints
 
 ### Tracker (transactions)
@@ -156,6 +165,12 @@ Opens at http://localhost:8501.
 | GET | `/transactions/search` | Search transactions by date range/category with pagination and sorting; returns `TransactionsSearchResult` wrapper with `total`, `page`, `page_size`, and `items` (list of `TransactionResponse`). |
 | GET | `/transactions/export` | Export matching transactions for the current filters (date range and category) as CSV. |
 | POST | `/transactions/import` | Import transactions from CSV bytes; returns `{ "inserted": int, "errors": [str, ...] }`. |
+
+### Dashboard
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/dashboard/overview` | Returns all Overview tab data in one payload: `summary`, `trend`, `recent`, and `highlights`. Query params: `months` (1-24), `recent_limit` (1-20). |
 
 ### Chat
 

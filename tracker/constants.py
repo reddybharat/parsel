@@ -4,14 +4,23 @@ Shared constants for the tracker (transaction categories, etc.).
 
 # Allowed transaction categories (exact values stored in DB)
 CATEGORIES = [
-    "Grocery",
     "Dining",
-    "Transportation",
-    "Utilities",
+    "EMI",
     "Entertainment",
+    "Gifts",
+    "Grocery",
     "Health",
     "Housing",
-    "Personal",
+    "Income",
     "Investments",
     "Misc",
+    "Other Income",
+    "Personal",
+    "Refunds",
+    "Rent",
+    "Shopping",
+    "Subscriptions",
+    "Transportation",
+    "Travel",
+    "Utilities",
 ]

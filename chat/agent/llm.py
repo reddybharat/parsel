@@ -45,11 +45,23 @@ def get_llm() -> ChatGoogleGenerativeAI:
 
 def _is_retryable_llm_error(error: Exception) -> bool:
     """Return True for transient provider/API failures (429/5xx)."""
+    text = str(error).lower()
+    # Quota exhaustion (daily/project limits) is not transient in-request.
+    # Retrying immediately only creates repeated API traffic.
+    non_retryable_quota_markers = (
+        "quota exceeded for metric",
+        "check your plan and billing",
+        "perday",
+        "free_tier_requests",
+        "daily limit",
+    )
+    if any(marker in text for marker in non_retryable_quota_markers):
+        return False
+
     status_code = getattr(error, "status_code", None)
     if isinstance(status_code, int) and (status_code == 429 or 500 <= status_code < 600):
         return True
 
-    text = str(error).lower()
     retryable_markers = (
         "429",
         "too many requests",

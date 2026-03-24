@@ -16,6 +16,9 @@ class TransactionCreate(BaseModel):
     category: str = Field(..., min_length=1)
     transaction_date: date = Field(default_factory=date.today)
     description: Optional[str] = None
+    # When True => Debit (rendered as negative amount in UI).
+    # When False => Credit (rendered as positive amount in UI).
+    is_debit: bool = True
 
     @field_validator("category")
     @classmethod
@@ -35,6 +38,7 @@ class TransactionUpdate(BaseModel):
     category: Optional[str] = None
     transaction_date: Optional[date] = None
     description: Optional[str] = None
+    is_debit: Optional[bool] = None
 
     @field_validator("category")
     @classmethod
@@ -52,6 +56,7 @@ class TransactionUpdate(BaseModel):
 class TransactionResponse(BaseModel):
     id: str
     amount: float
+    is_debit: bool
     category: str
     transaction_date: date
     description: Optional[str] = None
@@ -67,3 +72,51 @@ class TransactionsSearchResult(BaseModel):
     page: int
     page_size: int
     items: list[TransactionResponse]
+
+
+class DashboardSummaryResponse(BaseModel):
+    portfolio_net: float
+    current_month_spend: float
+    previous_month_spend: float
+    spend_delta_pct: Optional[float] = None
+
+
+class DashboardTrendPoint(BaseModel):
+    month_label: str
+    spend: float
+
+
+class DashboardTrendResponse(BaseModel):
+    months: int
+    points: list[DashboardTrendPoint]
+
+
+class DashboardRecentItem(BaseModel):
+    id: str
+    transaction_date: date
+    category: str
+    amount: float
+    is_debit: bool
+    description: Optional[str] = None
+
+
+class DashboardRecentResponse(BaseModel):
+    items: list[DashboardRecentItem]
+
+
+class DashboardTopCategory(BaseModel):
+    category: Optional[str] = None
+    spend: float = 0.0
+
+
+class DashboardHighlightsResponse(BaseModel):
+    top_category: DashboardTopCategory
+    total_inflow: float = 0.0
+    total_outflow: float = 0.0
+
+
+class DashboardOverviewResponse(BaseModel):
+    summary: DashboardSummaryResponse
+    trend: DashboardTrendResponse
+    recent: DashboardRecentResponse
+    highlights: DashboardHighlightsResponse

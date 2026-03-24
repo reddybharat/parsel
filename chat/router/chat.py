@@ -5,7 +5,6 @@ from fastapi import APIRouter, HTTPException
 from chat.agent.graph import run_agent_async
 from common.logger import get_logger
 
-
 router = APIRouter(prefix="/chat", tags=["chat"])
 logger = get_logger(__name__)
 
@@ -39,4 +38,3 @@ def chat_resume(body: dict | None = None) -> dict:
 @router.post("/exit")
 def chat_exit(body: dict | None = None) -> dict:
     return {"status": "ok"}
-

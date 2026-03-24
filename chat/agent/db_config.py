@@ -21,6 +21,7 @@ Table: public.transactions
 Columns:
 - id                  uuid PRIMARY KEY (default gen_random_uuid())
 - amount              numeric NOT NULL  — transaction amount in INR (always > 0)
+- is_debit            boolean NOT NULL  — True for Debit (spend), False for Credit (income)
 - category            text NOT NULL     — one of: {", ".join(CATEGORIES)}
 - transaction_date    date NOT NULL
 - description         text NULL
@@ -30,6 +31,7 @@ Columns:
 
 Notes:
 - Amounts are in Indian Rupees (INR).
+- The app treats Debit as a negative signed value for display (using is_debit).
 - For spending vs investments: treat "Investments" category as investments, not ordinary spending unless the user asks for investments specifically.
 """.strip(),
 }

@@ -7,26 +7,25 @@ from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile
 
 from common.database import get_connection
 from common.logger import get_logger
-from tracker.services import export_transactions_csv, import_transactions_from_csv
 from tracker.schemas import (
     TransactionCreate,
     TransactionResponse,
-    TransactionUpdate,
     TransactionsSearchResult,
+    TransactionUpdate,
 )
-from tracker.validations import validate_transaction_date
+from tracker.services import export_transactions_csv, import_transactions_from_csv
 from tracker.utils.db import (
     execute_insert,
     execute_query,
     execute_update_delete,
     execute_update_returning,
 )
-
+from tracker.validations import validate_transaction_date
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
-_COLS = "id, amount, category, transaction_date, description, created_at, updated_at, version_no"
+_COLS = "id, amount, is_debit, category, transaction_date, description, created_at, updated_at, version_no"
 
 
 def _parse_datetime(value) -> datetime:
@@ -43,6 +42,7 @@ def _record_to_response(record: dict) -> TransactionResponse:
     return TransactionResponse(
         id=str(record["id"]),
         amount=float(record["amount"]),
+        is_debit=bool(record["is_debit"]),
         category=record["category"],
         transaction_date=(
             record["transaction_date"]
@@ -61,6 +61,7 @@ def search_transactions(
     start_date: date = Query(...),
     end_date: date = Query(...),
     category: Optional[str] = Query(None),
+    is_debit: Optional[bool] = Query(None),
     sort_column: str = Query("transaction_date"),
     sort_desc: bool = Query(True),
     page: int = Query(1, ge=1),
@@ -78,7 +79,10 @@ def search_transactions(
         )
 
     order_dir = "DESC" if sort_desc else "ASC"
-    order_clause = f"ORDER BY {sort_column} {order_dir}"
+    if sort_column == "amount":
+        order_clause = f"ORDER BY CASE WHEN is_debit THEN -amount ELSE amount END {order_dir}"
+    else:
+        order_clause = f"ORDER BY {sort_column} {order_dir}"
 
     offset_start = (page - 1) * page_size
 
@@ -88,6 +92,13 @@ def search_transactions(
             WHERE transaction_date >= %s AND transaction_date <= %s AND category = %s
         """
         count_params: tuple = (start_date.isoformat(), end_date.isoformat(), category)
+        if is_debit is not None:
+            count_sql = count_sql.replace(
+                "category = %s",
+                "category = %s AND is_debit = %s",
+            )
+            count_params = (*count_params, bool(is_debit))
+
         data_sql = f"""
             SELECT {_COLS} FROM transactions
             WHERE transaction_date >= %s AND transaction_date <= %s AND category = %s
@@ -95,12 +106,32 @@ def search_transactions(
             LIMIT %s OFFSET %s
         """
         data_params = (start_date.isoformat(), end_date.isoformat(), category, page_size, offset_start)
+        if is_debit is not None:
+            data_sql = data_sql.replace(
+                "category = %s",
+                "category = %s AND is_debit = %s",
+            )
+            data_params = (
+                start_date.isoformat(),
+                end_date.isoformat(),
+                category,
+                bool(is_debit),
+                page_size,
+                offset_start,
+            )
     else:
         count_sql = """
             SELECT COUNT(*) AS n FROM transactions
             WHERE transaction_date >= %s AND transaction_date <= %s
         """
         count_params = (start_date.isoformat(), end_date.isoformat())
+        if is_debit is not None:
+            count_sql = count_sql.replace(
+                "transaction_date <= %s",
+                "transaction_date <= %s AND is_debit = %s",
+            )
+            count_params = (*count_params, bool(is_debit))
+
         data_sql = f"""
             SELECT {_COLS} FROM transactions
             WHERE transaction_date >= %s AND transaction_date <= %s
@@ -108,6 +139,18 @@ def search_transactions(
             LIMIT %s OFFSET %s
         """
         data_params = (start_date.isoformat(), end_date.isoformat(), page_size, offset_start)
+        if is_debit is not None:
+            data_sql = data_sql.replace(
+                "transaction_date <= %s",
+                "transaction_date <= %s AND is_debit = %s",
+            )
+            data_params = (
+                start_date.isoformat(),
+                end_date.isoformat(),
+                bool(is_debit),
+                page_size,
+                offset_start,
+            )
 
     with get_connection() as conn:
         count_rows = execute_query(count_sql, count_params, conn=conn)
@@ -126,12 +169,7 @@ def search_transactions(
         sort_column,
         "DESC" if sort_desc else "ASC",
     )
-    return TransactionsSearchResult(
-        total=total_count,
-        page=page,
-        page_size=page_size,
-        items=items,
-    )
+    return TransactionsSearchResult(total=total_count, page=page, page_size=page_size, items=items)
 
 
 @router.get("/export")
@@ -182,12 +220,13 @@ def create_transaction(payload: TransactionCreate) -> TransactionResponse:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     sql = """
-        INSERT INTO transactions (amount, category, transaction_date, description)
-        VALUES (%s, %s, %s, %s)
-        RETURNING id, amount, category, transaction_date, description, created_at, updated_at, version_no
+        INSERT INTO transactions (amount, is_debit, category, transaction_date, description)
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING id, amount, is_debit, category, transaction_date, description, created_at, updated_at, version_no
     """
     params = (
         float(payload.amount),
+        bool(payload.is_debit),
         payload.category.strip(),
         payload.transaction_date.isoformat(),
         payload.description,
@@ -231,7 +270,7 @@ def update_transaction(transaction_id: UUID, payload: TransactionUpdate) -> Tran
     sql = (
         "UPDATE transactions SET "
         + ", ".join(set_parts)
-        + " WHERE id = %s RETURNING id, amount, category, transaction_date, description, created_at, updated_at, version_no"
+        + " WHERE id = %s RETURNING id, amount, is_debit, category, transaction_date, description, created_at, updated_at, version_no"
     )
     with get_connection() as conn:
         rows = execute_update_returning(sql, tuple(params), conn=conn)
@@ -253,6 +292,3 @@ def delete_transaction(transaction_id: UUID) -> None:
         raise HTTPException(status_code=404, detail="Transaction not found")
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info("delete_transaction completed in %.1f ms (id=%s)", elapsed_ms, transaction_id)
-
-
-

@@ -32,8 +32,21 @@ def render_search() -> None:
         st.session_state.editing_transaction = None
     if "deleting_transaction" not in st.session_state:
         st.session_state.deleting_transaction = None
+    if "search_query_signature" not in st.session_state:
+        st.session_state.search_query_signature = None
+    if "search_cached_result" not in st.session_state:
+        st.session_state.search_cached_result = None
     try:
-        start_date, end_date, category, page_size, sort_column, sort_desc_bool, search_clicked = render_search_filters()
+        (
+            start_date,
+            end_date,
+            category,
+            is_debit_filter,
+            page_size,
+            sort_column,
+            _sort_desc_bool,
+            search_clicked,
+        ) = render_search_filters()
 
         if start_date > end_date:
             st.error("From date must be on or before To date.")
@@ -53,19 +66,41 @@ def render_search() -> None:
                     st.error("Internal error: invalid sort column selected. Please try again.")
                     return
 
-                api_result = api_search_transactions(
-                    start_date=start_date,
-                    end_date=end_date,
-                    category=category,
-                    sort_column=sort_col,
-                    sort_desc=sort_desc,
-                    page=page,
-                    page_size=page_size,
+                query_signature = (
+                    start_date.isoformat(),
+                    end_date.isoformat(),
+                    category,
+                    is_debit_filter,
+                    sort_col,
+                    sort_desc,
+                    page,
+                    page_size,
+                )
+                should_fetch = (
+                    search_clicked
+                    or st.session_state.search_query_signature != query_signature
+                    or st.session_state.search_cached_result is None
                 )
 
+                if should_fetch:
+                    api_result = api_search_transactions(
+                        start_date=start_date,
+                        end_date=end_date,
+                        category=category,
+                        is_debit=is_debit_filter,
+                        sort_column=sort_col,
+                        sort_desc=sort_desc,
+                        page=page,
+                        page_size=page_size,
+                    )
+                    st.session_state.search_cached_result = api_result
+                    st.session_state.search_query_signature = query_signature
+                else:
+                    api_result = st.session_state.search_cached_result
+
                 total_count = int(api_result.get("total", 0))
-                st.session_state.search_results_total = total_count
                 rows = api_result.get("items", []) or []
+                st.session_state.search_results_total = total_count
 
                 if total_count == 0:
                     st.info("No transactions found for the selected filters.")

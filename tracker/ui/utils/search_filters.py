@@ -55,7 +55,7 @@ def render_search_filters():
     with col12:
         end_date = st.date_input("To Date", key="search_end_date")
 
-    col21, col22, _ = st.columns([1, 1, 1])
+    col21, col22, col23 = st.columns([1, 1, 1])
     with col21:
         category = st.selectbox(
             "Category (optional)",
@@ -63,7 +63,19 @@ def render_search_filters():
             index=0,
         )
     with col22:
+        credit_debit = st.selectbox(
+            "Credit/Debit (optional)",
+            options=["All", "Credit", "Debit"],
+            index=0,
+        )
+    with col23:
         page_size = st.number_input("Per page", min_value=5, max_value=50, value=10, step=5)
+
+    is_debit_filter = None
+    if credit_debit == "Debit":
+        is_debit_filter = True
+    elif credit_debit == "Credit":
+        is_debit_filter = False
 
     sort_options = [
         ("Date", "transaction_date"),
@@ -126,4 +138,4 @@ def render_search_filters():
                     logger.error("Export CSV unexpected error: %s", e, exc_info=True)
                     st.error(GENERIC_ERROR_MSG)
 
-    return start_date, end_date, category, page_size, sort_column, sort_desc, search_clicked
+    return start_date, end_date, category, is_debit_filter, page_size, sort_column, sort_desc, search_clicked
