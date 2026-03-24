@@ -16,7 +16,8 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
   - Includes `chat.router.chat` for `/chat/invoke`, `/chat/resume`, and `/chat/exit`.
 - **Streamlit (`app.py`)**
   - Uses `common.logger.get_logger` to configure logging on startup.
-  - Renders two main tabs:
+  - Renders three main tabs:
+    - `Overview` tab: `tracker.ui.tabs.dashboard_tab.render_dashboard_overview`
     - `Transactions` tab: `tracker.ui.tabs.search_tab.render_search` and `tracker.ui.tabs.add_txn_tab.render_add_transaction`
     - `Chat` tab: `chat.ui.chat_tab.render_chat`
   - Communicates with FastAPI exclusively over HTTP via the client layer (`tracker.client`, `chat.client`, and `common.api_client`).
@@ -38,8 +39,15 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
 - `client.py`: HTTP client wrapper around the `/transactions` API (`search_transactions`, `create_transaction`, `export_transactions_csv`, `import_transactions_csv`, `update_transaction`, `delete_transaction`); used by the Streamlit Add and Search tabs.
 - `ui/`:
   - `common.py`: shared Streamlit helpers and common error messaging.
+  - `tabs/dashboard_tab.py`: overview page with summary cards, monthly insights, and 6-month spending trend chart.
   - `tabs/add_txn_tab.py`, `tabs/search_tab.py`: page-level layout and interactions.
   - `utils/import_csv_section.py`, `utils/search_filters.py`, `utils/search_results.py`: reusable UI pieces for CSV import, filters, and results table.
+
+#### Dashboard chart notes
+
+- The spending trend chart in `tracker.ui.tabs.dashboard_tab` uses Altair with Streamlit `width="stretch"` rendering.
+- The y-axis is explicitly controlled with a domain of `[0, max_spend + 30000]` to provide fixed headroom over current data.
+- Bar values are sanitized to finite numeric values before charting to avoid rendering failures from invalid inputs.
 
 ### Chat package (`chat/`)
 

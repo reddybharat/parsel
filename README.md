@@ -6,6 +6,7 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 
 - **FastAPI** — REST API for transactions: create, search, update (PATCH), delete; plus **Chat API** (invoke, resume, exit).
 - **Streamlit** — Frontend for transactions management and the finance chat.
+- **Dashboard Overview** — A Streamlit overview tab with KPI cards, recent transactions, and a 6-month spending trend bar chart (clean styling, taller chart area, dynamic y-axis headroom of `max + ₹30,000`).
 - **Chat / Finance Assistant** — Natural language questions about your transactions. Uses a LangGraph SQL agent (Gemini LLM) with tools: `list_tables`, `get_table_schema`, `query_checker`, `execute_query`, `get_current_date`. Answers summarize spending, breakdowns by category, and similar queries.
 - **Import from CSV** — Bulk-import transactions from a CSV with validation and row-level errors (API: `POST /transactions/import`).
 - **Export to CSV** — Export matching transactions as CSV for a date range and optional category (API: `GET /transactions/export`).
@@ -34,6 +35,7 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 │       ├── common.py           # Shared frontend helpers
 │       ├── tabs/
 │       │   ├── add_txn_tab.py
+│       │   ├── dashboard_tab.py
 │       │   └── search_tab.py
 │       └── utils/
 │           ├── import_csv_section.py   # Import from CSV
@@ -143,6 +145,12 @@ streamlit run app.py
 ```
 
 Opens at http://localhost:8501.
+
+### Dashboard chart behavior
+
+- Spending trend uses an Altair bar chart in `tracker/ui/tabs/dashboard_tab.py`.
+- Chart rendering now uses the Streamlit width API: `st.altair_chart(..., width="stretch")`.
+- Y-axis domain is explicitly set to `[0, max_spend + 30000]` to keep visual headroom above the tallest bar.
 
 ## API endpoints
 
