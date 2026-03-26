@@ -26,28 +26,26 @@ def render_search_filters():
         st.session_state.search_end_date = date.today()
 
     today = date.today()
+    quick_search_clicked = False
     qcol1, qcol2, qcol3, _ = st.columns([1, 1, 1, 2])
     with qcol1:
         if st.button("Today", use_container_width=True, key="quick_today"):
             st.session_state.search_start_date = today
             st.session_state.search_end_date = today
             st.session_state.search_page = 1
-            st.session_state.search_results_total = 0
-            st.rerun()
+            quick_search_clicked = True
     with qcol2:
         if st.button("Last 7 days", use_container_width=True, key="quick_7"):
             st.session_state.search_start_date = today - timedelta(days=6)
             st.session_state.search_end_date = today
             st.session_state.search_page = 1
-            st.session_state.search_results_total = 0
-            st.rerun()
+            quick_search_clicked = True
     with qcol3:
         if st.button("This month", use_container_width=True, key="quick_month"):
             st.session_state.search_start_date = today.replace(day=1)
             st.session_state.search_end_date = today
             st.session_state.search_page = 1
-            st.session_state.search_results_total = 0
-            st.rerun()
+            quick_search_clicked = True
 
     col11, col12, _ = st.columns([1, 1, 1])
     with col11:
@@ -58,18 +56,18 @@ def render_search_filters():
     col21, col22, col23 = st.columns([1, 1, 1])
     with col21:
         category = st.selectbox(
-            "Category (optional)",
+            "Category",
             options=["All"] + CATEGORIES,
             index=0,
         )
     with col22:
         credit_debit = st.selectbox(
-            "Credit/Debit (optional)",
+            "Credit/Debit",
             options=["All", "Credit", "Debit"],
             index=0,
         )
     with col23:
-        page_size = st.number_input("Per page", min_value=5, max_value=50, value=10, step=5)
+        page_size = st.number_input("Per page", min_value=10, max_value=50, value=15, step=5)
 
     is_debit_filter = None
     if credit_debit == "Debit":
@@ -111,31 +109,43 @@ def render_search_filters():
 
     col_search, col_export = st.columns(2)
     with col_search:
-        search_clicked = st.button("Search")
+        search_clicked = st.button("Search") or quick_search_clicked
         if search_clicked:
             st.session_state.search_page = 1
     with col_export:
-        has_results = st.session_state.get("search_results_total") not in (None, 0)
-        if has_results:
-            if st.button("Export to CSV", use_container_width=True, key="search_export_btn"):
+        has_searched = bool(st.session_state.get("search_has_run", False))
+        if has_searched:
+            export_signature = (
+                start_date.isoformat(),
+                end_date.isoformat(),
+                category,
+            )
+            cached_export_signature = st.session_state.get("search_export_signature")
+            csv_data = st.session_state.get("search_export_csv_data")
+            if cached_export_signature != export_signature or not csv_data:
                 try:
                     csv_data = export_transactions_csv(start_date, end_date, category)
-                    if csv_data:
-                        st.download_button(
-                            "Download CSV",
-                            data=csv_data,
-                            file_name=f"transactions_{start_date.isoformat()}_{end_date.isoformat()}.csv",
-                            mime="text/csv",
-                            use_container_width=True,
-                            key="search_export_csv",
-                        )
-                    else:
-                        st.caption("No data to export for current filters.")
+                    st.session_state.search_export_signature = export_signature
+                    st.session_state.search_export_csv_data = csv_data
                 except ApiClientError as e:
                     logger.error("Export CSV API error: %s", e, exc_info=True)
                     st.error(GENERIC_ERROR_MSG)
+                    csv_data = ""
                 except Exception as e:
                     logger.error("Export CSV unexpected error: %s", e, exc_info=True)
                     st.error(GENERIC_ERROR_MSG)
+                    csv_data = ""
+
+            if csv_data:
+                st.download_button(
+                    "Export CSV",
+                    data=csv_data,
+                    file_name=f"transactions_{start_date.isoformat()}_{end_date.isoformat()}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key="search_export_csv",
+                )
+            else:
+                st.caption("No data to export for current filters.")
 
     return start_date, end_date, category, is_debit_filter, page_size, sort_column, sort_desc, search_clicked
