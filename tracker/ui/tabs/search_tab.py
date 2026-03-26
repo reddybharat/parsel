@@ -36,6 +36,8 @@ def render_search() -> None:
         st.session_state.search_query_signature = None
     if "search_cached_result" not in st.session_state:
         st.session_state.search_cached_result = None
+    if "search_has_run" not in st.session_state:
+        st.session_state.search_has_run = False
     try:
         (
             start_date,
@@ -51,6 +53,8 @@ def render_search() -> None:
         if start_date > end_date:
             st.error("From date must be on or before To date.")
         else:
+            if search_clicked:
+                st.session_state.search_has_run = True
             total_from_last = st.session_state.search_results_total
             run_query = search_clicked or (total_from_last is not None)
 

@@ -1,12 +1,14 @@
-from datetime import date, datetime
+from datetime import date
 from typing import Optional
 from uuid import UUID
 import time
 
 from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile
+from sqlalchemy import case, delete, func, insert, select, update
 
 from common.database import get_connection
 from common.logger import get_logger
+from tracker.models import Transaction
 from tracker.schemas import (
     TransactionCreate,
     TransactionResponse,
@@ -14,50 +16,28 @@ from tracker.schemas import (
     TransactionUpdate,
 )
 from tracker.services import export_transactions_csv, import_transactions_from_csv
-from tracker.utils.db import (
-    execute_insert,
-    execute_query,
-    execute_update_delete,
-    execute_update_returning,
-)
 from tracker.validations import validate_transaction_date
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
-_COLS = "id, amount, is_debit, category, transaction_date, description, created_at, updated_at, version_no"
 
-
-def _parse_datetime(value) -> datetime:
-    if value is None:
-        raise ValueError("created_at/updated_at cannot be null")
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, str):
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    raise ValueError(f"Unexpected type for datetime: {type(value)}")
-
-
-def _record_to_response(record: dict) -> TransactionResponse:
+def _to_response(tx: Transaction) -> TransactionResponse:
     return TransactionResponse(
-        id=str(record["id"]),
-        amount=float(record["amount"]),
-        is_debit=bool(record["is_debit"]),
-        category=record["category"],
-        transaction_date=(
-            record["transaction_date"]
-            if isinstance(record["transaction_date"], date)
-            else date.fromisoformat(record["transaction_date"])
-        ),
-        description=record.get("description"),
-        created_at=_parse_datetime(record["created_at"]),
-        updated_at=_parse_datetime(record["updated_at"]),
-        version_no=int(record["version_no"]),
+        id=str(tx.id),
+        amount=float(tx.amount),
+        is_debit=bool(tx.is_debit),
+        category=tx.category,
+        transaction_date=tx.transaction_date,
+        description=tx.description,
+        created_at=tx.created_at,
+        updated_at=tx.updated_at,
+        version_no=int(tx.version_no),
     )
 
 
 @router.get("/search", response_model=TransactionsSearchResult)
-def search_transactions(
+async def search_transactions(
     start_date: date = Query(...),
     end_date: date = Query(...),
     category: Optional[str] = Query(None),
@@ -78,86 +58,51 @@ def search_transactions(
             detail=f"Invalid sort_column. Allowed values: {', '.join(sorted(allowed_sort_columns))}",
         )
 
-    order_dir = "DESC" if sort_desc else "ASC"
-    if sort_column == "amount":
-        order_clause = f"ORDER BY CASE WHEN is_debit THEN -amount ELSE amount END {order_dir}"
-    else:
-        order_clause = f"ORDER BY {sort_column} {order_dir}"
-
     offset_start = (page - 1) * page_size
 
+    where_parts = [
+        Transaction.transaction_date >= start_date,
+        Transaction.transaction_date <= end_date,
+    ]
     if category and category != "All":
-        count_sql = """
-            SELECT COUNT(*) AS n FROM transactions
-            WHERE transaction_date >= %s AND transaction_date <= %s AND category = %s
-        """
-        count_params: tuple = (start_date.isoformat(), end_date.isoformat(), category)
-        if is_debit is not None:
-            count_sql = count_sql.replace(
-                "category = %s",
-                "category = %s AND is_debit = %s",
-            )
-            count_params = (*count_params, bool(is_debit))
+        where_parts.append(Transaction.category == category)
+    if is_debit is not None:
+        where_parts.append(Transaction.is_debit == bool(is_debit))
 
-        data_sql = f"""
-            SELECT {_COLS} FROM transactions
-            WHERE transaction_date >= %s AND transaction_date <= %s AND category = %s
-            {order_clause}
-            LIMIT %s OFFSET %s
-        """
-        data_params = (start_date.isoformat(), end_date.isoformat(), category, page_size, offset_start)
-        if is_debit is not None:
-            data_sql = data_sql.replace(
-                "category = %s",
-                "category = %s AND is_debit = %s",
+    if sort_column == "amount":
+        # Mixed debit+credit views should use signed values for correct net ordering.
+        # Single-side filters (only debit or only credit) should sort by raw amount
+        # so "largest transaction" remains intuitive.
+        if is_debit is None:
+            order_by = case(
+                (Transaction.is_debit.is_(True), -Transaction.amount),
+                else_=Transaction.amount,
             )
-            data_params = (
-                start_date.isoformat(),
-                end_date.isoformat(),
-                category,
-                bool(is_debit),
-                page_size,
-                offset_start,
-            )
+        else:
+            order_by = Transaction.amount
     else:
-        count_sql = """
-            SELECT COUNT(*) AS n FROM transactions
-            WHERE transaction_date >= %s AND transaction_date <= %s
-        """
-        count_params = (start_date.isoformat(), end_date.isoformat())
-        if is_debit is not None:
-            count_sql = count_sql.replace(
-                "transaction_date <= %s",
-                "transaction_date <= %s AND is_debit = %s",
-            )
-            count_params = (*count_params, bool(is_debit))
+        order_by = Transaction.transaction_date
+    order_by = order_by.desc() if sort_desc else order_by.asc()
 
-        data_sql = f"""
-            SELECT {_COLS} FROM transactions
-            WHERE transaction_date >= %s AND transaction_date <= %s
-            {order_clause}
-            LIMIT %s OFFSET %s
-        """
-        data_params = (start_date.isoformat(), end_date.isoformat(), page_size, offset_start)
-        if is_debit is not None:
-            data_sql = data_sql.replace(
-                "transaction_date <= %s",
-                "transaction_date <= %s AND is_debit = %s",
+    async with get_connection() as session:
+        total_count = int(
+            (
+                await session.execute(
+                    select(func.count()).select_from(Transaction).where(*where_parts)
+                )
+            ).scalar_one()
+        )
+        rows = (
+            await session.execute(
+                select(Transaction)
+                .where(*where_parts)
+                .order_by(order_by)
+                .offset(offset_start)
+                .limit(page_size)
             )
-            data_params = (
-                start_date.isoformat(),
-                end_date.isoformat(),
-                bool(is_debit),
-                page_size,
-                offset_start,
-            )
+        ).scalars().all()
 
-    with get_connection() as conn:
-        count_rows = execute_query(count_sql, count_params, conn=conn)
-        total_count = int(count_rows[0]["n"]) if count_rows else 0
-        rows = execute_query(data_sql, data_params, conn=conn)
-
-    items = [_record_to_response(r) for r in rows]
+    items = [_to_response(r) for r in rows]
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
         "search_transactions completed in %.1f ms (total=%d, page=%d, page_size=%d, category=%s, sort=%s %s)",
@@ -173,13 +118,13 @@ def search_transactions(
 
 
 @router.get("/export")
-def export_transactions(
+async def export_transactions(
     start_date: date = Query(...),
     end_date: date = Query(...),
     category: Optional[str] = Query(None),
 ) -> Response:
     t0 = time.perf_counter()
-    csv_data = export_transactions_csv(start_date, end_date, category)
+    csv_data = await export_transactions_csv(start_date, end_date, category)
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
         "export_transactions completed in %.1f ms (category=%s, range=%s..%s)",
@@ -201,7 +146,7 @@ def export_transactions(
 async def import_transactions(file: UploadFile = File(...)) -> dict:
     t0 = time.perf_counter()
     content = await file.read()
-    inserted, errors = import_transactions_from_csv(content)
+    inserted, errors = await import_transactions_from_csv(content)
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
         "import_transactions completed in %.1f ms (inserted=%d, errors=%d)",
@@ -213,36 +158,35 @@ async def import_transactions(file: UploadFile = File(...)) -> dict:
 
 
 @router.post("", response_model=TransactionResponse)
-def create_transaction(payload: TransactionCreate) -> TransactionResponse:
+async def create_transaction(payload: TransactionCreate) -> TransactionResponse:
     t0 = time.perf_counter()
     try:
         validate_transaction_date(payload.transaction_date)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    sql = """
-        INSERT INTO transactions (amount, is_debit, category, transaction_date, description)
-        VALUES (%s, %s, %s, %s, %s)
-        RETURNING id, amount, is_debit, category, transaction_date, description, created_at, updated_at, version_no
-    """
-    params = (
-        float(payload.amount),
-        bool(payload.is_debit),
-        payload.category.strip(),
-        payload.transaction_date.isoformat(),
-        payload.description,
+    stmt = (
+        insert(Transaction)
+        .values(
+            amount=float(payload.amount),
+            is_debit=bool(payload.is_debit),
+            category=payload.category.strip(),
+            transaction_date=payload.transaction_date,
+            description=payload.description,
+        )
+        .returning(Transaction)
     )
-    with get_connection() as conn:
-        rows = execute_insert(sql, params, conn=conn)
-    if not rows:
+    async with get_connection() as session:
+        row = (await session.execute(stmt)).scalar_one_or_none()
+    if row is None:
         raise HTTPException(status_code=500, detail="Insert failed")
-    result = _record_to_response(rows[0])
+    result = _to_response(row)
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info("create_transaction completed in %.1f ms (id=%s)", elapsed_ms, result.id)
     return result
 
 
 @router.patch("/{transaction_id}", response_model=TransactionResponse)
-def update_transaction(transaction_id: UUID, payload: TransactionUpdate) -> TransactionResponse:
+async def update_transaction(transaction_id: UUID, payload: TransactionUpdate) -> TransactionResponse:
     t0 = time.perf_counter()
     payload_dict = payload.model_dump(exclude_unset=True)
     if not payload_dict:
@@ -254,40 +198,35 @@ def update_transaction(transaction_id: UUID, payload: TransactionUpdate) -> Tran
             raise HTTPException(status_code=400, detail=str(e))
     if "amount" in payload_dict:
         payload_dict["amount"] = float(payload_dict["amount"])
-    if "transaction_date" in payload_dict:
-        payload_dict["transaction_date"] = payload_dict["transaction_date"].isoformat()
     if "category" in payload_dict and payload_dict["category"] is not None:
         payload_dict["category"] = payload_dict["category"].strip()
 
-    set_parts = []
-    params = []
-    for k, v in payload_dict.items():
-        set_parts.append(f"{k} = %s")
-        params.append(v)
-    set_parts.append("updated_at = now()")
-    set_parts.append("version_no = version_no + 1")
-    params.append(str(transaction_id))
-    sql = (
-        "UPDATE transactions SET "
-        + ", ".join(set_parts)
-        + " WHERE id = %s RETURNING id, amount, is_debit, category, transaction_date, description, created_at, updated_at, version_no"
+    payload_dict["updated_at"] = func.now()
+    payload_dict["version_no"] = Transaction.version_no + 1
+
+    stmt = (
+        update(Transaction)
+        .where(Transaction.id == transaction_id)
+        .values(**payload_dict)
+        .returning(Transaction)
     )
-    with get_connection() as conn:
-        rows = execute_update_returning(sql, tuple(params), conn=conn)
-    if not rows:
+    async with get_connection() as session:
+        row = (await session.execute(stmt)).scalar_one_or_none()
+    if row is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    result = _record_to_response(rows[0])
+    result = _to_response(row)
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info("update_transaction completed in %.1f ms (id=%s)", elapsed_ms, result.id)
     return result
 
 
 @router.delete("/{transaction_id}", status_code=204)
-def delete_transaction(transaction_id: UUID) -> None:
+async def delete_transaction(transaction_id: UUID) -> None:
     t0 = time.perf_counter()
-    sql = "DELETE FROM transactions WHERE id = %s"
-    with get_connection() as conn:
-        rowcount = execute_update_delete(sql, (str(transaction_id),), conn=conn)
+    stmt = delete(Transaction).where(Transaction.id == transaction_id)
+    async with get_connection() as session:
+        result = await session.execute(stmt)
+        rowcount = result.rowcount or 0
     if rowcount == 0:
         raise HTTPException(status_code=404, detail="Transaction not found")
     elapsed_ms = (time.perf_counter() - t0) * 1000

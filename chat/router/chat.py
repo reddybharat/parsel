@@ -31,10 +31,10 @@ async def chat_invoke(body: dict[str, Any]) -> dict:
 
 
 @router.post("/resume")
-def chat_resume(body: dict | None = None) -> dict:
+async def chat_resume(body: dict | None = None) -> dict:
     return {"status": "resume_not_implemented"}
 
 
 @router.post("/exit")
-def chat_exit(body: dict | None = None) -> dict:
+async def chat_exit(body: dict | None = None) -> dict:
     return {"status": "ok"}

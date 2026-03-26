@@ -1,18 +1,21 @@
 """
-Shared PostgreSQL connection via DATABASE_URL.
-
-Used by tracker (CRUD) and chat (read-only agent). Provides only connection
-creation and lifecycle; execute/query helpers live in tracker and chat utilities.
+Shared SQLAlchemy async PostgreSQL engine/session utilities.
 """
 
 import os
-from contextlib import contextmanager
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
-import psycopg2
-from psycopg2.pool import SimpleConnectionPool
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 _DATABASE_URL: str | None = None
-_POOL: SimpleConnectionPool | None = None
+_ASYNC_ENGINE: AsyncEngine | None = None
+_SESSIONMAKER: async_sessionmaker[AsyncSession] | None = None
 
 
 def get_database_url() -> str:
@@ -21,10 +24,20 @@ def get_database_url() -> str:
     if _DATABASE_URL is None:
         _DATABASE_URL = os.getenv("DATABASE_URL")
     if not _DATABASE_URL:
-        raise ValueError(
-            "DATABASE_URL must be set in .env to use database."
-        )
+        raise ValueError("DATABASE_URL must be set in .env to use database.")
     return _DATABASE_URL
+
+
+def get_async_database_url() -> str:
+    """Normalize DB URL for SQLAlchemy asyncpg dialect."""
+    raw = get_database_url().strip()
+    if raw.startswith("postgresql+asyncpg://"):
+        return raw
+    if raw.startswith("postgresql://"):
+        return raw.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if raw.startswith("postgres://"):
+        return raw.replace("postgres://", "postgresql+asyncpg://", 1)
+    return raw
 
 
 def is_database_configured() -> bool:
@@ -32,27 +45,47 @@ def is_database_configured() -> bool:
     return bool(os.getenv("DATABASE_URL"))
 
 
-def _get_pool() -> SimpleConnectionPool:
-    global _POOL
-    if _POOL is None:
-        _POOL = SimpleConnectionPool(
-            minconn=1,
-            maxconn=5,
-            dsn=get_database_url(),
+def get_async_engine() -> AsyncEngine:
+    global _ASYNC_ENGINE
+    if _ASYNC_ENGINE is None:
+        _ASYNC_ENGINE = create_async_engine(
+            get_async_database_url(),
+            pool_pre_ping=True,
+            future=True,
         )
-    return _POOL
+    return _ASYNC_ENGINE
 
 
-@contextmanager
-def get_connection():
-    """Context manager yielding a DB connection. Commits on success, rolls back on exception."""
-    pool = _get_pool()
-    conn = pool.getconn()
+def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
+    global _SESSIONMAKER
+    if _SESSIONMAKER is None:
+        _SESSIONMAKER = async_sessionmaker(
+            bind=get_async_engine(),
+            class_=AsyncSession,
+            expire_on_commit=False,
+            autoflush=False,
+        )
+    return _SESSIONMAKER
+
+
+@asynccontextmanager
+async def get_connection() -> AsyncIterator[AsyncSession]:
+    """
+    Async context manager for DB session.
+    Kept as `get_connection` for compatibility across existing imports.
+    """
+    session = get_sessionmaker()()
     try:
-        yield conn
-        conn.commit()
+        yield session
+        await session.commit()
     except Exception:
-        conn.rollback()
+        await session.rollback()
         raise
     finally:
-        pool.putconn(conn)
+        await session.close()
+
+
+async def get_db_session() -> AsyncIterator[AsyncSession]:
+    """FastAPI dependency helper yielding an AsyncSession."""
+    async with get_connection() as session:
+        yield session

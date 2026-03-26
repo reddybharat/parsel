@@ -10,7 +10,7 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 - **Chat / Finance Assistant** — Natural language questions about your transactions. Uses a LangGraph SQL agent (Gemini LLM) with tools: `list_tables`, `get_table_schema`, `query_checker`, `execute_query`, `get_current_date`. Answers summarize spending, breakdowns by category, and similar queries.
 - **Import from CSV** — Bulk-import transactions from a CSV with validation and row-level errors (API: `POST /transactions/import`).
 - **Export to CSV** — Export matching transactions as CSV for a date range and optional category (API: `GET /transactions/export`).
-- **Database** — Connects directly to PostgreSQL via `DATABASE_URL` for both tracker (CRUD) and chat (SQL tools). No Supabase client or RLS required for the app. A shared connection pool is used for API and Chat.
+- **Database** — Connects directly to PostgreSQL via `DATABASE_URL` for both tracker (CRUD) and chat (SQL tools). No Supabase client or RLS required for the app. Uses shared SQLAlchemy async engine/session (`asyncpg`).
 - **Fixed categories** — Transactions use one of: Grocery, Dining, Transportation, Utilities, Entertainment, Health, Housing, Personal, Investments, Misc, Income, Other Income, Refunds, Travel, Shopping, Subscriptions, Gifts, EMI, Rent (enforced in app and API)
 - **Validations** — Shared rules in `tracker.validations`: amount must be > 0, category required, transaction date cannot be in the future (enforced in app and API)
 - **Audit fields** — Transactions have `created_at`, `updated_at`, and `version_no`; the app sets them on insert/update (no DB triggers). API and search return and display them.
@@ -22,15 +22,16 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 ├── main.py                     # FastAPI app (tracker + chat routers)
 ├── common/
 │   ├── logger.py               # Shared logging config
-│   └── database.py             # Postgres connection only (session, get_connection)
+│   └── database.py             # SQLAlchemy async engine/session helpers
 ├── tracker/                    # Transaction management
-│   ├── utils/
-│   │   └── db.py               # Execute helpers (query, insert, update, delete)
+│   ├── models.py               # SQLAlchemy ORM model(s)
 │   ├── schemas.py              # Pydantic models (with category validation)
 │   ├── constants.py            # Allowed categories list
 │   ├── validations.py          # Shared validations (amount, category, date)
-│   ├── services.py             # CSV export, template, import
-│   ├── router.py               # Transaction API routes (search, create, update, delete, CSV export/import)
+│   ├── services.py             # Async CSV export/template/import + dashboard data
+│   ├── router/
+│   │   ├── transactions.py     # Async transactions API routes
+│   │   └── dashboard.py        # Async dashboard overview API
 │   └── ui/
 │       ├── common.py           # Shared frontend helpers
 │       ├── tabs/
@@ -43,9 +44,10 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 │           └── search_results.py      # Results table with edit/delete
 ├── chat/                       # Finance assistant
 │   ├── utils/                  # (reserved for shared chat helpers)
-│   ├── router.py               # Chat API routes (invoke, resume, exit)
+│   ├── router/
+│   │   └── chat.py             # Chat API routes (invoke, resume, exit)
 │   ├── agent/
-│   │   ├── graph.py            # Edgeless StateGraph, run_agent()
+│   │   ├── graph.py            # Edgeless StateGraph, run_agent_async()
 │   │   ├── nodes.py            # agent_node (create_agent + tools)
 │   │   ├── tools.py            # list_tables, get_table_schema, query_checker, execute_query, get_current_date
 │   │   ├── db_config.py        # Table names + schema text for tools
@@ -124,7 +126,7 @@ GOOGLE_API_KEY=your-gemini-api-key
 DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@db.YOUR_PROJECT_REF.supabase.co:5432/postgres
 ```
 
-- **DATABASE_URL** — Postgres connection string (Supabase: Dashboard → Connect → URI). Used for all tracker CRUD and for the Chat agent’s read-only SQL. If the password contains special characters (e.g. `#`), URL-encode them.
+- **DATABASE_URL** — Postgres connection string (Supabase: Dashboard → Connect → URI). Used by SQLAlchemy async (`postgresql+asyncpg`) for tracker CRUD and Chat SQL tools. `postgresql://` and `postgres://` are normalized automatically.
 - **GOOGLE_API_KEY** — From [Google AI Studio](https://ai.google.dev/gemini-api/docs/api-key). Required for the Chat (Finance Assistant) tab.
 
 ### 4. Run the app

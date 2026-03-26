@@ -11,10 +11,9 @@ import json
 from datetime import datetime, timezone
 from typing import List
 
-import psycopg2
-import psycopg2.extras
 from langchain_core.prompts import PromptTemplate
 from langchain_core.tools import tool
+from sqlalchemy import text
 
 from chat.agent.llm import ainvoke_with_retry, get_llm
 from chat.agent.prompt import QUERY_CHECKER_PROMPT_TEMPLATE
@@ -99,7 +98,7 @@ async def query_checker(query: str) -> str:
 
 
 @tool("execute_query", args_schema=ExecuteQueryInputSchema)
-def execute_query(query: str) -> str:
+async def execute_query(query: str) -> str:
     """
     Run SQL against the database. On error, fix the query with query_checker
     and retry, or call get_table_schema if columns are wrong.
@@ -114,24 +113,18 @@ def execute_query(query: str) -> str:
         )
 
     try:
-        # --- pooled connection ---
-        with get_connection() as conn:
-            # --- execute & fetch ---
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(query.strip())
-                fetched = cur.fetchall()
+        async with get_connection() as session:
+            result = await session.execute(text(query.strip()))
+            fetched = result.mappings().all()
 
         rows = [dict(row) for row in fetched]
         logger.info("Query returned %d rows", len(rows))
         return json.dumps({"row_count": len(rows), "rows": rows}, default=str)
-    except psycopg2.Error as e:
+    except Exception as e:
         logger.error("execute_query failed: %s", e)
         return json.dumps(
             {"error": "Query execution failed. Please check your query and try again."}
         )
-    except Exception as e:
-        logger.error("execute_query unexpected error: %s", e)
-        return json.dumps({"error": "An unexpected error occurred."})
 
 
 @tool("get_current_date", args_schema=GetCurrentDateInputSchema)

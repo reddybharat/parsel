@@ -120,6 +120,9 @@ def _render_edit_form(row: dict, conn: Optional[Any] = None) -> None:
                 )
                 if "editing_transaction" in st.session_state:
                     del st.session_state.editing_transaction
+                # Force a fresh fetch after mutation.
+                st.session_state.search_cached_result = None
+                st.session_state.search_query_signature = None
                 st.session_state.search_last_message = ("Transaction updated.", "success")
                 st.rerun()
             except ApiClientError as e:
@@ -146,6 +149,13 @@ def _render_delete_confirm(row: dict, conn: Optional[Any] = None) -> None:
                 api_delete_transaction(transaction_id=str(row_id))
                 if "deleting_transaction" in st.session_state:
                     del st.session_state.deleting_transaction
+                # If the last item on a non-first page was deleted, move back one page.
+                current_page = int(st.session_state.get("search_page", 1))
+                if current_page > 1 and len(rows) == 1:
+                    st.session_state.search_page = current_page - 1
+                # Force a fresh fetch after mutation.
+                st.session_state.search_cached_result = None
+                st.session_state.search_query_signature = None
                 st.session_state.search_last_message = ("Transaction deleted.", "success")
                 st.rerun()
             except ApiClientError as e:

@@ -1,6 +1,6 @@
 """
 CSV export, template, and import for transactions.
-Uses tracker.utils.db and tracker.schemas; no UI dependencies.
+Uses SQLAlchemy async session and tracker schemas; no UI dependencies.
 """
 
 import csv
@@ -10,7 +10,9 @@ from datetime import date, datetime
 from typing import Optional
 
 from common.database import get_connection
-from tracker.utils.db import execute_query
+from sqlalchemy import select, text
+
+from tracker.models import Transaction
 from tracker.schemas import TransactionCreate
 
 # CSV column names (used for export, template, and import)
@@ -120,27 +122,26 @@ def _parse_amount(raw_amount: str) -> float:
     return float(s)
 
 
-def export_transactions_csv(
+async def export_transactions_csv(
     start_date: date, end_date: date, category: Optional[str]
 ) -> str:
     """Return CSV string for all transactions matching the given filters."""
-    sql = """
-        SELECT transaction_date, category, amount, is_debit, description
-        FROM transactions
-        WHERE transaction_date >= %s AND transaction_date <= %s
-        ORDER BY transaction_date ASC
-    """
-    params: tuple = (start_date.isoformat(), end_date.isoformat())
+    stmt = (
+        select(
+            Transaction.transaction_date,
+            Transaction.category,
+            Transaction.amount,
+            Transaction.is_debit,
+            Transaction.description,
+        )
+        .where(Transaction.transaction_date >= start_date)
+        .where(Transaction.transaction_date <= end_date)
+        .order_by(Transaction.transaction_date.asc())
+    )
     if category and category != "All":
-        sql = """
-            SELECT transaction_date, category, amount, is_debit, description
-            FROM transactions
-            WHERE transaction_date >= %s AND transaction_date <= %s AND category = %s
-            ORDER BY transaction_date ASC
-        """
-        params = (start_date.isoformat(), end_date.isoformat(), category)
-    with get_connection() as conn:
-        rows = execute_query(sql, params, conn=conn)
+        stmt = stmt.where(Transaction.category == category)
+    async with get_connection() as session:
+        rows = (await session.execute(stmt)).mappings().all()
 
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=CSV_FIELDS)
@@ -191,7 +192,7 @@ def transactions_csv_template() -> str:
     return output.getvalue()
 
 
-def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
+async def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
     """
     Parse CSV content and insert valid rows into the transactions table.
 
@@ -216,7 +217,7 @@ def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
         ]
 
     errors: list[str] = []
-    rows_to_insert: list[tuple] = []
+    rows_to_insert: list[dict] = []
 
     for idx, row in enumerate(reader, start=2):
         try:
@@ -260,32 +261,27 @@ def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
                 is_debit=parsed_is_debit,
             )
             rows_to_insert.append(
-                (
-                    float(tx.amount),
-                    bool(tx.is_debit),
-                    tx.category.strip(),
-                    tx.transaction_date.isoformat(),
-                    tx.description,
-                )
+                {
+                    "amount": float(tx.amount),
+                    "is_debit": bool(tx.is_debit),
+                    "category": tx.category.strip(),
+                    "transaction_date": tx.transaction_date,
+                    "description": tx.description,
+                }
             )
         except Exception as e:
             errors.append(f"Row {idx}: {e}")
 
     inserted_count = 0
     if rows_to_insert:
-        sql = """
-            INSERT INTO transactions (amount, is_debit, category, transaction_date, description)
-            VALUES (%s, %s, %s, %s, %s)
-        """
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.executemany(sql, rows_to_insert)
+        async with get_connection() as session:
+            await session.execute(Transaction.__table__.insert(), rows_to_insert)
         inserted_count = len(rows_to_insert)
 
     return inserted_count, errors
 
 
-def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict:
+async def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict:
     """Return dashboard summary, trend, recent, and highlights in one query."""
     months = max(1, min(int(months), 24))
     recent_limit = max(1, min(int(recent_limit), 20))
@@ -296,7 +292,7 @@ def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict:
           SELECT
             date_trunc('month', CURRENT_DATE)::date AS month_now_start,
             (date_trunc('month', CURRENT_DATE) + interval '1 month')::date AS month_next_start,
-            (date_trunc('month', CURRENT_DATE) - (%s::int * interval '1 month'))::date AS trend_start
+            (date_trunc('month', CURRENT_DATE) - (CAST(:trend_offset AS int) * interval '1 month'))::date AS trend_start
         ),
         summary AS (
           SELECT
@@ -359,7 +355,7 @@ def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict:
             SELECT id, transaction_date, category, amount, is_debit, description, created_at
             FROM transactions
             ORDER BY transaction_date DESC, created_at DESC
-            LIMIT %s
+            LIMIT :recent_limit
           ) x
         ),
         top_category AS (
@@ -395,7 +391,7 @@ def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict:
               END
             ),
             'trend', json_build_object(
-              'months', %s,
+              'months', CAST(:months AS int),
               'points', COALESCE(t.points, '[]'::json)
             ),
             'recent', json_build_object(
@@ -415,13 +411,17 @@ def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict:
         CROSS JOIN recent r
         CROSS JOIN totals tt
     """
-    with get_connection() as conn:
-        rows = execute_query(
-            sql,
-            (trend_offset, recent_limit, months),
-            conn=conn,
+    async with get_connection() as session:
+        result = await session.execute(
+            text(sql),
+            {
+                "trend_offset": trend_offset,
+                "recent_limit": recent_limit,
+                "months": months,
+            },
         )
-    raw_overview = (rows[0] if rows else {}).get("overview", {})
+        row = result.mappings().first()
+    raw_overview = (row or {}).get("overview", {})
     if isinstance(raw_overview, str):
         return json.loads(raw_overview)
     if isinstance(raw_overview, dict):
