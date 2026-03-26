@@ -69,11 +69,19 @@ async def search_transactions(
     if is_debit is not None:
         where_parts.append(Transaction.is_debit == bool(is_debit))
 
-    order_by = (
-        case((Transaction.is_debit.is_(True), -Transaction.amount), else_=Transaction.amount)
-        if sort_column == "amount"
-        else Transaction.transaction_date
-    )
+    if sort_column == "amount":
+        # Mixed debit+credit views should use signed values for correct net ordering.
+        # Single-side filters (only debit or only credit) should sort by raw amount
+        # so "largest transaction" remains intuitive.
+        if is_debit is None:
+            order_by = case(
+                (Transaction.is_debit.is_(True), -Transaction.amount),
+                else_=Transaction.amount,
+            )
+        else:
+            order_by = Transaction.amount
+    else:
+        order_by = Transaction.transaction_date
     order_by = order_by.desc() if sort_desc else order_by.asc()
 
     async with get_connection() as session:
