@@ -1,7 +1,6 @@
 """Components for rendering search results table and edit/delete actions on the Search tab."""
 
 from datetime import date, datetime
-from typing import Any, Optional
 
 import streamlit as st
 
@@ -61,7 +60,7 @@ def _format_audit_ts(value) -> str:
     return s[:16] if len(s) > 16 else s
 
 
-def _render_edit_form(row: dict, conn: Optional[Any] = None) -> None:
+def _render_edit_form(row: dict) -> None:
     row_id = row.get("id")
     if not row_id:
         return
@@ -170,9 +169,7 @@ def _render_edit_form(row: dict, conn: Optional[Any] = None) -> None:
                 st.error(GENERIC_ERROR_MSG)
 
 
-def _render_delete_confirm(
-    row: dict, conn: Optional[Any] = None, *, page_row_count: int = 1
-) -> None:
+def _render_delete_confirm(row: dict, *, page_row_count: int = 1) -> None:
     row_id = row.get("id")
     if not row_id:
         return
@@ -221,9 +218,8 @@ def _render_delete_confirm(
             st.rerun()
 
 
-def render_search_results(rows: list[dict], total_count: int | None, page_size: int, conn=None) -> None:
-    """Render the paginated search results table with edit/delete actions.
-    conn: optional DB connection to reuse for update/delete (avoids extra connection per run)."""
+def render_search_results(rows: list[dict], total_count: int | None, page_size: int) -> None:
+    """Render the paginated search results table with edit/delete actions."""
     if not rows:
         return
 
@@ -251,12 +247,11 @@ def render_search_results(rows: list[dict], total_count: int | None, page_size: 
         st.rerun()
 
     if st.session_state.get("editing_transaction"):
-        _render_edit_form(st.session_state.editing_transaction, conn=conn)
+        _render_edit_form(st.session_state.editing_transaction)
         st.divider()
     if st.session_state.get("deleting_transaction"):
         _render_delete_confirm(
             st.session_state.deleting_transaction,
-            conn=conn,
             page_row_count=len(rows),
         )
         st.divider()

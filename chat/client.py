@@ -18,3 +18,4 @@ def chat_exit(payload: dict[str, Any] | None = None) -> dict[str, Any]:
     body: dict[str, Any] | None = payload if payload is not None else {}
     return post("/chat/exit", json=body)
 
+
