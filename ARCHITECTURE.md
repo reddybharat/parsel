@@ -3,7 +3,7 @@
 This project is organized around two feature packages — **tracker** and **chat** — plus a small **common** package for shared utilities.
 
 - **common/**: shared logging and SQLAlchemy async database engine/session helpers.
-- **tracker/**: all transaction CRUD, validations, CSV import/export, FastAPI routes, and Streamlit UI tabs for Add/Search.
+- **tracker/**: all transaction CRUD, validations, CSV import/export, FastAPI routes, and Streamlit **Ledger** UI (Search + Add).
 - **chat/**: the LangGraph-based finance assistant (agent), its FastAPI APIs, and the Streamlit Chat tab.
 
 Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_URL`** environment variable. There is **no Supabase client** in the runtime path; Supabase is only a convenient way to host Postgres if you choose.
@@ -16,10 +16,11 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
   - Includes `chat.router.chat` for `/chat/invoke`, `/chat/resume`, and `/chat/exit`.
 - **Streamlit (`app.py`)**
   - Uses `common.logger.get_logger` to configure logging on startup.
-  - Renders three main tabs:
-    - `Overview` tab: `tracker.ui.tabs.dashboard_tab.render_dashboard_overview`
-    - `Transactions` tab: `tracker.ui.tabs.search_tab.render_search` and `tracker.ui.tabs.add_txn_tab.render_add_transaction`
-    - `Chat` tab: `chat.ui.chat_tab.render_chat`
+  - Applies global styles via `tracker.ui.common.apply_theme` (coffee-themed CSS for buttons, inputs, and layout).
+  - Top navigation: **Overview**, **Ledger**, **AI Chat**.
+    - **Overview**: `tracker.ui.tabs.dashboard_tab.render_dashboard_overview`
+    - **Ledger** (sub-nav **Search** | **Add**): `tracker.ui.tabs.search_tab.render_search` and `tracker.ui.tabs.add_txn_tab.render_add_transaction`
+    - **AI Chat**: `chat.ui.chat_tab.render_chat`
   - Communicates with FastAPI exclusively over HTTP via the client layer (`tracker.client`, `chat.client`, and `common.api_client`).
 ### Common package (`common/`)
 
@@ -29,19 +30,19 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
 
 ### Tracker package (`tracker/`)
 
-- `models.py`: SQLAlchemy ORM models (`Base`, `Transaction`) mapped to `transactions`.
-- `schemas.py`: Pydantic models for request/response payloads and internal use.
-- `constants.py`: fixed list of allowed categories and any other domain constants.
-- `validations.py`: shared validation helpers (amount > 0, category required, date not in future, etc.).
-- `services.py`: async CSV and dashboard data logic using SQLAlchemy async sessions and ORM/text queries.
-- `router/transactions.py`: async FastAPI router exposing CRUD endpoints for `/transactions` (search, export, import, create, update, delete) using SQLAlchemy ORM + async session.
+- `models.py`: SQLAlchemy ORM models (`Base`, `Transaction`) mapped to `transactions` (includes `payment_method`).
+- `schemas.py`: Pydantic models for request/response payloads and internal use (create/update/response include `payment_method`; create defaults omitted values to **Other**).
+- `constants.py`: fixed allowlists — `CATEGORIES`, `PAYMENT_METHODS` (stored verbatim in the database).
+- `validations.py`: shared validation helpers (amount > 0, category required, payment method when provided, date not in future).
+- `services.py`: async CSV (columns include `payment_method`; import accepts optional column, default **Other**) and dashboard overview SQL (`get_dashboard_overview`, including recent rows with `payment_method`).
+- `router/transactions.py`: async FastAPI router exposing CRUD endpoints for `/transactions` (search with optional category/payment_method filters, export, import, create, update, delete) using SQLAlchemy ORM + async session.
 - `router/dashboard.py`: FastAPI router exposing a single overview endpoint under `/dashboard/overview`.
-- `client.py`: HTTP client wrapper around the `/transactions` API (`search_transactions`, `create_transaction`, `export_transactions_csv`, `import_transactions_csv`, `update_transaction`, `delete_transaction`); used by the Streamlit Add and Search tabs.
+- `client.py`: HTTP client wrapper around the `/transactions` API (`search_transactions`, `create_transaction`, `export_transactions_csv`, `import_transactions_csv`, `update_transaction`, `delete_transaction`); used by the Streamlit Ledger tabs.
 - `ui/`:
-  - `common.py`: shared Streamlit helpers and common error messaging.
+  - `common.py`: shared Streamlit helpers, database error copy, and `apply_theme()` (global CSS: form controls, primary/secondary/tertiary buttons, dashboard cards).
   - `tabs/dashboard_tab.py`: overview page with summary cards, monthly insights, and 6-month spending trend chart.
   - `tabs/add_txn_tab.py`, `tabs/search_tab.py`: page-level layout and interactions.
-  - `utils/import_csv_section.py`, `utils/search_filters.py`, `utils/search_results.py`: reusable UI pieces for CSV import, filters, and results table.
+  - `utils/import_csv_section.py`, `utils/search_filters.py`, `utils/search_results.py`: reusable UI pieces for CSV import, search filters (dates, category, payment method, sort, Search/Export), and results table (pagination, edit/delete, optional Material icon actions).
 
 #### Dashboard chart notes
 
@@ -55,7 +56,7 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
   - `graph.py`: constructs the LangGraph graph and exposes `run_agent`.
   - `nodes.py`: defines the core agent node and tool orchestration.
   - `tools.py`: `list_tables`, `get_table_schema`, `query_checker`, `execute_query`, `get_current_date`; `execute_query` uses async SQLAlchemy session from `common.database.get_connection()`.
-  - `db_config.py`: table names and schema text for the agent.
+  - `db_config.py`: table names and schema text for the agent (must stay aligned with `tracker.models` / Postgres, including `payment_method`).
   - `schema.py`: Pydantic `args_schema` models for tools.
   - `state.py`: the agent state (e.g., messages list).
   - `prompt.py`: system prompt and instructions for the agent.
@@ -65,13 +66,13 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
   - `POST /chat/resume` → stub endpoint signalling that resume is not yet implemented.
   - `POST /chat/exit` → stub endpoint for ending a session.
 - `client.py`: HTTP client wrapper for the chat API (`chat_invoke`, `chat_resume`, `chat_exit`); used by the Streamlit Chat tab.
-- `ui/chat_tab.py`: Streamlit tab that calls the chat API via `chat.client` and displays the conversation.
+- `ui/chat_tab.py`: Streamlit tab that calls the chat API via `chat.client`, displays the conversation, and shows stacked **quick prompts** (short suggested questions) when there is no history yet.
 
 ### High-level flow
 
 ```mermaid
 flowchart TD
-  streamlitApp["Streamlit app.py"] --> trackerUI["Transactions tab (Search, Add)"]
+  streamlitApp["Streamlit app.py"] --> trackerUI["Ledger tab (Search, Add)"]
   streamlitApp --> chatUI["chat.ui.chat_tab"]
   trackerUI --> trackerClient["tracker.client"]
   chatUI --> chatClient["chat.client"]
