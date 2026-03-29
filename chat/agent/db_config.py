@@ -5,7 +5,7 @@ The agent calls list_tables and get_table_schema to discover tables and columns.
 Keep this file in sync with your database when you add or change tables.
 """
 
-from tracker.constants import CATEGORIES
+from tracker.constants import CATEGORIES, PAYMENT_METHODS
 
 # Dialect label for query_checker (see QUERY_CHECKER_PROMPT_TEMPLATE in prompt.py)
 SQL_DIALECT = "postgresql"
@@ -23,6 +23,7 @@ Columns:
 - amount              numeric NOT NULL  — transaction amount in INR (always > 0)
 - is_debit            boolean NOT NULL  — True for Debit (spend), False for Credit (income)
 - category            text NOT NULL     — one of: {", ".join(CATEGORIES)}
+- payment_method      text NOT NULL     — one of: {", ".join(PAYMENT_METHODS)}
 - transaction_date    date NOT NULL
 - description         text NULL
 - created_at          timestamptz NOT NULL

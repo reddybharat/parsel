@@ -9,10 +9,10 @@ from chat.client import chat_invoke
 logger = get_logger(__name__)
 
 _SUGGESTED_QUESTIONS = [
-    "What is my total spend this month?",
-    "Show spending by category for this month",
-    "What are my last 10 transactions?",
-    "Where did I spend the most?",
+    "Total spend this month?",
+    "Category breakdown this month?",
+    "Last 10 transactions?",
+    "Where did I spend most?",
 ]
 
 
@@ -30,7 +30,7 @@ def render_chat() -> None:
             }
             .chat-suggest-label {
                 font-weight: 600;
-                margin-bottom: 0.4rem;
+                margin-bottom: 0.5rem;
                 color: var(--coffee-text);
             }
         </style>
@@ -53,16 +53,19 @@ def render_chat() -> None:
                 "Start a conversation by asking a question about your finances or use one of the quick suggestions below."
             )
 
-        # Suggested questions when there is no history
+        # Suggested questions when there is no history (single column so rows align)
         if not st.session_state.chat_messages:
             st.markdown('<div class="chat-suggest-label">Try one of these:</div>', unsafe_allow_html=True)
-            cols = st.columns(2)
             for i, q in enumerate(_SUGGESTED_QUESTIONS):
-                with cols[i % 2]:
-                    if st.button(q, key=f"chat_suggest_{i}", use_container_width=True, disabled=st.session_state.chat_is_processing):
-                        _handle_user_input(q)
-                        st.markdown("</div>", unsafe_allow_html=True)
-                        return
+                if st.button(
+                    q,
+                    key=f"chat_suggest_{i}",
+                    use_container_width=True,
+                    disabled=st.session_state.chat_is_processing,
+                    type="secondary",
+                ):
+                    _handle_user_input(q)
+                    return
 
         # Input area
         query_key = f"chat_query_{st.session_state.chat_query_counter}"

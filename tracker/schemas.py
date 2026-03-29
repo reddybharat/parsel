@@ -8,12 +8,14 @@ from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 from pydantic.config import ConfigDict
 
-from tracker.constants import CATEGORIES
+from tracker.constants import CATEGORIES, PAYMENT_METHODS
 
 
 class TransactionCreate(BaseModel):
     amount: float = Field(..., gt=0, description="Amount in INR (must be > 0)")
     category: str = Field(..., min_length=1)
+    # Omitted or blank/null in JSON defaults to Other (see validator).
+    payment_method: str = Field(default="Other")
     transaction_date: date = Field(default_factory=date.today)
     description: Optional[str] = None
     # When True => Debit (rendered as negative amount in UI).
@@ -30,12 +32,25 @@ class TransactionCreate(BaseModel):
             )
         return v
 
+    @field_validator("payment_method", mode="before")
+    @classmethod
+    def payment_method_optional(cls, v: object) -> str:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return "Other"
+        s = str(v).strip()
+        if s not in PAYMENT_METHODS:
+            raise ValueError(
+                f"Invalid payment_method. Must be one of: {', '.join(PAYMENT_METHODS)}"
+            )
+        return s
+
 
 class TransactionUpdate(BaseModel):
     """Optional fields for PATCH; only provided fields are updated."""
 
     amount: Optional[float] = Field(None, gt=0, description="Amount in INR (must be > 0)")
     category: Optional[str] = None
+    payment_method: Optional[str] = None
     transaction_date: Optional[date] = None
     description: Optional[str] = None
     is_debit: Optional[bool] = None
@@ -52,12 +67,25 @@ class TransactionUpdate(BaseModel):
             )
         return v
 
+    @field_validator("payment_method")
+    @classmethod
+    def payment_method_must_be_allowed_if_present(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return v
+        v = v.strip()
+        if v not in PAYMENT_METHODS:
+            raise ValueError(
+                f"Invalid payment_method. Must be one of: {', '.join(PAYMENT_METHODS)}"
+            )
+        return v
+
 
 class TransactionResponse(BaseModel):
     id: str
     amount: float
     is_debit: bool
     category: str
+    payment_method: str
     transaction_date: date
     description: Optional[str] = None
     created_at: datetime
@@ -95,6 +123,7 @@ class DashboardRecentItem(BaseModel):
     id: str
     transaction_date: date
     category: str
+    payment_method: str
     amount: float
     is_debit: bool
     description: Optional[str] = None

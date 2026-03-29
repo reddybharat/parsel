@@ -16,7 +16,14 @@ from tracker.models import Transaction
 from tracker.schemas import TransactionCreate
 
 # CSV column names (used for export, template, and import)
-CSV_FIELDS = ["transaction_date", "category", "amount", "is_debit", "description"]
+CSV_FIELDS = [
+    "transaction_date",
+    "category",
+    "amount",
+    "is_debit",
+    "description",
+    "payment_method",
+]
 
 
 def _parse_is_debit(raw: Optional[str]) -> bool:
@@ -123,7 +130,10 @@ def _parse_amount(raw_amount: str) -> float:
 
 
 async def export_transactions_csv(
-    start_date: date, end_date: date, category: Optional[str]
+    start_date: date,
+    end_date: date,
+    category: Optional[str],
+    payment_method: Optional[str] = None,
 ) -> str:
     """Return CSV string for all transactions matching the given filters."""
     stmt = (
@@ -133,6 +143,7 @@ async def export_transactions_csv(
             Transaction.amount,
             Transaction.is_debit,
             Transaction.description,
+            Transaction.payment_method,
         )
         .where(Transaction.transaction_date >= start_date)
         .where(Transaction.transaction_date <= end_date)
@@ -140,6 +151,8 @@ async def export_transactions_csv(
     )
     if category and category != "All":
         stmt = stmt.where(Transaction.category == category)
+    if payment_method and payment_method != "All":
+        stmt = stmt.where(Transaction.payment_method == payment_method)
     async with get_connection() as session:
         rows = (await session.execute(stmt)).mappings().all()
 
@@ -154,6 +167,7 @@ async def export_transactions_csv(
                 "amount": row.get("amount", ""),
                 "is_debit": str(bool(row.get("is_debit", True))).lower(),
                 "description": row.get("description") or "",
+                "payment_method": row.get("payment_method") or "",
             }
         )
     return output.getvalue()
@@ -171,6 +185,7 @@ def transactions_csv_template() -> str:
             "amount": "1250.50",
             "is_debit": "true",
             "description": "Weekly groceries",
+            "payment_method": "UPI",
         },
         {
             "transaction_date": "2026-03-02",
@@ -178,6 +193,7 @@ def transactions_csv_template() -> str:
             "amount": "450",
             "is_debit": "true",
             "description": "Lunch",
+            "payment_method": "Card",
         },
         {
             "transaction_date": "2026-03-03",
@@ -185,6 +201,7 @@ def transactions_csv_template() -> str:
             "amount": "320",
             "is_debit": "false",
             "description": "",
+            "payment_method": "Cash",
         },
     ]
     for row in example_rows:
@@ -197,7 +214,8 @@ async def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
     Parse CSV content and insert valid rows into the transactions table.
 
     Expected columns (case-insensitive):
-    transaction_date (YYYY-MM-DD), category, amount, is_debit (optional but recommended), description (optional).
+    transaction_date (YYYY-MM-DD), category, amount, is_debit (optional but recommended),
+    description (optional), payment_method (optional; defaults to Other if omitted).
     Returns (inserted_count, list of error messages for failed rows).
     """
     text = content.decode("utf-8-sig")
@@ -234,6 +252,11 @@ async def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
                 if "is_debit" in header_map
                 else ""
             )
+            raw_payment_method = (
+                (row.get(header_map["payment_method"]) or "").strip()
+                if "payment_method" in header_map
+                else ""
+            )
 
             if not raw_date or not raw_category or not raw_amount:
                 raise ValueError(
@@ -253,9 +276,15 @@ async def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
                 # Backward compatible default for older CSVs.
                 parsed_is_debit = True
 
+            if raw_payment_method:
+                pm = raw_payment_method
+            else:
+                pm = "Other"
+
             tx = TransactionCreate(
                 amount=parsed_amount,
                 category=raw_category,
+                payment_method=pm,
                 transaction_date=parsed_date,
                 description=raw_description,
                 is_debit=parsed_is_debit,
@@ -265,6 +294,7 @@ async def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
                     "amount": float(tx.amount),
                     "is_debit": bool(tx.is_debit),
                     "category": tx.category.strip(),
+                    "payment_method": tx.payment_method.strip(),
                     "transaction_date": tx.transaction_date,
                     "description": tx.description,
                 }
@@ -345,6 +375,7 @@ async def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict
               'id', x.id::text,
               'transaction_date', x.transaction_date,
               'category', x.category,
+              'payment_method', x.payment_method,
               'amount', x.amount::float8,
               'is_debit', x.is_debit,
               'description', x.description
@@ -352,7 +383,7 @@ async def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict
             ORDER BY x.transaction_date DESC, x.created_at DESC
           ) AS items
           FROM (
-            SELECT id, transaction_date, category, amount, is_debit, description, created_at
+            SELECT id, transaction_date, category, payment_method, amount, is_debit, description, created_at
             FROM transactions
             ORDER BY transaction_date DESC, created_at DESC
             LIMIT :recent_limit

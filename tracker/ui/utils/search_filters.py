@@ -7,7 +7,7 @@ import streamlit as st
 from common.api_client import ApiClientError
 from common.logger import get_logger
 from tracker.client import export_transactions_csv
-from tracker.constants import CATEGORIES
+from tracker.constants import CATEGORIES, PAYMENT_METHODS
 
 GENERIC_ERROR_MSG = "Sorry, couldn't process your request due to a technical error. Please try again later."
 
@@ -27,30 +27,50 @@ def render_search_filters():
 
     today = date.today()
     quick_search_clicked = False
-    qcol1, qcol2, qcol3, _ = st.columns([1, 1, 1, 2])
+    # Use three equal full-width columns — a fourth narrow column was squeezing
+    # buttons (~20% width each) and caused label wrap + broken layout.
+    qcol1, qcol2, qcol3 = st.columns(3, gap="small")
     with qcol1:
-        if st.button("Today", use_container_width=True, key="quick_today"):
+        if st.button(
+            "Today",
+            use_container_width=True,
+            key="quick_today",
+            icon=":material/calendar_today:",
+            type="secondary",
+        ):
             st.session_state.search_start_date = today
             st.session_state.search_end_date = today
             st.session_state.search_page = 1
             quick_search_clicked = True
     with qcol2:
-        if st.button("Last 7 days", use_container_width=True, key="quick_7"):
+        if st.button(
+            "Last 7 days",
+            use_container_width=True,
+            key="quick_7",
+            icon=":material/date_range:",
+            type="secondary",
+        ):
             st.session_state.search_start_date = today - timedelta(days=6)
             st.session_state.search_end_date = today
             st.session_state.search_page = 1
             quick_search_clicked = True
     with qcol3:
-        if st.button("This month", use_container_width=True, key="quick_month"):
+        if st.button(
+            "This month",
+            use_container_width=True,
+            key="quick_month",
+            icon=":material/calendar_month:",
+            type="secondary",
+        ):
             st.session_state.search_start_date = today.replace(day=1)
             st.session_state.search_end_date = today
             st.session_state.search_page = 1
             quick_search_clicked = True
 
-    col11, col12, _ = st.columns([1, 1, 1])
-    with col11:
+    dcol1, dcol2 = st.columns(2, gap="small")
+    with dcol1:
         start_date = st.date_input("From Date", key="search_start_date")
-    with col12:
+    with dcol2:
         end_date = st.date_input("To Date", key="search_end_date")
 
     col21, col22, col23 = st.columns([1, 1, 1])
@@ -61,13 +81,17 @@ def render_search_filters():
             index=0,
         )
     with col22:
+        payment_method = st.selectbox(
+            "Payment method",
+            options=["All"] + PAYMENT_METHODS,
+            index=0,
+        )
+    with col23:
         credit_debit = st.selectbox(
             "Credit/Debit",
             options=["All", "Credit", "Debit"],
             index=0,
         )
-    with col23:
-        page_size = st.number_input("Per page", min_value=10, max_value=50, value=15, step=5)
 
     is_debit_filter = None
     if credit_debit == "Debit":
@@ -85,7 +109,7 @@ def render_search_filters():
         (i for i, (_, col) in enumerate(sort_options) if col == current_col),
         0,
     )
-    col31, col32 = st.columns([1, 1])
+    col31, col32, col33 = st.columns([1, 2, 1])
     with col31:
         sort_label = st.selectbox(
             "Sort by",
@@ -103,28 +127,44 @@ def render_search_filters():
             key="search_sort_order",
         )
         sort_desc = sort_desc_choice == "Descending"
+    with col33:
+        page_size = st.number_input("Per page", min_value=10, max_value=50, value=15, step=5)
 
     st.session_state.search_sort_column = sort_column
     st.session_state.search_sort_desc = sort_desc
 
     col_search, col_export = st.columns(2)
     with col_search:
-        search_clicked = st.button("Search") or quick_search_clicked
+        search_clicked = (
+            st.button(
+                "Search",
+                use_container_width=True,
+                key="search_run",
+                icon=":material/search:",
+                type="primary",
+            )
+            or quick_search_clicked
+        )
         if search_clicked:
             st.session_state.search_page = 1
     with col_export:
-        has_searched = bool(st.session_state.get("search_has_run", False))
+        # Show export on first search this run — search_has_run is set in search_tab
+        # *after* this function returns, so it would hide Export until the next rerun.
+        has_searched = bool(st.session_state.get("search_has_run", False)) or search_clicked
         if has_searched:
             export_signature = (
                 start_date.isoformat(),
                 end_date.isoformat(),
                 category,
+                payment_method,
             )
             cached_export_signature = st.session_state.get("search_export_signature")
             csv_data = st.session_state.get("search_export_csv_data")
             if cached_export_signature != export_signature or not csv_data:
                 try:
-                    csv_data = export_transactions_csv(start_date, end_date, category)
+                    csv_data = export_transactions_csv(
+                        start_date, end_date, category, payment_method
+                    )
                     st.session_state.search_export_signature = export_signature
                     st.session_state.search_export_csv_data = csv_data
                 except ApiClientError as e:
@@ -144,8 +184,20 @@ def render_search_filters():
                     mime="text/csv",
                     use_container_width=True,
                     key="search_export_csv",
+                    icon=":material/download:",
+                    type="secondary",
                 )
             else:
                 st.caption("No data to export for current filters.")
 
-    return start_date, end_date, category, is_debit_filter, page_size, sort_column, sort_desc, search_clicked
+    return (
+        start_date,
+        end_date,
+        category,
+        payment_method,
+        is_debit_filter,
+        page_size,
+        sort_column,
+        sort_desc,
+        search_clicked,
+    )

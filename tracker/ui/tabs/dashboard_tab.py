@@ -152,12 +152,13 @@ def render_dashboard_overview() -> None:
             for row in recent_items:
                 tx_date = str(row.get("transaction_date", ""))
                 category = str(row.get("category", ""))
+                pay = str(row.get("payment_method") or "—")
                 description = str(row.get("description") or "—")
                 signed = _signed_amount(row)
                 st.markdown(
                     f"""
                     <div class="overview-list-item">
-                        <div><strong>{escape(tx_date)}</strong> | <strong>{escape(category)}</strong> | <strong>{_fmt_signed(signed)}</strong></div>
+                        <div><strong>{escape(tx_date)}</strong> | <strong>{escape(category)}</strong> | <strong>{escape(pay)}</strong> | <strong>{_fmt_signed(signed)}</strong></div>
                         <div class="coffee-muted">{escape(description)}</div>
                     </div>
                     """,
