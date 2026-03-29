@@ -28,6 +28,7 @@ def _to_response(tx: Transaction) -> TransactionResponse:
         amount=float(tx.amount),
         is_debit=bool(tx.is_debit),
         category=tx.category,
+        payment_method=tx.payment_method,
         transaction_date=tx.transaction_date,
         description=tx.description,
         created_at=tx.created_at,
@@ -41,6 +42,7 @@ async def search_transactions(
     start_date: date = Query(...),
     end_date: date = Query(...),
     category: Optional[str] = Query(None),
+    payment_method: Optional[str] = Query(None),
     is_debit: Optional[bool] = Query(None),
     sort_column: str = Query("transaction_date"),
     sort_desc: bool = Query(True),
@@ -66,6 +68,8 @@ async def search_transactions(
     ]
     if category and category != "All":
         where_parts.append(Transaction.category == category)
+    if payment_method and payment_method != "All":
+        where_parts.append(Transaction.payment_method == payment_method)
     if is_debit is not None:
         where_parts.append(Transaction.is_debit == bool(is_debit))
 
@@ -122,9 +126,10 @@ async def export_transactions(
     start_date: date = Query(...),
     end_date: date = Query(...),
     category: Optional[str] = Query(None),
+    payment_method: Optional[str] = Query(None),
 ) -> Response:
     t0 = time.perf_counter()
-    csv_data = await export_transactions_csv(start_date, end_date, category)
+    csv_data = await export_transactions_csv(start_date, end_date, category, payment_method)
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
         "export_transactions completed in %.1f ms (category=%s, range=%s..%s)",
@@ -170,6 +175,7 @@ async def create_transaction(payload: TransactionCreate) -> TransactionResponse:
             amount=float(payload.amount),
             is_debit=bool(payload.is_debit),
             category=payload.category.strip(),
+            payment_method=payload.payment_method.strip(),
             transaction_date=payload.transaction_date,
             description=payload.description,
         )
@@ -200,6 +206,8 @@ async def update_transaction(transaction_id: UUID, payload: TransactionUpdate) -
         payload_dict["amount"] = float(payload_dict["amount"])
     if "category" in payload_dict and payload_dict["category"] is not None:
         payload_dict["category"] = payload_dict["category"].strip()
+    if "payment_method" in payload_dict and payload_dict["payment_method"] is not None:
+        payload_dict["payment_method"] = payload_dict["payment_method"].strip()
 
     payload_dict["updated_at"] = func.now()
     payload_dict["version_no"] = Transaction.version_no + 1

@@ -102,12 +102,115 @@ def apply_theme() -> None:
                 color: #FDF8F6;
                 border-color: var(--coffee-accent);
             }
+            .stButton > button[kind="secondary"]:hover {
+                border-color: var(--coffee-accent);
+                background: rgba(109, 76, 65, 0.06);
+            }
+            /* Ghost / low-emphasis: icon-only row actions or full-width quick filters */
+            .stApp .stButton > button[kind="tertiary"] {
+                min-width: 2.25rem;
+                width: auto;
+                min-height: 2.25rem;
+                height: auto;
+                padding: 0.35rem 0.7rem !important;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.4rem;
+                border: 1px solid transparent !important;
+                background: transparent !important;
+                box-shadow: none !important;
+                color: var(--coffee-muted);
+                font-weight: 500;
+            }
+            .stApp .stButton > button[kind="tertiary"]:hover {
+                background: rgba(109, 76, 65, 0.12) !important;
+                color: var(--coffee-accent);
+                border-color: var(--coffee-alert) !important;
+            }
+            .stApp .stButton > button[kind="tertiary"]:focus-visible {
+                outline: none !important;
+                box-shadow: 0 0 0 2px rgba(109, 76, 65, 0.35) !important;
+            }
 
+            /* Shared field chrome: same border, surface, radius as selects */
             div[data-baseweb="input"] > div,
             div[data-baseweb="select"] > div,
             textarea {
                 border-radius: var(--coffee-radius) !important;
                 border-color: var(--coffee-alert) !important;
+            }
+            div[data-baseweb="select"] > div {
+                background: var(--coffee-surface) !important;
+                min-height: 40px;
+                align-items: center;
+            }
+            /* Date picker + number stepper default to gray BaseWeb — match dropdown look */
+            div[data-testid="stDateInput"] div[data-baseweb="input"],
+            div[data-testid="stDateInput"] input {
+                background-color: var(--coffee-surface) !important;
+                border: 1px solid var(--coffee-alert) !important;
+                border-radius: var(--coffee-radius) !important;
+                color: var(--coffee-text) !important;
+                box-shadow: none !important;
+            }
+            div[data-testid="stDateInput"] div[data-baseweb="input"] {
+                min-height: 40px;
+            }
+            div[data-testid="stDateInput"] input[type="text"] {
+                background-color: var(--coffee-surface) !important;
+                color: var(--coffee-text) !important;
+            }
+            div[data-testid="stNumberInput"] div[data-baseweb="input"] {
+                background-color: var(--coffee-surface) !important;
+                border: 1px solid var(--coffee-alert) !important;
+                border-radius: var(--coffee-radius) !important;
+                color: var(--coffee-text) !important;
+                box-shadow: none !important;
+                min-height: 40px;
+            }
+            div[data-testid="stNumberInput"] button {
+                border-color: var(--coffee-alert) !important;
+                background: var(--coffee-surface) !important;
+            }
+            /* Labels: same typography, left-aligned, consistent gap above control */
+            div[data-testid="stSelectbox"] label,
+            div[data-testid="stMultiSelect"] label,
+            div[data-testid="stDateInput"] label,
+            div[data-testid="stNumberInput"] label,
+            div[data-testid="stTextInput"] label,
+            div[data-testid="stTextArea"] label,
+            div[data-testid="stRadio"] label {
+                font-weight: 500 !important;
+                font-size: 0.9rem !important;
+                color: var(--coffee-text) !important;
+                text-align: left !important;
+            }
+            div[data-testid="stSelectbox"] label,
+            div[data-testid="stMultiSelect"] label,
+            div[data-testid="stDateInput"] label,
+            div[data-testid="stNumberInput"] label,
+            div[data-testid="stTextInput"] label,
+            div[data-testid="stTextArea"] label {
+                margin-bottom: 0.35rem !important;
+            }
+            div[data-testid="stRadio"] label {
+                margin-bottom: 0.35rem !important;
+                display: block;
+            }
+            div[data-testid="stRadio"] div[role="radiogroup"] label {
+                margin-bottom: 0 !important;
+                display: inline-flex !important;
+                align-items: center;
+            }
+            div[data-testid="stRadio"] div[role="radiogroup"] {
+                gap: 0.5rem;
+                flex-wrap: wrap;
+                padding: 0.15rem 0 0 0;
+                justify-content: flex-start;
+            }
+            div[data-testid="stDateInput"] {
+                width: 100%;
             }
 
             .coffee-income {

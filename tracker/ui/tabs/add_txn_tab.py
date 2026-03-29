@@ -7,7 +7,7 @@ import streamlit as st
 from common.api_client import ApiClientError
 from common.logger import get_logger
 from tracker.client import create_transaction as api_create_transaction
-from tracker.constants import CATEGORIES
+from tracker.constants import CATEGORIES, PAYMENT_METHODS
 from tracker.validations import validate_amount, validate_category, validate_transaction_date
 from tracker.ui.utils.import_csv_section import render_import_csv_section
 
@@ -48,7 +48,7 @@ def render_add_transaction(show_header: bool = True) -> None:
                 label_visibility="collapsed",
             )
 
-        col_category, col_date = st.columns(2)
+        col_category, col_date, col_payment = st.columns(3)
         with col_category:
             st.markdown(f"Category {REQUIRED_LABEL}", unsafe_allow_html=True)
             category = st.selectbox(
@@ -61,9 +61,22 @@ def render_add_transaction(show_header: bool = True) -> None:
         with col_date:
             st.markdown(f"Date {REQUIRED_LABEL}", unsafe_allow_html=True)
             transaction_date = st.date_input("Date", value=date.today(), label_visibility="collapsed")
+        with col_payment:
+            st.markdown(f"Payment method", unsafe_allow_html=True)
+            payment_method = st.selectbox(
+                "Payment method",
+                options=PAYMENT_METHODS,
+                index=None,
+                placeholder="Select payment method",
+                label_visibility="collapsed",
+            )
 
         description = st.text_input("Description (optional)", placeholder="Short note")
-        submitted = st.form_submit_button("Save transaction")
+        submitted = st.form_submit_button(
+            "Save transaction",
+            icon=":material/save:",
+            type="primary",
+        )
 
     if submitted:
         errors: list[str] = []
@@ -89,6 +102,7 @@ def render_add_transaction(show_header: bool = True) -> None:
                 api_create_transaction(
                     amount=float(amount),
                     category=category.strip(),
+                    payment_method=payment_method.strip() if payment_method else None,
                     transaction_date=transaction_date,
                     description=description.strip() or None,
                     is_debit=is_debit,

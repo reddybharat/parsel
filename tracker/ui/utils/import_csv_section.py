@@ -6,7 +6,7 @@ import streamlit as st
 
 from common.api_client import ApiClientError
 from tracker.client import import_transactions_csv
-from tracker.constants import CATEGORIES
+from tracker.constants import CATEGORIES, PAYMENT_METHODS
 from tracker.services import transactions_csv_template
 
 if TYPE_CHECKING:
@@ -24,10 +24,14 @@ def render_import_csv_section() -> None:
             mime="text/csv",
             use_container_width=True,
             key="add_txn_import_template",
+            icon=":material/download:",
+            type="secondary",
         )
         st.caption(
             "Template has correct headers and example rows. Use YYYY-MM-DD for dates; "
             f"category must be one of: {', '.join(CATEGORIES)}; "
+            f"payment_method (optional column) must be one of: {', '.join(PAYMENT_METHODS)} "
+            "(omit or leave empty to default to Other); "
             "is_debit should be true for Debit (shown as negative) and false for Credit."
         )
         uploaded_file: Optional["UploadedFile"] = st.file_uploader(
@@ -37,7 +41,13 @@ def render_import_csv_section() -> None:
             key="add_txn_import_csv",
         )
         if uploaded_file is not None:
-            if st.button("Import", use_container_width=True, key="add_txn_import_btn"):
+            if st.button(
+                "Import",
+                use_container_width=True,
+                key="add_txn_import_btn",
+                icon=":material/upload_file:",
+                type="primary",
+            ):
                 content = uploaded_file.getvalue()
                 try:
                     result = import_transactions_csv(content)
