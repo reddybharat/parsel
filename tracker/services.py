@@ -12,6 +12,7 @@ from typing import Optional
 from common.database import get_connection
 from sqlalchemy import select, text
 
+from tracker.constants import INVESTMENTS_CATEGORY
 from tracker.models import Transaction
 from tracker.schemas import TransactionCreate
 
@@ -329,11 +330,13 @@ async def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict
             COALESCE(SUM(CASE WHEN t.is_debit THEN -t.amount ELSE t.amount END), 0)::float8 AS portfolio_net,
             COALESCE(SUM(CASE
               WHEN t.is_debit = TRUE
+               AND t.category <> :investments_category
                AND t.transaction_date >= b.month_now_start
                AND t.transaction_date <  b.month_next_start
               THEN t.amount ELSE 0 END), 0)::float8 AS current_month_spend,
             COALESCE(SUM(CASE
               WHEN t.is_debit = TRUE
+               AND t.category <> :investments_category
                AND t.transaction_date >= (b.month_now_start - interval '1 month')::date
                AND t.transaction_date <  b.month_now_start
               THEN t.amount ELSE 0 END), 0)::float8 AS previous_month_spend
@@ -347,6 +350,7 @@ async def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict
           FROM transactions t
           CROSS JOIN bounds b
           WHERE t.is_debit = TRUE
+            AND t.category <> :investments_category
             AND t.transaction_date >= b.trend_start
             AND t.transaction_date <  b.month_next_start
           GROUP BY 1
@@ -394,6 +398,7 @@ async def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict
           FROM transactions t
           CROSS JOIN bounds b
           WHERE t.is_debit = TRUE
+            AND t.category <> :investments_category
             AND t.transaction_date >= b.month_now_start
             AND t.transaction_date <  b.month_next_start
           GROUP BY t.category
@@ -403,7 +408,10 @@ async def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict
         totals AS (
           SELECT
             COALESCE(SUM(CASE WHEN t.is_debit = FALSE THEN t.amount ELSE 0 END), 0)::float8 AS total_inflow,
-            COALESCE(SUM(CASE WHEN t.is_debit = TRUE  THEN t.amount ELSE 0 END), 0)::float8 AS total_outflow
+            COALESCE(SUM(CASE WHEN t.is_debit = TRUE  THEN t.amount ELSE 0 END), 0)::float8 AS total_outflow,
+            COALESCE(SUM(CASE
+              WHEN t.is_debit = TRUE AND t.category = :investments_category
+              THEN t.amount ELSE 0 END), 0)::float8 AS current_month_investments
           FROM transactions t
           CROSS JOIN bounds b
           WHERE t.transaction_date >= b.month_now_start
@@ -434,7 +442,8 @@ async def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict
                 json_build_object('category', NULL, 'spend', 0.0)
               ),
               'total_inflow', tt.total_inflow,
-              'total_outflow', tt.total_outflow
+              'total_outflow', tt.total_outflow,
+              'current_month_investments', tt.current_month_investments
             )
           ) AS overview
         FROM summary s
@@ -449,6 +458,7 @@ async def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict
                 "trend_offset": trend_offset,
                 "recent_limit": recent_limit,
                 "months": months,
+                "investments_category": INVESTMENTS_CATEGORY,
             },
         )
         row = result.mappings().first()

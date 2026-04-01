@@ -83,9 +83,3 @@ async def get_connection() -> AsyncIterator[AsyncSession]:
         raise
     finally:
         await session.close()
-
-
-async def get_db_session() -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency helper yielding an AsyncSession."""
-    async with get_connection() as session:
-        yield session

@@ -39,40 +39,6 @@ def _get_graph():
     return _compiled_graph
 
 
-def run_agent(chat_history: list[dict]) -> str:
-    """Run the agent graph with the given chat history.
-
-    Args:
-        chat_history: List of {"role": "user"|"assistant", "content": "..."} dicts.
-
-    Returns:
-        The assistant's text response.
-    """
-    graph = _get_graph()
-
-    messages = []
-    for msg in chat_history:
-        if msg["role"] == "user":
-            messages.append(HumanMessage(content=msg["content"]))
-        elif msg["role"] == "assistant":
-            messages.append(AIMessage(content=msg["content"]))
-
-    logger.info("Invoking graph with %d messages", len(messages))
-    result = graph.invoke({"messages": messages})
-    logger.info("Graph returned %d messages", len(result.get("messages", [])))
-
-    ai_messages = [
-        m for m in result["messages"]
-        if isinstance(m, AIMessage) and m.content and not getattr(m, "tool_calls", None)
-    ]
-
-    logger.info("Found %d final AI messages", len(ai_messages))
-    if ai_messages:
-        return ai_messages[-1].text
-
-    return "I wasn't able to process that request. Could you try rephrasing your question?"
-
-
 async def run_agent_async(chat_history: list[dict]) -> str:
     """Async run of the agent graph with the given chat history.
 
@@ -119,3 +85,4 @@ async def run_agent_async(chat_history: list[dict]) -> str:
 #     """Build the graph with the checkpointer."""
 #     builder = _build_agent_graph()
 #     return builder.compile(checkpointer=checkpointer)
+
