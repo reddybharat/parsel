@@ -171,6 +171,9 @@ def render_dashboard_overview() -> None:
         top_category_spend = float(top_category.get("spend", 0) or 0)
         total_inflow = float(highlights.get("total_inflow", 0) or 0)
         total_outflow = float(highlights.get("total_outflow", 0) or 0)
+        current_month_investments = float(
+            highlights.get("current_month_investments", 0) or 0
+        )
         st.markdown(
             f"""
             <div class="overview-side-card">
@@ -180,6 +183,8 @@ def render_dashboard_overview() -> None:
                 <div><strong>Total Inflow</strong><br>{_fmt_signed(total_inflow)}</div>
                 <div class="overview-section-gap"></div>
                 <div><strong>Total Outflow</strong><br>{_fmt_signed(-total_outflow)}</div>
+                <div class="overview-section-gap"></div>
+                <div><strong>Total Investments</strong><br>{_fmt_signed(current_month_investments)}</div>
             </div>
             """,
             unsafe_allow_html=True,

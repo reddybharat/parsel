@@ -13,6 +13,9 @@ PAYMENT_METHODS = [
     "Other",
 ]
 
+# Used in spend aggregates (trend, monthly spend); not treated as consumption.
+INVESTMENTS_CATEGORY = "Investments"
+
 CATEGORIES = [
     "Dining",
     "EMI",

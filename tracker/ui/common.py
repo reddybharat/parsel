@@ -279,8 +279,8 @@ def apply_theme() -> None:
                 border-radius: var(--coffee-radius);
                 box-shadow: var(--coffee-shadow);
                 padding: 8px 12px;
-                min-height: 300px;
-                margin-top: 67px;
+                min-height: 350px;
+                margin-top: 30px;
                 display: flex;
                 flex-direction: column;
                 justify-content: center;
