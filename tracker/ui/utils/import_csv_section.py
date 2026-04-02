@@ -31,7 +31,7 @@ def render_import_csv_section() -> None:
             "Template has correct headers and example rows. Use YYYY-MM-DD for dates; "
             f"category must be one of: {', '.join(CATEGORIES)}; "
             f"payment_method (optional column) must be one of: {', '.join(PAYMENT_METHODS)} "
-            "(omit or leave empty to default to Other); "
+            "(omit or leave empty to leave unset); "
             "is_debit should be true for Debit (shown as negative) and false for Credit."
         )
         uploaded_file: Optional["UploadedFile"] = st.file_uploader(

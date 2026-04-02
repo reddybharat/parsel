@@ -23,7 +23,7 @@ Columns:
 - amount              numeric NOT NULL  — transaction amount in INR (always > 0)
 - is_debit            boolean NOT NULL  — True for Debit (spend), False for Credit (income)
 - category            text NOT NULL     — one of: {", ".join(CATEGORIES)}
-- payment_method      text NOT NULL     — one of: {", ".join(PAYMENT_METHODS)}
+- payment_method      text NULL        — one of: {", ".join(PAYMENT_METHODS)} when set
 - transaction_date    date NOT NULL
 - description         text NULL
 - created_at          timestamptz NOT NULL

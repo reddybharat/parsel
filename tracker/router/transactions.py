@@ -175,7 +175,7 @@ async def create_transaction(payload: TransactionCreate) -> TransactionResponse:
             amount=float(payload.amount),
             is_debit=bool(payload.is_debit),
             category=payload.category.strip(),
-            payment_method=payload.payment_method.strip(),
+            payment_method=payload.payment_method.strip() if payload.payment_method else None,
             transaction_date=payload.transaction_date,
             description=payload.description,
         )

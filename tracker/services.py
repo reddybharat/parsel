@@ -216,7 +216,7 @@ async def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
 
     Expected columns (case-insensitive):
     transaction_date (YYYY-MM-DD), category, amount, is_debit (optional but recommended),
-    description (optional), payment_method (optional; defaults to Other if omitted).
+    description (optional), payment_method (optional; omitted or empty leaves it unset).
     Returns (inserted_count, list of error messages for failed rows).
     """
     text = content.decode("utf-8-sig")
@@ -277,10 +277,7 @@ async def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
                 # Backward compatible default for older CSVs.
                 parsed_is_debit = True
 
-            if raw_payment_method:
-                pm = raw_payment_method
-            else:
-                pm = "Other"
+            pm = raw_payment_method if raw_payment_method else None
 
             tx = TransactionCreate(
                 amount=parsed_amount,
@@ -295,7 +292,7 @@ async def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
                     "amount": float(tx.amount),
                     "is_debit": bool(tx.is_debit),
                     "category": tx.category.strip(),
-                    "payment_method": tx.payment_method.strip(),
+                    "payment_method": tx.payment_method.strip() if tx.payment_method else None,
                     "transaction_date": tx.transaction_date,
                     "description": tx.description,
                 }

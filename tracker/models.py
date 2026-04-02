@@ -23,7 +23,7 @@ class Transaction(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     is_debit: Mapped[bool] = mapped_column(Boolean, nullable=False)
     category: Mapped[str] = mapped_column(Text, nullable=False)
-    payment_method: Mapped[str] = mapped_column(Text, nullable=False)
+    payment_method: Mapped[str | None] = mapped_column(Text, nullable=True)
     transaction_date: Mapped[date] = mapped_column(Date, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
