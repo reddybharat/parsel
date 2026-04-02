@@ -86,18 +86,23 @@ def update_transaction(
     transaction_id: str,
     amount: float,
     category: str,
-    payment_method: str,
+    payment_method: str | None,
     transaction_date: date,
     description: str | None,
     is_debit: bool,
 ) -> dict[str, Any]:
+    pm = (
+        str(payment_method).strip()
+        if payment_method and str(payment_method).strip()
+        else None
+    )
     return patch(
         f"/transactions/{transaction_id}",
         json={
             "amount": float(amount),
             "is_debit": bool(is_debit),
             "category": category,
-            "payment_method": payment_method,
+            "payment_method": pm,
             "transaction_date": transaction_date.isoformat(),
             "description": description,
         },

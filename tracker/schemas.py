@@ -14,8 +14,8 @@ from tracker.constants import CATEGORIES, PAYMENT_METHODS
 class TransactionCreate(BaseModel):
     amount: float = Field(..., gt=0, description="Amount in INR (must be > 0)")
     category: str = Field(..., min_length=1)
-    # Omitted or blank/null in JSON defaults to Other (see validator).
-    payment_method: str = Field(default="Other")
+    # Omitted or blank/null in JSON is stored as NULL when the column allows it.
+    payment_method: Optional[str] = None
     transaction_date: date = Field(default_factory=date.today)
     description: Optional[str] = None
     # When True => Debit (rendered as negative amount in UI).
@@ -34,9 +34,9 @@ class TransactionCreate(BaseModel):
 
     @field_validator("payment_method", mode="before")
     @classmethod
-    def payment_method_optional(cls, v: object) -> str:
+    def payment_method_optional(cls, v: object) -> Optional[str]:
         if v is None or (isinstance(v, str) and not v.strip()):
-            return "Other"
+            return None
         s = str(v).strip()
         if s not in PAYMENT_METHODS:
             raise ValueError(
@@ -85,7 +85,7 @@ class TransactionResponse(BaseModel):
     amount: float
     is_debit: bool
     category: str
-    payment_method: str
+    payment_method: Optional[str] = None
     transaction_date: date
     description: Optional[str] = None
     created_at: datetime
@@ -123,7 +123,7 @@ class DashboardRecentItem(BaseModel):
     id: str
     transaction_date: date
     category: str
-    payment_method: str
+    payment_method: Optional[str] = None
     amount: float
     is_debit: bool
     description: Optional[str] = None

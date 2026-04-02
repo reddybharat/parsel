@@ -10,6 +10,7 @@ PAYMENT_METHODS = [
     "Bank transfer",
     "Card",
     "Wallet",
+    "NEFT",
     "Other",
 ]
 

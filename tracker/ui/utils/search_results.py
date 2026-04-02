@@ -99,11 +99,14 @@ def _render_edit_form(row: dict) -> None:
                 key="edit_category",
             )
         with col_payment:
-            pm = row.get("payment_method") or "Other"
+            pm_raw = row.get("payment_method")
+            pm = (str(pm_raw).strip() if pm_raw is not None else "") or None
+            pm_index = PAYMENT_METHODS.index(pm) if pm and pm in PAYMENT_METHODS else None
             payment_method = st.selectbox(
                 "Payment method",
                 options=PAYMENT_METHODS,
-                index=PAYMENT_METHODS.index(pm) if pm in PAYMENT_METHODS else 0,
+                index=pm_index,
+                placeholder="Select payment method",
                 key="edit_payment_method",
             )
         with col_date:
@@ -149,7 +152,7 @@ def _render_edit_form(row: dict) -> None:
                     transaction_id=str(row_id),
                     amount=float(amount),
                     category=category.strip(),
-                    payment_method=payment_method.strip(),
+                    payment_method=payment_method.strip() if payment_method else None,
                     transaction_date=txn_date,
                     description=(description or "").strip() or None,
                     is_debit=is_debit,
