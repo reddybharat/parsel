@@ -9,6 +9,7 @@ from common.logger import get_logger
 from tracker.client import delete_transaction as api_delete_transaction
 from tracker.client import update_transaction as api_update_transaction
 from tracker.constants import CATEGORIES, PAYMENT_METHODS
+from tracker.ui.common import format_inr_signed
 from tracker.validations import (
     validate_amount,
     validate_category,
@@ -180,7 +181,7 @@ def _render_delete_confirm(row: dict, *, page_row_count: int = 1) -> None:
     is_debit = row.get("is_debit", True)
     cat = row.get("category", "")
     signed_amount = -float(amt) if is_debit else float(amt)
-    st.warning(f"Delete this transaction? **₹{signed_amount:,.2f}** — {cat}")
+    st.warning(f"Delete this transaction? **{format_inr_signed(signed_amount)}** — {cat}")
     col1, col2, _ = st.columns([1, 1, 2])
     with col1:
         if st.button(
@@ -280,7 +281,7 @@ def render_search_results(rows: list[dict], total_count: int | None, page_size: 
         with cols[0]:
             st.text(r.get("transaction_date", ""))
         with cols[1]:
-            st.text(f"₹{signed_amount:,.2f}")
+            st.text(format_inr_signed(signed_amount))
         with cols[2]:
             st.text(r.get("category", ""))
         with cols[3]:

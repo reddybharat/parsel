@@ -3,43 +3,38 @@
 import asyncio
 import os
 import random
-from typing import Optional
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_groq import ChatGroq
 
 from common.logger import get_logger
 
 logger = get_logger(__name__)
 
-_llm: Optional[ChatGoogleGenerativeAI] = None
 
+def get_llm() -> ChatGroq:
+    """Return a Groq chat model. Raises if GROQ_API_KEY is missing.
 
-def get_llm() -> ChatGoogleGenerativeAI:
-    """Return a cached Gemini LLM instance. Raises if GOOGLE_API_KEY is missing.
-
-    Reads GOOGLE_API_KEY lazily at call time so that load_dotenv() has already
-    populated the environment (avoids capturing None at import time).
+    Reads GROQ_API_KEY (and optional GROQ_MODEL) lazily at call time so that
+    load_dotenv() has already populated the environment.
     """
-    global _llm
-    if _llm is not None:
-        return _llm
 
-    google_api_key = os.getenv("GOOGLE_API_KEY")
-    gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    groq_api_key = os.getenv("GROQ_API_KEY")
+    groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-    logger.info("Initializing Gemini LLM (model=%s)", gemini_model)
-    if not google_api_key:
-        logger.error("GOOGLE_API_KEY is not set")
+    logger.info("Initializing Groq LLM (model=%s)", groq_model)
+    if not groq_api_key:
+        logger.error("GROQ_API_KEY is not set")
         raise ValueError(
-            "GOOGLE_API_KEY is not set. Add it to .env to use the Chat assistant."
+            "GROQ_API_KEY is not set. Add it to .env to use the Chat assistant."
         )
 
-    _llm = ChatGoogleGenerativeAI(
-        model=gemini_model,
-        google_api_key=google_api_key,
+    _llm = ChatGroq(
+        model=groq_model,
+        groq_api_key=groq_api_key,
         temperature=0,
     )
-    logger.info("Gemini LLM initialized successfully")
+    logger.info("Groq LLM initialized successfully")
     return _llm
 
 
@@ -80,7 +75,7 @@ def _is_retryable_llm_error(error: Exception) -> bool:
 
 
 async def ainvoke_with_retry(
-    llm: ChatGoogleGenerativeAI,
+    llm: BaseChatModel,
     prompt: str,
     max_attempts: int = 4,
     base_delay_seconds: float = 0.75,

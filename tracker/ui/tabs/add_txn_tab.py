@@ -7,6 +7,7 @@ import streamlit as st
 from common.api_client import ApiClientError
 from common.logger import get_logger
 from tracker.client import create_transaction as api_create_transaction
+from tracker.ui.common import format_inr_signed
 from tracker.constants import CATEGORIES, PAYMENT_METHODS
 from tracker.validations import validate_amount, validate_category, validate_transaction_date
 from tracker.ui.utils.import_csv_section import render_import_csv_section
@@ -107,9 +108,9 @@ def render_add_transaction(show_header: bool = True) -> None:
                     description=description.strip() or None,
                     is_debit=is_debit,
                 )
-                signed_amount = -amount if is_debit else amount
+                signed_amount = float(-amount if is_debit else amount)
                 st.success(
-                    f"Saved: ₹{signed_amount:,.2f} — {category} on {transaction_date}"
+                    f"Saved: {format_inr_signed(signed_amount)} — {category} on {transaction_date}"
                 )
             except ApiClientError as e:
                 logger.error("Add transaction API error: %s", e, exc_info=True)

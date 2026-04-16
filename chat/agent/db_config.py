@@ -32,7 +32,6 @@ Columns:
 
 Notes:
 - Amounts are in Indian Rupees (INR).
-- The app treats Debit as a negative signed value for display (using is_debit).
 - For spending vs investments: treat "Investments" category as investments, not ordinary spending unless the user asks for investments specifically.
 """.strip(),
 }
