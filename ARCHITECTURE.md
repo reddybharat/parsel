@@ -3,7 +3,7 @@
 This project is organized around two feature packages — **tracker** and **chat** — plus a small **common** package for shared utilities.
 
 - **common/**: shared logging and SQLAlchemy async database engine/session helpers.
-- **tracker/**: all transaction CRUD, validations, CSV import/export, FastAPI routes, and Streamlit **Ledger** UI (Search + Add).
+- **tracker/**: all transaction CRUD, validations, CSV import/export, FastAPI routes, and Streamlit UI (**Overview**, **Ledger** Search + Add).
 - **chat/**: the LangGraph-based finance assistant (agent), its FastAPI APIs, and the Streamlit Chat tab.
 
 Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_URL`** environment variable. There is **no Supabase client** in the runtime path; Supabase is only a convenient way to host Postgres if you choose.
@@ -39,7 +39,7 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
 - `router/dashboard.py`: FastAPI router exposing a single overview endpoint under `/dashboard/overview`.
 - `client.py`: HTTP client wrapper around the `/transactions` API (`search_transactions`, `create_transaction`, `export_transactions_csv`, `import_transactions_csv`, `update_transaction`, `delete_transaction`); used by the Streamlit Ledger tabs.
 - `ui/`:
-  - `common.py`: shared Streamlit helpers, database error copy, and `apply_theme()` (global CSS: form controls, primary/secondary/tertiary buttons, dashboard cards).
+  - `common.py`: shared Streamlit helpers, database error copy, `format_inr_signed()` (INR with comma grouping; negative signed amounts as `(₹…)`), and `apply_theme()` (global CSS: form controls, primary/secondary/tertiary buttons, dashboard cards).
   - `tabs/dashboard_tab.py`: overview page with summary cards, monthly insights, and 6-month spending trend chart.
   - `tabs/add_txn_tab.py`, `tabs/search_tab.py`: page-level layout and interactions.
   - `utils/import_csv_section.py`, `utils/search_filters.py`, `utils/search_results.py`: reusable UI pieces for CSV import, search filters (dates, category, payment method, sort, Search/Export), and results table (pagination, edit/delete, optional Material icon actions).
@@ -53,16 +53,16 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
 ### Chat package (`chat/`)
 
 - `agent/`:
-  - `graph.py`: constructs the LangGraph graph and exposes `run_agent`.
+  - `graph.py`: constructs the LangGraph graph and exposes `run_agent_async` (async `ainvoke` entrypoint for the agent).
   - `nodes.py`: defines the core agent node and tool orchestration.
   - `tools.py`: `list_tables`, `get_table_schema`, `query_checker`, `execute_query`, `get_current_date`; `execute_query` uses async SQLAlchemy session from `common.database.get_connection()`.
   - `db_config.py`: table names and schema text for the agent (must stay aligned with `tracker.models` / Postgres, including `payment_method`).
   - `schema.py`: Pydantic `args_schema` models for tools.
   - `state.py`: the agent state (e.g., messages list).
-  - `prompt.py`: system prompt and instructions for the agent.
-  - `llm.py`: Gemini LLM wrapper and configuration.
+  - `prompt.py`: system prompt and instructions for the agent (including INR formatting: negatives in parentheses in natural-language answers).
+  - `llm.py`: Groq LLM (`ChatGroq`) wrapper and configuration.
 - `router/chat.py`: FastAPI router for:
-  - `POST /chat/invoke` → calls `run_agent` with the provided chat history and returns `{ "reply": "..." }`.
+  - `POST /chat/invoke` → calls `run_agent_async` with the provided chat history and returns `{ "reply": "..." }`.
   - `POST /chat/resume` → stub endpoint signalling that resume is not yet implemented.
   - `POST /chat/exit` → stub endpoint for ending a session.
 - `client.py`: HTTP client wrapper for the chat API (`chat_invoke`, `chat_resume`, `chat_exit`); used by the Streamlit Chat tab.
@@ -85,7 +85,7 @@ flowchart TD
   trackerRouter --> commonDB["common.database_async_session"]
   trackerRouter --> trackerModels["tracker.models_SQLAlchemyORM"]
   trackerModels --> commonDB
-  chatRouter --> chatAgent["chat.agent.graph (run_agent)"]
+  chatRouter --> chatAgent["chat.agent.graph (run_agent_async)"]
   chatAgent --> commonDB
 ```
 

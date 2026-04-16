@@ -1,4 +1,4 @@
-"""Shared UI helpers for the tracker Streamlit tabs (error messages, connection checks)."""
+"""Shared UI helpers for the tracker Streamlit tabs (formatting, error messages, connection checks)."""
 
 import streamlit as st
 
@@ -23,6 +23,14 @@ def is_db_connection_error(err: str) -> bool:
         or "could not connect" in err_lower
         or "operationalerror" in err_lower
     )
+
+
+def format_inr_signed(amount: float) -> str:
+    """Format a signed INR amount: negatives use accounting brackets, e.g. (₹1,234.56)."""
+    core = f"₹{abs(amount):,.2f}"
+    if amount < 0:
+        return f"({core})"
+    return core
 
 
 def apply_theme() -> None:

@@ -7,14 +7,14 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 - **FastAPI** — REST API for transactions: create, search, update (PATCH), delete; plus **Chat API** (invoke, resume, exit).
 - **Streamlit** — Frontend for transactions management and the finance chat.
 - **Dashboard Overview** — A Streamlit overview tab with KPI cards, recent transactions, and a 6-month spending trend bar chart (clean styling, taller chart area, dynamic y-axis headroom of `max + ₹30,000`). Powered by a single consolidated API: `GET /dashboard/overview`.
-- **Chat / Finance Assistant** — Natural language questions about your transactions. Uses a LangGraph SQL agent (Gemini LLM) with tools: `list_tables`, `get_table_schema`, `query_checker`, `execute_query`, `get_current_date`. Answers summarize spending, breakdowns by category, and similar queries.
+- **Chat / Finance Assistant** — Natural language questions about your transactions. Uses a LangGraph SQL agent ([Groq](https://groq.com) via LangChain) with tools: `list_tables`, `get_table_schema`, `query_checker`, `execute_query`, `get_current_date`. Answers summarize spending, breakdowns by category, and similar queries. Monetary amounts in replies follow the same INR convention as the UI (negatives in parentheses, not a leading minus); see `chat/agent/prompt.py` and `chat/agent/db_config.py`.
 - **Import from CSV** — Bulk-import transactions from a CSV with validation and row-level errors (API: `POST /transactions/import`).
 - **Export to CSV** — Export matching transactions as CSV for a date range and optional **category** and **payment method** filters (API: `GET /transactions/export`).
 - **Payment method** — Each transaction can record how it was paid (e.g. Cash, UPI, Bank transfer, Card, Wallet, Other). The field is **optional** on create; if omitted, it defaults to **Other**. Enforced allowlist in `tracker.constants.PAYMENT_METHODS`; included in search, CSV import/export, dashboard “recent” items, and chat agent schema (`chat/agent/db_config.py`).
 - **Database** — Connects directly to PostgreSQL via `DATABASE_URL` for both tracker (CRUD) and chat (SQL tools). No Supabase client or RLS required for the app. Uses shared SQLAlchemy async engine/session (`asyncpg`).
 - **Fixed categories** — Transactions use one of: Grocery, Dining, Transportation, Utilities, Entertainment, Health, Housing, Personal, Investments, Misc, Income, Other Income, Refunds, Travel, Shopping, Subscriptions, Gifts, EMI, Rent (enforced in app and API).
 - **Validations** — Shared rules in `tracker.validations`: amount must be > 0, category required, transaction date cannot be in the future; payment method validated when provided (enforced in app and API).
-- **Streamlit UI** — Shared coffee-themed styles and form-control alignment in `tracker/ui/common.py` (`apply_theme`). Ledger **Search** supports quick date ranges, filters, and Material-styled actions; **Chat** offers stacked quick-prompt buttons when the thread is empty.
+- **Streamlit UI** — Shared coffee-themed styles and form-control alignment in `tracker/ui/common.py` (`apply_theme`), plus `format_inr_signed` for amounts (non-negative as `₹1,234.56`, negatives in accounting parentheses, e.g. `(₹1,234.56)`). Ledger **Search** supports quick date ranges, filters, and Material-styled actions; **Chat** offers stacked quick-prompt buttons when the thread is empty.
 - **Audit fields** — Transactions have `created_at`, `updated_at`, and `version_no`; the app sets them on insert/update (no DB triggers). API and search return and display them.
 
 ## Project structure
@@ -35,7 +35,7 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 │   │   ├── transactions.py     # Async transactions API routes
 │   │   └── dashboard.py        # Async dashboard overview API
 │   └── ui/
-│       ├── common.py           # Theme (`apply_theme`), shared UI helpers
+│       ├── common.py           # Theme (`apply_theme`), `format_inr_signed`, DB error copy
 │       ├── tabs/
 │       │   ├── add_txn_tab.py
 │       │   ├── dashboard_tab.py
@@ -45,7 +45,6 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 │           ├── search_filters.py       # Filters (dates, category, payment method, sort) + Search + Export CSV
 │           └── search_results.py      # Results table with edit/delete
 ├── chat/                       # Finance assistant
-│   ├── utils/                  # (reserved for shared chat helpers)
 │   ├── router/
 │   │   └── chat.py             # Chat API routes (invoke, resume, exit)
 │   ├── agent/
@@ -56,15 +55,9 @@ A simple personal finance tracker. All amounts are in **INR (₹)**. Backend is 
 │   │   ├── schema.py           # Pydantic args_schema for tools
 │   │   ├── state.py            # AgentState (messages)
 │   │   ├── prompt.py           # System prompt + query_checker template
-│   │   └── llm.py              # Gemini LLM (get_llm)
+│   │   └── llm.py              # Groq LLM (get_llm)
 │   └── ui/
 │       └── chat_tab.py         # Chat frontend, calls FastAPI chat router via HTTP client
-├── tests/
-│   ├── test_tracker_database.py
-│   ├── test_tracker_transactions_api.py
-│   ├── test_tracker_services_csv.py
-│   ├── test_chat_api.py
-│   └── test_ui_smoke.py
 ├── ARCHITECTURE.md              # High-level architecture, runtime flow, and packages
 ├── requirements.txt
 └── .env                         # (create from example below; not committed)
@@ -95,7 +88,7 @@ Primary key: `id`.
 
 - Python 3.8+
 - A [Supabase](https://supabase.com) (or other PostgreSQL) project with a `transactions` table (see schema above)
-- For the **Chat** tab: a [Google AI Studio](https://ai.google.dev/gemini-api/docs/api-key) API key (Gemini)
+- For the **Chat** tab: a [Groq Cloud](https://console.groq.com/keys) API key
 
 ### 1. Clone and virtual environment
 
@@ -125,12 +118,15 @@ pip install -r requirements.txt
 Create a `.env` in the project root:
 
 ```env
-GOOGLE_API_KEY=your-gemini-api-key
+GROQ_API_KEY=your-groq-api-key
+# Optional: defaults to llama-3.3-70b-versatile
+# GROQ_MODEL=llama-3.3-70b-versatile
 DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@db.YOUR_PROJECT_REF.supabase.co:5432/postgres
 ```
 
 - **DATABASE_URL** — Postgres connection string (Supabase: Dashboard → Connect → URI). Used by SQLAlchemy async (`postgresql+asyncpg`) for tracker CRUD and Chat SQL tools. `postgresql://` and `postgres://` are normalized automatically.
-- **GOOGLE_API_KEY** — From [Google AI Studio](https://ai.google.dev/gemini-api/docs/api-key). Required for the Chat (Finance Assistant) tab.
+- **GROQ_API_KEY** — From [Groq Console](https://console.groq.com/keys). Required for the Chat (Finance Assistant) tab.
+- **GROQ_MODEL** — Optional Groq model id (see Groq docs). Defaults to `llama-3.3-70b-versatile`.
 
 ### 4. Run the app
 

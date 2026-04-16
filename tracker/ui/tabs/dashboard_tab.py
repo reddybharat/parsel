@@ -13,6 +13,7 @@ from common.logger import get_logger
 from tracker.client import (
     get_dashboard_overview as api_get_dashboard_overview,
 )
+from tracker.ui.common import format_inr_signed
 
 GENERIC_ERROR_MSG = "Sorry, couldn't process your request due to a technical error. Please try again later."
 
@@ -22,12 +23,6 @@ logger = get_logger(__name__)
 def _signed_amount(row: dict) -> float:
     amount = float(row.get("amount", 0.0))
     return -amount if bool(row.get("is_debit", True)) else amount
-
-
-def _fmt_signed(amount: float) -> str:
-    if amount < 0:
-        return f"-₹{abs(amount):,.2f}"
-    return f"₹{amount:,.2f}"
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -72,7 +67,7 @@ def render_dashboard_overview() -> None:
             f"""
             <div class="overview-metric-card">
                 <div class="overview-metric-label">Current Portfolio</div>
-                <p class="overview-metric-value">{_fmt_signed(portfolio)}</p>
+                <p class="overview-metric-value">{format_inr_signed(portfolio)}</p>
                 <div class="overview-metric-subtle">Net balance</div>
             </div>
             """,
@@ -83,14 +78,14 @@ def render_dashboard_overview() -> None:
             f"""
             <div class="overview-metric-card">
                 <div class="overview-metric-label">Monthly Spend</div>
-                <p class="overview-metric-value">₹{current_month_spend:,.2f}</p>
+                <p class="overview-metric-value">{format_inr_signed(current_month_spend)}</p>
                 <div class="overview-metric-subtle">{escape(delta_text)}</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
     st.markdown(
-        f'<div class="coffee-muted overview-section-gap">Last month spend: ₹{previous_month_spend:,.2f}</div>',
+        f'<div class="coffee-muted overview-section-gap">Last month spend: {format_inr_signed(previous_month_spend)}</div>',
         unsafe_allow_html=True,
     )
 
@@ -158,7 +153,7 @@ def render_dashboard_overview() -> None:
                 st.markdown(
                     f"""
                     <div class="overview-list-item">
-                        <div><strong>{escape(tx_date)}</strong> | <strong>{escape(category)}</strong> | <strong>{escape(pay)}</strong> | <strong>{_fmt_signed(signed)}</strong></div>
+                        <div><strong>{escape(tx_date)}</strong> | <strong>{escape(category)}</strong> | <strong>{escape(pay)}</strong> | <strong>{format_inr_signed(signed)}</strong></div>
                         <div class="coffee-muted">{escape(description)}</div>
                     </div>
                     """,
@@ -178,13 +173,13 @@ def render_dashboard_overview() -> None:
             f"""
             <div class="overview-side-card">
                 <h4>Monthly Insights</h4>
-                <div><strong>Top Category</strong><br>{escape(top_category_name)} ({_fmt_signed(-top_category_spend)})</div>
+                <div><strong>Top Category</strong><br>{escape(top_category_name)} {format_inr_signed(-top_category_spend)}</div>
                 <div class="overview-section-gap"></div>
-                <div><strong>Total Inflow</strong><br>{_fmt_signed(total_inflow)}</div>
+                <div><strong>Total Inflow</strong><br>{format_inr_signed(total_inflow)}</div>
                 <div class="overview-section-gap"></div>
-                <div><strong>Total Outflow</strong><br>{_fmt_signed(-total_outflow)}</div>
+                <div><strong>Total Outflow</strong><br>{format_inr_signed(-total_outflow)}</div>
                 <div class="overview-section-gap"></div>
-                <div><strong>Total Investments</strong><br>{_fmt_signed(current_month_investments)}</div>
+                <div><strong>Total Investments</strong><br>{format_inr_signed(current_month_investments)}</div>
             </div>
             """,
             unsafe_allow_html=True,
