@@ -3,17 +3,17 @@
 from datetime import date
 
 import streamlit as st
+from pydantic import ValidationError
 
 from common.api_client import ApiClientError
 from common.logger import get_logger
 from tracker.client import create_transaction as api_create_transaction
-from tracker.ui.common import format_inr_signed
 from tracker.constants import CATEGORIES, PAYMENT_METHODS
-from tracker.validations import validate_amount, validate_category, validate_transaction_date
+from tracker.schemas import TransactionCreate
+from tracker.ui.common import GENERIC_ERROR_MSG, format_inr_signed, validation_error_messages
 from tracker.ui.utils.import_csv_section import render_import_csv_section
 
 REQUIRED_LABEL = "<span style='color: red'>*</span>"
-GENERIC_ERROR_MSG = "Sorry, couldn't process your request due to a technical error. Please try again later."
 
 logger = get_logger(__name__)
 
@@ -80,43 +80,39 @@ def render_add_transaction(show_header: bool = True) -> None:
         )
 
     if submitted:
-        errors: list[str] = []
         is_debit = credit_debit == "Debit"
         try:
-            validate_amount(amount)
-        except ValueError as e:
-            errors.append(str(e))
-        try:
-            validate_category(category)
-        except ValueError as e:
-            errors.append(str(e))
-        try:
-            validate_transaction_date(transaction_date)
-        except ValueError as e:
-            errors.append(str(e))
-
-        if errors:
-            for msg in errors:
+            tx = TransactionCreate(
+                amount=float(amount),
+                category=category,
+                payment_method=payment_method or None,
+                transaction_date=transaction_date,
+                description=description.strip() or None,
+                is_debit=is_debit,
+            )
+        except ValidationError as e:
+            for msg in validation_error_messages(e):
                 st.error(msg)
-        else:
-            try:
-                api_create_transaction(
-                    amount=float(amount),
-                    category=category.strip(),
-                    payment_method=payment_method.strip() if payment_method else None,
-                    transaction_date=transaction_date,
-                    description=description.strip() or None,
-                    is_debit=is_debit,
-                )
-                signed_amount = float(-amount if is_debit else amount)
-                st.success(
-                    f"Saved: {format_inr_signed(signed_amount)} — {category} on {transaction_date}"
-                )
-            except ApiClientError as e:
-                logger.error("Add transaction API error: %s", e, exc_info=True)
-                st.error(GENERIC_ERROR_MSG)
-            except Exception as e:
-                logger.error("Add transaction unexpected error: %s", e, exc_info=True)
-                st.error(GENERIC_ERROR_MSG)
+            return
+
+        try:
+            api_create_transaction(
+                amount=tx.amount,
+                category=tx.category,
+                payment_method=tx.payment_method,
+                transaction_date=tx.transaction_date,
+                description=tx.description,
+                is_debit=tx.is_debit,
+            )
+            signed_amount = float(-tx.amount if tx.is_debit else tx.amount)
+            st.success(
+                f"Saved: {format_inr_signed(signed_amount)} — {tx.category} on {tx.transaction_date}"
+            )
+        except ApiClientError as e:
+            logger.error("Add transaction API error: %s", e, exc_info=True)
+            st.error(GENERIC_ERROR_MSG)
+        except Exception as e:
+            logger.error("Add transaction unexpected error: %s", e, exc_info=True)
+            st.error(GENERIC_ERROR_MSG)
 
     render_import_csv_section()

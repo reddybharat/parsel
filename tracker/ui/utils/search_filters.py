@@ -8,8 +8,7 @@ from common.api_client import ApiClientError
 from common.logger import get_logger
 from tracker.client import export_transactions_csv
 from tracker.constants import CATEGORIES, PAYMENT_METHODS
-
-GENERIC_ERROR_MSG = "Sorry, couldn't process your request due to a technical error. Please try again later."
+from tracker.ui.common import GENERIC_ERROR_MSG
 
 logger = get_logger(__name__)
 

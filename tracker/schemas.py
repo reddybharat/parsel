@@ -22,14 +22,30 @@ class TransactionCreate(BaseModel):
     # When False => Credit (rendered as positive amount in UI).
     is_debit: bool = True
 
-    @field_validator("category")
+    @field_validator("category", mode="before")
     @classmethod
-    def category_must_be_allowed(cls, v: str) -> str:
-        v = v.strip()
-        if v not in CATEGORIES:
+    def category_required_and_allowed(cls, v: object) -> str:
+        if v is None or (isinstance(v, str) and not str(v).strip()):
+            raise ValueError("Please select a category.")
+        s = str(v).strip()
+        if s not in CATEGORIES:
             raise ValueError(
                 f"Invalid category. Must be one of: {', '.join(CATEGORIES)}"
             )
+        return s
+
+    @field_validator("amount")
+    @classmethod
+    def amount_must_be_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("Amount must be greater than 0.")
+        return v
+
+    @field_validator("transaction_date")
+    @classmethod
+    def transaction_date_not_in_future(cls, v: date) -> date:
+        if v > date.today():
+            raise ValueError("Transaction date cannot be in the future.")
         return v
 
     @field_validator("payment_method", mode="before")
@@ -77,6 +93,20 @@ class TransactionUpdate(BaseModel):
             raise ValueError(
                 f"Invalid payment_method. Must be one of: {', '.join(PAYMENT_METHODS)}"
             )
+        return v
+
+    @field_validator("amount")
+    @classmethod
+    def amount_must_be_positive_if_present(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v <= 0:
+            raise ValueError("Amount must be greater than 0.")
+        return v
+
+    @field_validator("transaction_date")
+    @classmethod
+    def transaction_date_not_in_future_if_present(cls, v: Optional[date]) -> Optional[date]:
+        if v is not None and v > date.today():
+            raise ValueError("Transaction date cannot be in the future.")
         return v
 
 
