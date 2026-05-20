@@ -4,7 +4,7 @@ import streamlit as st
 
 from common.api_client import ApiClientError
 from common.logger import get_logger
-from chat.client import chat_invoke
+from chat.client import chat_exit, chat_invoke, chat_resume
 from tracker.ui.common import GENERIC_ERROR_MSG
 
 logger = get_logger(__name__)
@@ -116,7 +116,7 @@ def _handle_user_input(user_input: str) -> None:
     st.session_state.chat_messages.append({"role": "user", "content": user_input})
 
     with st.spinner("Thinking…"):
-        reply = _invoke_agent()
+        reply = _invoke_agent(user_input)
 
     st.session_state.chat_messages.append({"role": "assistant", "content": reply})
     st.session_state.chat_is_processing = False
@@ -125,9 +125,18 @@ def _handle_user_input(user_input: str) -> None:
 
 
 def _reset_chat() -> None:
-    """Clear chat state for this tab."""
+    """Clear chat state for this tab and end the server-side thread."""
     _ensure_state()
+    thread_id = st.session_state.get("chat_thread_id")
+    if thread_id:
+        try:
+            chat_exit(thread_id)
+        except ApiClientError as e:
+            logger.warning("Chat exit failed (thread may already be gone): %s", e)
+        except Exception as e:
+            logger.warning("Chat exit failed: %s", e)
     st.session_state.chat_messages = []
+    st.session_state.chat_thread_id = None
     st.session_state.chat_is_processing = False
     st.session_state.chat_query_counter += 1
     st.rerun()
@@ -141,13 +150,24 @@ def _ensure_state() -> None:
         st.session_state.chat_is_processing = False
     if "chat_query_counter" not in st.session_state:
         st.session_state.chat_query_counter = 0
+    if "chat_thread_id" not in st.session_state:
+        st.session_state.chat_thread_id = None
 
 
-def _invoke_agent() -> str:
+def _invoke_agent(user_message: str) -> str:
     """Call the chat API and return the reply text."""
     try:
-        logger.info("Invoking chat API with %d messages", len(st.session_state.chat_messages))
-        result = chat_invoke(st.session_state.chat_messages)
+        thread_id = st.session_state.chat_thread_id
+        if thread_id:
+            logger.info("Resuming chat thread_id=%s", thread_id)
+            result = chat_resume(thread_id, user_message)
+        else:
+            logger.info("Starting new chat thread")
+            result = chat_invoke(user_message)
+            new_thread_id = result.get("thread_id")
+            if new_thread_id:
+                st.session_state.chat_thread_id = str(new_thread_id)
+
         reply = str(result.get("reply", ""))
         logger.info("Chat API returned reply (%d chars)", len(reply))
         if not reply:

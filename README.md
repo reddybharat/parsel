@@ -39,7 +39,13 @@ streamlit run app.py
 
 ## How to Test
 
-There is no automated test suite in the repo yet (`pytest` is listed in `requirements.txt` for future use). Verify manually:
+Run chat API contract tests (mocked agent, no `GROQ_API_KEY` needed):
+
+```bash
+python -m pytest tests/test_chat_api.py tests/test_chat_graph_interrupt.py -v
+```
+
+For full manual verification:
 
 **API health**
 
@@ -55,12 +61,20 @@ Expected: JSON with `"message": "Personal Finance Tracker API"` and `"docs": "/d
 curl "http://127.0.0.1:8000/dashboard/overview?months=6&recent_limit=5"
 ```
 
-**Chat invoke** (requires `GROQ_API_KEY`)
+**Chat** (requires `GROQ_API_KEY`). Start with `invoke` (graph runs until `interrupt` after the reply). Follow-ups use `resume` (`Command(resume=continue)`); `exit` ends the graph (`Command(resume=exit)`). History stays on the server per `thread_id` while the API process is running.
 
 ```bash
 curl -X POST http://127.0.0.1:8000/chat/invoke ^
   -H "Content-Type: application/json" ^
-  -d "{\"messages\":[{\"role\":\"user\",\"content\":\"What did I spend on groceries last month?\"}]}"
+  -d "{\"message\":\"What did I spend on groceries last month?\"}"
+
+curl -X POST http://127.0.0.1:8000/chat/resume ^
+  -H "Content-Type: application/json" ^
+  -d "{\"thread_id\":\"YOUR_THREAD_ID\",\"message\":\"Break that down by category\"}"
+
+curl -X POST http://127.0.0.1:8000/chat/exit ^
+  -H "Content-Type: application/json" ^
+  -d "{\"thread_id\":\"YOUR_THREAD_ID\"}"
 ```
 
 On macOS/Linux, use `\` instead of `^` for line continuation, or send the JSON on one line.
@@ -155,7 +169,8 @@ Full interactive docs: http://127.0.0.1:8000/docs
 | Transactions | GET | `/transactions/export` | CSV export |
 | Transactions | POST | `/transactions/import` | CSV import |
 | Dashboard | GET | `/dashboard/overview` | KPIs, trend, recent rows (`months`, `recent_limit`) |
-| Chat | POST | `/chat/invoke` | Natural-language query over transactions |
-| Chat | POST | `/chat/resume`, `/chat/exit` | Stubs |
+| Chat | POST | `/chat/invoke` | Start session: `{ "message" }` → `{ "reply", "thread_id" }` |
+| Chat | POST | `/chat/resume` | Follow-up: `{ "thread_id", "message" }` → `{ "reply", "thread_id" }` |
+| Chat | POST | `/chat/exit` | End session: `{ "thread_id" }` → `{ "status": "ok" }` |
 
 More detail: [ARCHITECTURE.md](ARCHITECTURE.md).

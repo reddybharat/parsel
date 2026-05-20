@@ -53,18 +53,20 @@ Both tracker and chat use the same PostgreSQL database via a single **`DATABASE_
 ### Chat package (`chat/`)
 
 - `agent/`:
-  - `graph.py`: constructs the LangGraph graph and exposes `run_agent_async` (async `ainvoke` entrypoint for the agent).
-  - `nodes.py`: defines the core agent node and tool orchestration.
+  - `checkpointer.py`: process-wide `MemorySaver` for per-thread graph state.
+  - `graph.py`: constructs the LangGraph graph with checkpointer; exposes `start_turn`, `resume_turn`, and `exit_thread`.
+  - `nodes.py`: `agent_node` (inner LLM/tools) then `wait_user_node`, which calls `interrupt()` after each reply; resume uses `Command(resume={"action": "continue"|"exit", ...})`.
   - `tools.py`: `list_tables`, `get_table_schema`, `query_checker`, `execute_query`, `get_current_date`; `execute_query` uses async SQLAlchemy session from `common.database.get_connection()`.
   - `db_config.py`: table names and schema text for the agent (must stay aligned with `tracker.models` / Postgres, including `payment_method`).
   - `schema.py`: Pydantic `args_schema` models for tools.
   - `state.py`: the agent state (e.g., messages list).
   - `prompt.py`: system prompt and instructions for the agent (including INR formatting: negatives in parentheses in natural-language answers).
   - `llm.py`: Groq LLM (`ChatGroq`) wrapper and configuration.
+- `schemas.py`: Pydantic request bodies for invoke, resume, and exit.
 - `router/chat.py`: FastAPI router for:
-  - `POST /chat/invoke` → calls `run_agent_async` with the provided chat history and returns `{ "reply": "..." }`.
-  - `POST /chat/resume` → stub endpoint signalling that resume is not yet implemented.
-  - `POST /chat/exit` → stub endpoint for ending a session.
+  - `POST /chat/invoke` → `start_turn(message)`; returns `{ "reply", "thread_id" }`.
+  - `POST /chat/resume` → `Command(resume={"action": "continue", "message": ...})` on a paused thread; runs another agent turn, then interrupts again.
+  - `POST /chat/exit` → `Command(resume={"action": "exit"})` then deletes the thread checkpoint.
 - `client.py`: HTTP client wrapper for the chat API (`chat_invoke`, `chat_resume`, `chat_exit`); used by the Streamlit Chat tab.
 - `ui/chat_tab.py`: Streamlit tab that calls the chat API via `chat.client`, displays the conversation, and shows stacked **quick prompts** (short suggested questions) when there is no history yet.
 
@@ -85,7 +87,7 @@ flowchart TD
   trackerRouter --> commonDB["common.database_async_session"]
   trackerRouter --> trackerModels["tracker.models_SQLAlchemyORM"]
   trackerModels --> commonDB
-  chatRouter --> chatAgent["chat.agent.graph (run_agent_async)"]
+  chatRouter --> chatAgent["chat.agent.graph (start_turn / resume_turn)"]
   chatAgent --> commonDB
 ```
 
