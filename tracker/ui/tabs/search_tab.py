@@ -7,10 +7,9 @@ import streamlit as st
 from common.api_client import ApiClientError
 from common.logger import get_logger
 from tracker.client import search_transactions as api_search_transactions
+from tracker.ui.common import GENERIC_ERROR_MSG
 from tracker.ui.utils.search_filters import render_search_filters
 from tracker.ui.utils.search_results import render_search_results
-
-GENERIC_ERROR_MSG = "Sorry, couldn't process your request due to a technical error. Please try again later."
 
 logger = get_logger(__name__)
 

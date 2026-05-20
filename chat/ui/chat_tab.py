@@ -5,6 +5,7 @@ import streamlit as st
 from common.api_client import ApiClientError
 from common.logger import get_logger
 from chat.client import chat_invoke
+from tracker.ui.common import GENERIC_ERROR_MSG
 
 logger = get_logger(__name__)
 
@@ -154,11 +155,7 @@ def _invoke_agent() -> str:
         return reply
     except ApiClientError as e:
         logger.error("Chat API configuration/HTTP error: %s", e, exc_info=True)
-        return (
-            "Sorry, couldn't process your request due to a technical error. Please try again later."
-        )
+        return GENERIC_ERROR_MSG
     except Exception as e:
         logger.error("Chat API invocation failed: %s", e, exc_info=True)
-        return (
-            "Sorry, couldn't process your request due to a technical error. Please try again later."
-        )
+        return GENERIC_ERROR_MSG

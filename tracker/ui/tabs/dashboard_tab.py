@@ -13,9 +13,7 @@ from common.logger import get_logger
 from tracker.client import (
     get_dashboard_overview as api_get_dashboard_overview,
 )
-from tracker.ui.common import format_inr_signed
-
-GENERIC_ERROR_MSG = "Sorry, couldn't process your request due to a technical error. Please try again later."
+from tracker.ui.common import GENERIC_ERROR_MSG, format_inr_signed
 
 logger = get_logger(__name__)
 

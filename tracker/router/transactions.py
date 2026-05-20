@@ -16,7 +16,6 @@ from tracker.schemas import (
     TransactionUpdate,
 )
 from tracker.services import export_transactions_csv, import_transactions_from_csv
-from tracker.validations import validate_transaction_date
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -165,10 +164,6 @@ async def import_transactions(file: UploadFile = File(...)) -> dict:
 @router.post("", response_model=TransactionResponse)
 async def create_transaction(payload: TransactionCreate) -> TransactionResponse:
     t0 = time.perf_counter()
-    try:
-        validate_transaction_date(payload.transaction_date)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
     stmt = (
         insert(Transaction)
         .values(
@@ -197,11 +192,6 @@ async def update_transaction(transaction_id: UUID, payload: TransactionUpdate) -
     payload_dict = payload.model_dump(exclude_unset=True)
     if not payload_dict:
         raise HTTPException(status_code=400, detail="No fields provided for update")
-    if "transaction_date" in payload_dict:
-        try:
-            validate_transaction_date(payload_dict["transaction_date"])
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
     if "amount" in payload_dict:
         payload_dict["amount"] = float(payload_dict["amount"])
     if "category" in payload_dict and payload_dict["category"] is not None:

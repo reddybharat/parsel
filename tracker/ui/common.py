@@ -1,6 +1,12 @@
 """Shared UI helpers for the tracker Streamlit tabs (formatting, error messages, connection checks)."""
 
 import streamlit as st
+from pydantic import ValidationError
+
+GENERIC_ERROR_MSG = (
+    "Sorry, couldn't process your request due to a technical error. "
+    "Please try again later."
+)
 
 DATABASE_ERROR_MSG = (
     "**Could not reach the database.** This is usually one of:\n\n"
@@ -10,6 +16,17 @@ DATABASE_ERROR_MSG = (
     "• **Network/firewall** — Check VPN or corporate network if the problem continues.\n\n"
     "• **DATABASE_URL** — Ensure `.env` has a valid `DATABASE_URL` (PostgreSQL connection string)."
 )
+
+
+def validation_error_messages(exc: ValidationError) -> list[str]:
+    """Extract user-facing messages from a Pydantic ValidationError."""
+    messages: list[str] = []
+    for err in exc.errors():
+        msg = err.get("msg", "Invalid value")
+        if isinstance(msg, str) and msg.startswith("Value error, "):
+            msg = msg[len("Value error, ") :]
+        messages.append(str(msg))
+    return messages
 
 
 def is_db_connection_error(err: str) -> bool:

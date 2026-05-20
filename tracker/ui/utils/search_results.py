@@ -3,21 +3,19 @@
 from datetime import date, datetime
 
 import streamlit as st
+from pydantic import ValidationError
 
 from common.api_client import ApiClientError
 from common.logger import get_logger
 from tracker.client import delete_transaction as api_delete_transaction
 from tracker.client import update_transaction as api_update_transaction
 from tracker.constants import CATEGORIES, PAYMENT_METHODS
-from tracker.ui.common import format_inr_signed
-from tracker.validations import (
-    validate_amount,
-    validate_category,
-    validate_payment_method,
-    validate_transaction_date,
+from tracker.schemas import TransactionCreate
+from tracker.ui.common import (
+    GENERIC_ERROR_MSG,
+    format_inr_signed,
+    validation_error_messages,
 )
-
-GENERIC_ERROR_MSG = "Sorry, couldn't process your request due to a technical error. Please try again later."
 
 logger = get_logger(__name__)
 
@@ -141,22 +139,27 @@ def _render_edit_form(row: dict) -> None:
         if submitted:
             is_debit = credit_debit == "Debit"
             try:
-                validate_amount(amount)
-                validate_category(category)
-                validate_payment_method(payment_method)
-                validate_transaction_date(txn_date)
-            except ValueError as e:
-                st.error(str(e))
+                tx = TransactionCreate(
+                    amount=float(amount),
+                    category=category,
+                    payment_method=payment_method or None,
+                    transaction_date=txn_date,
+                    description=(description or "").strip() or None,
+                    is_debit=is_debit,
+                )
+            except ValidationError as e:
+                for msg in validation_error_messages(e):
+                    st.error(msg)
                 return
             try:
                 api_update_transaction(
                     transaction_id=str(row_id),
-                    amount=float(amount),
-                    category=category.strip(),
-                    payment_method=payment_method.strip() if payment_method else None,
-                    transaction_date=txn_date,
-                    description=(description or "").strip() or None,
-                    is_debit=is_debit,
+                    amount=tx.amount,
+                    category=tx.category,
+                    payment_method=tx.payment_method,
+                    transaction_date=tx.transaction_date,
+                    description=tx.description,
+                    is_debit=tx.is_debit,
                 )
                 if "editing_transaction" in st.session_state:
                     del st.session_state.editing_transaction
