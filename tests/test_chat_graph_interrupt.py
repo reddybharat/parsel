@@ -7,6 +7,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from chat.agent.graph import exit_thread, resume_turn, start_turn, thread_awaiting_user
+from chat.exceptions import UnknownThreadError
 
 
 @pytest.fixture
@@ -51,7 +52,18 @@ def test_exit_ends_thread(mock_inner_agent):
         await exit_thread(thread_id)
         assert not await thread_awaiting_user(thread_id)
 
-        with pytest.raises(ValueError, match="Unknown thread_id"):
+        with pytest.raises(UnknownThreadError):
+            await resume_turn(thread_id, "q2")
+
+    asyncio.run(run())
+
+
+def test_resume_after_exit_raises_unknown_thread(mock_inner_agent):
+    async def run():
+        _, thread_id = await start_turn("q1")
+        await exit_thread(thread_id)
+
+        with pytest.raises(UnknownThreadError, match="Unknown thread_id"):
             await resume_turn(thread_id, "q2")
 
     asyncio.run(run())

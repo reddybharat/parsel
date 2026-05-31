@@ -1,11 +1,12 @@
 """Graph nodes for the SQL agent."""
 
 from langchain.agents import create_agent
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 from langgraph.graph import END
 from langgraph.types import Command, interrupt
 
 from chat.agent.llm import get_llm
+from chat.agent.replies import final_user_reply
 from chat.agent.prompt import SYSTEM_PROMPT
 from chat.agent.state import AgentState
 from chat.agent.tools import ALL_TOOLS
@@ -32,20 +33,6 @@ def _get_inner_agent():
     )
     logger.info("Inner agent created successfully")
     return _inner_agent
-
-
-def _final_reply_text(messages: list) -> str:
-    """Last non-tool-call AI message text for the user-facing reply."""
-    ai_messages = [
-        m
-        for m in messages
-        if isinstance(m, AIMessage)
-        and m.content
-        and not getattr(m, "tool_calls", None)
-    ]
-    if ai_messages:
-        return ai_messages[-1].text
-    return "I wasn't able to process that request. Could you try rephrasing your question?"
 
 
 async def agent_node(state: AgentState) -> Command:
@@ -75,7 +62,7 @@ async def agent_node(state: AgentState) -> Command:
 
 async def wait_user_node(state: AgentState) -> Command:
     """Pause after each assistant reply until the user continues or exits."""
-    reply = _final_reply_text(state["messages"])
+    reply = final_user_reply(state["messages"])
     logger.info("wait_user_node interrupt (reply_len=%d)", len(reply))
 
     decision = interrupt({"reply": reply, "status": "awaiting_user"})

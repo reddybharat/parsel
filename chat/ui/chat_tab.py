@@ -4,7 +4,7 @@ import streamlit as st
 
 from common.api_client import ApiClientError
 from common.logger import get_logger
-from chat.client import chat_exit, chat_invoke, chat_resume
+from chat.client import chat_exit, chat_send
 from tracker.ui.common import GENERIC_ERROR_MSG
 
 logger = get_logger(__name__)
@@ -116,7 +116,7 @@ def _handle_user_input(user_input: str) -> None:
     st.session_state.chat_messages.append({"role": "user", "content": user_input})
 
     with st.spinner("Thinking…"):
-        reply = _invoke_agent(user_input)
+        reply = _send_message(user_input)
 
     st.session_state.chat_messages.append({"role": "assistant", "content": reply})
     st.session_state.chat_is_processing = False
@@ -154,16 +154,24 @@ def _ensure_state() -> None:
         st.session_state.chat_thread_id = None
 
 
-def _invoke_agent(user_message: str) -> str:
+def _send_message(user_message: str) -> str:
     """Call the chat API and return the reply text."""
     try:
         thread_id = st.session_state.chat_thread_id
-        if thread_id:
-            logger.info("Resuming chat thread_id=%s", thread_id)
-            result = chat_resume(thread_id, user_message)
-        else:
-            logger.info("Starting new chat thread")
-            result = chat_invoke(user_message)
+        try:
+            result = chat_send(user_message, thread_id)
+        except ApiClientError as e:
+            if e.status_code == 404 and thread_id:
+                logger.warning(
+                    "Chat thread_id=%s not found; starting new session",
+                    thread_id,
+                )
+                st.session_state.chat_thread_id = None
+                result = chat_send(user_message, None)
+            else:
+                raise
+
+        if not st.session_state.chat_thread_id:
             new_thread_id = result.get("thread_id")
             if new_thread_id:
                 st.session_state.chat_thread_id = str(new_thread_id)

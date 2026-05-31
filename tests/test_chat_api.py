@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from chat.exceptions import UnknownThreadError
 from main import app
 
 client = TestClient(app)
@@ -48,6 +49,11 @@ def test_chat_invoke_requires_message():
     assert response.status_code == 422
 
 
+def test_chat_invoke_rejects_whitespace_only_message():
+    response = client.post("/chat/invoke", json={"message": "   "})
+    assert response.status_code == 422
+
+
 def test_chat_resume_follow_up(mock_resume_turn):
     response = client.post(
         "/chat/resume",
@@ -62,7 +68,7 @@ def test_chat_resume_follow_up(mock_resume_turn):
 
 def test_chat_resume_unknown_thread():
     with patch("chat.router.chat.resume_turn", new_callable=AsyncMock) as mock:
-        mock.side_effect = ValueError("Unknown thread_id: missing")
+        mock.side_effect = UnknownThreadError("missing")
         response = client.post(
             "/chat/resume",
             json={"thread_id": "missing", "message": "Hi"},
@@ -79,23 +85,6 @@ def test_chat_exit_ok(mock_exit_thread):
 
 def test_chat_exit_unknown_thread():
     with patch("chat.router.chat.exit_thread", new_callable=AsyncMock) as mock:
-        mock.side_effect = ValueError("Unknown thread_id: missing")
+        mock.side_effect = UnknownThreadError("missing")
         response = client.post("/chat/exit", json={"thread_id": "missing"})
     assert response.status_code == 404
-
-
-def test_chat_resume_after_exit_fails(mock_start_turn, mock_exit_thread):
-    invoke = client.post("/chat/invoke", json={"message": "Hello"})
-    assert invoke.status_code == 200
-    thread_id = invoke.json()["thread_id"]
-
-    exit_resp = client.post("/chat/exit", json={"thread_id": thread_id})
-    assert exit_resp.status_code == 200
-
-    with patch("chat.router.chat.resume_turn", new_callable=AsyncMock) as mock_resume:
-        mock_resume.side_effect = ValueError(f"Unknown thread_id: {thread_id}")
-        resume = client.post(
-            "/chat/resume",
-            json={"thread_id": thread_id, "message": "Again?"},
-        )
-    assert resume.status_code == 404
