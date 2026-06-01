@@ -5,6 +5,12 @@ from typing import Any
 from common.api_client import post
 
 
+def chat_send(message: str, thread_id: str | None = None) -> dict[str, Any]:
+    if thread_id:
+        return chat_resume(thread_id, message)
+    return chat_invoke(message)
+
+
 def chat_invoke(message: str) -> dict[str, Any]:
     return post("/chat/invoke", json={"message": message})
 
