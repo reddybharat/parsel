@@ -44,3 +44,8 @@ export type TrackerConfig = {
   categories: string[];
   payment_methods: string[];
 };
+
+export type ChatReply = {
+  reply: string;
+  thread_id: string;
+};

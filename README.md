@@ -57,11 +57,6 @@ Configure in backend runtime environment:
 | `CORS_ORIGINS` | No | Allowed frontend origins; default includes localhost:5173 |
 | `LOG_LEVEL` | No | Logging verbosity |
 
-Optional for Stitch MCP:
-
-| Variable | Required | Purpose |
-|---|---|---|
-| `STITCH_API_KEY` | For Stitch sync | API key used in `.cursor/mcp.json` |
 
 ## API reference
 
@@ -89,12 +84,3 @@ Run backend tests:
 cd backend
 python -m pytest tests/test_chat_api.py tests/test_chat_graph_interrupt.py -v
 ```
-
-## Design intake
-
-- Stitch MCP config: `.cursor/mcp.json`
-- Stitch input docs: `docs/design/stitch.md`
-- Stitch payload placeholders:
-  - `docs/design/stitch-project.json`
-  - `docs/design/stitch-screens.json`
-- Route mapping: `docs/design/stitch-route-map.md`

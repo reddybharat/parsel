@@ -1,5 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import { EmptyState } from "../components/feedback/EmptyState";
+import { LoadingState } from "../components/feedback/LoadingState";
+import { ConfirmDeleteDialog } from "../components/transactions/ConfirmDeleteDialog";
+import { EditTransactionDialog } from "../components/transactions/EditTransactionDialog";
+import { TransactionTable } from "../components/transactions/TransactionTable";
 import {
   deleteTransaction,
   exportTransactions,
@@ -27,6 +32,8 @@ export function SearchPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SearchResult | null>(null);
   const [editing, setEditing] = useState<Transaction | null>(null);
+  const [deleting, setDeleting] = useState<Transaction | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const [startDate, setStartDate] = useState(monthStartIso());
@@ -86,20 +93,24 @@ export function SearchPage() {
     await runSearch(1);
   }
 
-  async function onDelete(id: string) {
-    if (!window.confirm("Delete this transaction?")) return;
+  async function onDeleteConfirm() {
+    if (!deleting) return;
+    setSubmitting(true);
     try {
-      await deleteTransaction(id);
+      await deleteTransaction(deleting.id);
       setStatusMessage("Transaction deleted.");
+      setDeleting(null);
       await runSearch(page);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed.");
+    } finally {
+      setSubmitting(false);
     }
   }
 
-  async function onEditSave(event: FormEvent) {
-    event.preventDefault();
+  async function onEditSave() {
     if (!editing) return;
+    setSubmitting(true);
     try {
       await updateTransaction(editing.id, editing);
       setEditing(null);
@@ -107,6 +118,8 @@ export function SearchPage() {
       await runSearch(page);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed.");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -131,30 +144,54 @@ export function SearchPage() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold">Ledger Search</h2>
+      {error ? (
+        <div className="flex items-center justify-between rounded-lg border border-[#f3c4c4] bg-[#fdecec] px-4 py-2 text-sm text-[#c44747]">
+          <span>Failed to fetch data. Please try again.</span>
+          <button className="rounded bg-white px-3 py-1 text-xs font-semibold" onClick={() => void runSearch(page)}>
+            Retry
+          </button>
+        </div>
+      ) : null}
 
-      <form className="grid gap-3 md:grid-cols-4" onSubmit={onSearchSubmit}>
-        <input className="rounded border p-2" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-        <input className="rounded border p-2" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-        <select className="rounded border p-2" value={category} onChange={(e) => setCategory(e.target.value)}>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-[40px] font-semibold tracking-tight text-parsel-neutral">Ledger</h2>
+          <p className="text-sm text-parsel-muted">Your detailed financial footprint, organized and verified.</p>
+        </div>
+        <button className="rounded-lg bg-parsel-primary px-5 py-2 text-sm font-semibold text-white">+ Add Transaction</button>
+      </div>
+
+      <form className="grid gap-3 rounded-xl border border-parsel-border bg-white p-3 md:grid-cols-4" onSubmit={onSearchSubmit}>
+        <div className="col-span-full flex flex-wrap gap-2">
+          <button className="rounded-full bg-[#e5edf9] px-3 py-1 text-xs font-semibold text-parsel-primary" type="button">Today</button>
+          <button className="rounded-full bg-[#f0f2f6] px-3 py-1 text-xs font-semibold text-parsel-secondary" type="button">Last 7 days</button>
+          <button className="rounded-full bg-[#f0f2f6] px-3 py-1 text-xs font-semibold text-parsel-secondary" type="button">This month</button>
+          <button className="rounded-full bg-[#f0f2f6] px-3 py-1 text-xs font-semibold text-parsel-secondary" type="button">All Filters</button>
+          <div className="ml-auto hidden rounded-lg border border-parsel-border px-3 py-1 text-xs text-parsel-muted md:block">
+            Search descriptions...
+          </div>
+        </div>
+        <input className="rounded-lg border border-parsel-border p-2 text-sm" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        <input className="rounded-lg border border-parsel-border p-2 text-sm" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        <select className="rounded-lg border border-parsel-border p-2" value={category} onChange={(e) => setCategory(e.target.value)}>
           <option>All</option>
           {categories.map((item) => (
             <option key={item}>{item}</option>
           ))}
         </select>
-        <select className="rounded border p-2" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+        <select className="rounded-lg border border-parsel-border p-2" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
           <option>All</option>
           {paymentMethods.map((item) => (
             <option key={item}>{item}</option>
           ))}
         </select>
-        <select className="rounded border p-2" value={creditDebit} onChange={(e) => setCreditDebit(e.target.value)}>
+        <select className="rounded-lg border border-parsel-border p-2" value={creditDebit} onChange={(e) => setCreditDebit(e.target.value)}>
           <option>All</option>
           <option>Credit</option>
           <option>Debit</option>
         </select>
         <select
-          className="rounded border p-2"
+          className="rounded-lg border border-parsel-border p-2"
           value={sortColumn}
           onChange={(e) => setSortColumn(e.target.value as "transaction_date" | "amount")}
         >
@@ -162,147 +199,85 @@ export function SearchPage() {
           <option value="amount">Amount</option>
         </select>
         <select
-          className="rounded border p-2"
+          className="rounded-lg border border-parsel-border p-2"
           value={sortDesc ? "desc" : "asc"}
           onChange={(e) => setSortDesc(e.target.value === "desc")}
         >
           <option value="desc">Descending</option>
           <option value="asc">Ascending</option>
         </select>
-        <input
-          className="rounded border p-2"
-          type="number"
-          min={10}
-          max={50}
-          step={5}
-          value={pageSize}
-          onChange={(e) => setPageSize(Number(e.target.value))}
-        />
+        <input className="rounded-lg border border-parsel-border p-2" type="number" min={10} max={50} step={5} value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} />
         <div className="flex gap-2">
-          <button className="rounded bg-blue-600 px-3 py-2 text-white" type="submit" disabled={loading}>
+          <button className="rounded-lg bg-parsel-primary px-3 py-2 text-white" type="submit" disabled={loading}>
             Search
           </button>
-          <button className="rounded border px-3 py-2" type="button" onClick={() => void onExport()}>
+          <button className="rounded-lg border border-parsel-border px-3 py-2" type="button" onClick={() => void onExport()}>
             Export CSV
           </button>
         </div>
       </form>
 
-      {statusMessage && <p className="text-sm text-green-700">{statusMessage}</p>}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {statusMessage && <p className="text-sm text-emerald-700">{statusMessage}</p>}
 
-      {editing && (
-        <form className="grid gap-2 rounded border border-blue-200 bg-blue-50 p-3 md:grid-cols-3" onSubmit={onEditSave}>
-          <h3 className="md:col-span-3 font-medium">Edit Transaction</h3>
-          <input
-            className="rounded border p-2"
-            type="number"
-            min={0.01}
-            step={0.01}
-            value={editing.amount}
-            onChange={(e) => setEditing({ ...editing, amount: Number(e.target.value) })}
-          />
-          <select
-            className="rounded border p-2"
-            value={editing.is_debit ? "Debit" : "Credit"}
-            onChange={(e) => setEditing({ ...editing, is_debit: e.target.value === "Debit" })}
-          >
-            <option>Debit</option>
-            <option>Credit</option>
-          </select>
-          <input
-            className="rounded border p-2"
-            type="date"
-            value={editing.transaction_date}
-            onChange={(e) => setEditing({ ...editing, transaction_date: e.target.value })}
-          />
-          <select
-            className="rounded border p-2"
-            value={editing.category}
-            onChange={(e) => setEditing({ ...editing, category: e.target.value })}
-          >
-            {categories.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
-          <select
-            className="rounded border p-2"
-            value={editing.payment_method || ""}
-            onChange={(e) => setEditing({ ...editing, payment_method: e.target.value || null })}
-          >
-            <option value="">Select payment method</option>
-            {paymentMethods.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
-          <input
-            className="rounded border p-2 md:col-span-3"
-            type="text"
-            value={editing.description || ""}
-            onChange={(e) => setEditing({ ...editing, description: e.target.value || null })}
-            placeholder="Description"
-          />
-          <div className="md:col-span-3 flex gap-2">
-            <button className="rounded bg-blue-600 px-3 py-2 text-white" type="submit">
-              Save
-            </button>
-            <button className="rounded border px-3 py-2" type="button" onClick={() => setEditing(null)}>
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-
-      {result && (
-        <div className="space-y-2">
-          <p className="text-sm text-gray-500">
-            Showing {result.items.length} of {result.total}
-          </p>
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b text-left">
-                  <th className="p-2">Date</th>
-                  <th className="p-2">Amount</th>
-                  <th className="p-2">Category</th>
-                  <th className="p-2">Payment</th>
-                  <th className="p-2">Description</th>
-                  <th className="p-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.items.map((row) => (
-                  <tr key={row.id} className="border-b">
-                    <td className="p-2">{row.transaction_date}</td>
-                    <td className="p-2">{formatInrSigned(signedAmount(row.amount, row.is_debit))}</td>
-                    <td className="p-2">{row.category}</td>
-                    <td className="p-2">{row.payment_method || "-"}</td>
-                    <td className="p-2">{row.description || "-"}</td>
-                    <td className="p-2">
-                      <div className="flex gap-2">
-                        <button className="rounded border px-2 py-1" onClick={() => setEditing(row)} type="button">
-                          Edit
-                        </button>
-                        <button className="rounded border px-2 py-1" onClick={() => void onDelete(row.id)} type="button">
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      {loading ? <LoadingState label="Searching ledger..." /> : null}
+      {result && !loading ? (
+        <div className="space-y-3">
+          <p className="text-sm text-gray-500">Showing {result.items.length} of {result.total} transactions</p>
+          {result.items.length === 0 ? (
+            <>
+              <div className="rounded-xl border border-parsel-border bg-white py-20">
+                <EmptyState title="No transactions found" detail="Try adjusting your filters or search terms." />
+                <div className="mt-4 flex justify-center gap-3">
+                  <button className="rounded-lg border border-parsel-border px-4 py-2 text-sm">Clear all filters</button>
+                  <button className="rounded-lg bg-[#0d8b58] px-4 py-2 text-sm font-semibold text-white">Add New Entry</button>
+                </div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-xl border border-parsel-border bg-white p-4">
+                  <p className="text-xs uppercase tracking-wide text-parsel-secondary">Period Net Flow</p>
+                  <p className="mt-1 font-mono text-3xl font-semibold">₹0.00</p>
+                </div>
+                <div className="rounded-xl border border-parsel-border bg-white p-4">
+                  <p className="text-xs uppercase tracking-wide text-parsel-secondary">Total Income</p>
+                  <p className="mt-1 font-mono text-3xl font-semibold text-[#0c8756]">₹0.00</p>
+                </div>
+                <div className="rounded-xl border border-parsel-border bg-white p-4">
+                  <p className="text-xs uppercase tracking-wide text-parsel-secondary">Total Expenses</p>
+                  <p className="mt-1 font-mono text-3xl font-semibold text-[#c64040]">₹0.00</p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <TransactionTable items={result.items} onEdit={(row) => setEditing(row)} onDelete={(row) => setDeleting(row)} />
+          )}
           <div className="flex gap-2">
-            <button className="rounded border px-3 py-2" disabled={!hasPrevious} onClick={() => void runSearch(page - 1)}>
+            <button className="rounded-lg border border-parsel-border px-3 py-2" disabled={!hasPrevious} onClick={() => void runSearch(page - 1)}>
               Prev
             </button>
-            <button className="rounded border px-3 py-2" disabled={!hasNext} onClick={() => void runSearch(page + 1)}>
+            <button className="rounded-lg border border-parsel-border px-3 py-2" disabled={!hasNext} onClick={() => void runSearch(page + 1)}>
               Next
             </button>
           </div>
         </div>
-      )}
+      ) : null}
+
+      <EditTransactionDialog
+        open={Boolean(editing)}
+        transaction={editing}
+        categories={categories}
+        paymentMethods={paymentMethods}
+        loading={submitting}
+        onChange={setEditing}
+        onSave={() => void onEditSave()}
+        onCancel={() => setEditing(null)}
+      />
+      <ConfirmDeleteDialog
+        open={Boolean(deleting)}
+        loading={submitting}
+        itemLabel={deleting ? `${deleting.transaction_date} - ${formatInrSigned(signedAmount(deleting.amount, deleting.is_debit))}` : ""}
+        onConfirm={() => void onDeleteConfirm()}
+        onCancel={() => setDeleting(null)}
+      />
     </div>
   );
 }

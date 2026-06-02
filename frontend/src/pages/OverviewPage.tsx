@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 
+import { EmptyState } from "../components/feedback/EmptyState";
+import { ErrorState } from "../components/feedback/ErrorState";
+import { LoadingState } from "../components/feedback/LoadingState";
 import { fetchDashboardOverview } from "../api/dashboard";
 import { formatInrSigned, signedAmount } from "../lib/format";
 import type { DashboardOverview } from "../lib/types";
@@ -26,77 +29,109 @@ export function OverviewPage() {
     void load();
   }, []);
 
-  if (loading) return <p className="text-sm text-gray-500">Loading overview...</p>;
-  if (error) return <p className="text-sm text-red-600">{error}</p>;
+  if (loading) return <LoadingState label="Loading overview..." />;
+  if (error) return <ErrorState message={error} onRetry={() => void load()} />;
   if (!data) return null;
 
   const trendMax = Math.max(...data.trend.points.map((point) => Math.abs(point.spend)), 1);
+  const topCategorySpend = formatInrSigned(-data.highlights.top_category.spend);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Overview</h2>
-        <button className="rounded bg-blue-600 px-3 py-2 text-sm text-white" onClick={() => void load()}>
-          Refresh
-        </button>
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-[44px] font-semibold tracking-tight text-parsel-neutral">Financial Overview</h2>
+        <p className="text-sm text-parsel-muted">Welcome back. Here&apos;s your portfolio at a glance.</p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <article className="rounded border border-gray-200 p-4">
-          <p className="text-sm text-gray-500">Current Portfolio</p>
-          <p className="text-xl font-semibold">{formatInrSigned(data.summary.portfolio_net)}</p>
+      <section className="grid gap-3 lg:grid-cols-[1.7fr_1fr]">
+        <article className="rounded-xl border border-parsel-border bg-white p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Net Portfolio Balance</p>
+            <span className="rounded-full bg-[#f9d79b] px-3 py-1 text-xs font-semibold text-[#6b4a14]">
+              {data.summary.spend_delta_pct === null ? "No baseline" : `${data.summary.spend_delta_pct > 0 ? "+" : ""}${data.summary.spend_delta_pct.toFixed(1)}% vs last month`}
+            </span>
+          </div>
+          <p className="font-mono text-5xl font-semibold text-[#0b5fa5]">{formatInrSigned(data.summary.portfolio_net)}</p>
+          <div className="mt-4 h-[108px] rounded-lg bg-gradient-to-t from-[#b8d7ef] to-[#dcebfa]" />
         </article>
-        <article className="rounded border border-gray-200 p-4">
-          <p className="text-sm text-gray-500">Monthly Spend</p>
-          <p className="text-xl font-semibold">{formatInrSigned(data.summary.current_month_spend)}</p>
-          <p className="text-sm text-gray-500">
-            {data.summary.spend_delta_pct === null
-              ? "No baseline available"
-              : `${data.summary.spend_delta_pct > 0 ? "+" : ""}${data.summary.spend_delta_pct.toFixed(1)}% vs last month`}
-          </p>
-        </article>
-      </div>
-
-      <section className="space-y-2">
-        <h3 className="font-medium">Spending Trend</h3>
-        <div className="grid gap-2">
-          {data.trend.points.map((point) => {
-            const width = `${(Math.abs(point.spend) / trendMax) * 100}%`;
-            return (
-              <div key={point.month_label} className="grid grid-cols-[100px_1fr_120px] items-center gap-2 text-sm">
-                <span className="text-gray-500">{point.month_label}</span>
-                <div className="h-3 rounded bg-gray-100">
-                  <div className="h-3 rounded bg-blue-500" style={{ width }} />
-                </div>
-                <span className="text-right">{formatInrSigned(Math.abs(point.spend))}</span>
-              </div>
-            );
-          })}
+        <div className="grid gap-3">
+          <article className="rounded-xl border border-parsel-border bg-white p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Top Category</p>
+            <p className="mt-3 text-2xl font-semibold">{data.highlights.top_category.category || "-"}</p>
+            <p className="text-sm text-parsel-muted">{topCategorySpend} spent</p>
+          </article>
+          <article className="rounded-xl border border-[#9fc3dc] bg-[#b8d7ea] p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#335168]">Investments</p>
+            <p className="mt-2 font-mono text-3xl font-semibold text-[#345773]">
+              {formatInrSigned(data.highlights.current_month_investments)}
+            </p>
+            <p className="text-sm text-[#48667d]">Allocated this month</p>
+          </article>
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <article className="space-y-2">
-          <h3 className="font-medium">Recent Transactions</h3>
-          <ul className="divide-y rounded border border-gray-200">
-            {data.recent.items.map((row) => (
-              <li key={row.id} className="space-y-1 p-3 text-sm">
-                <p className="font-medium">
-                  {row.transaction_date} - {row.category} - {row.payment_method || "-"}
-                </p>
-                <p>{formatInrSigned(signedAmount(row.amount, row.is_debit))}</p>
-                <p className="text-gray-500">{row.description || "-"}</p>
-              </li>
-            ))}
-          </ul>
+      <section className="grid gap-3 lg:grid-cols-[1.7fr_1fr]">
+        <article className="rounded-xl border border-parsel-border bg-white p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Spending Trends</p>
+              <p className="font-mono text-2xl font-semibold">{formatInrSigned(data.summary.current_month_spend)}</p>
+              <p className="text-xs text-parsel-muted">Current month</p>
+            </div>
+            <button className="rounded-md border border-parsel-border px-2 py-1 text-xs" onClick={() => void load()}>
+              Refresh
+            </button>
+          </div>
+          {data.trend.points.length === 0 ? (
+            <EmptyState title="No trend data" detail="Add transactions to visualize monthly spend." />
+          ) : (
+            <div className="grid gap-2">
+              {data.trend.points.map((point) => {
+                const width = `${(Math.abs(point.spend) / trendMax) * 100}%`;
+                return (
+                  <div key={point.month_label} className="grid grid-cols-[80px_1fr_120px] items-center gap-2 text-sm">
+                    <span className="text-parsel-muted">{point.month_label}</span>
+                    <div className="h-2 rounded-full bg-[#e8eef6]">
+                      <div className="h-2 rounded-full bg-parsel-primary" style={{ width }} />
+                    </div>
+                    <span className="text-right font-mono">{formatInrSigned(Math.abs(point.spend))}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </article>
-        <article className="space-y-2 rounded border border-gray-200 p-4 text-sm">
-          <h3 className="font-medium">Monthly Insights</h3>
-          <p>Top Category: {data.highlights.top_category.category || "-"} ({formatInrSigned(-data.highlights.top_category.spend)})</p>
-          <p>Total Inflow: {formatInrSigned(data.highlights.total_inflow)}</p>
-          <p>Total Outflow: {formatInrSigned(-data.highlights.total_outflow)}</p>
-          <p>Total Investments: {formatInrSigned(data.highlights.current_month_investments)}</p>
+        <article className="rounded-xl border border-parsel-border bg-white p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Recent Activity</p>
+            <span className="text-xs text-parsel-primary">View All</span>
+          </div>
+          {data.recent.items.length === 0 ? (
+            <EmptyState title="No recent transactions" detail="New entries will show here." />
+          ) : (
+            <ul className="space-y-3">
+              {data.recent.items.map((row) => (
+                <li key={row.id} className="flex items-center justify-between border-b border-parsel-border pb-2 text-sm last:border-0">
+                  <div>
+                    <p className="font-medium">{row.description || row.category}</p>
+                    <p className="text-xs text-parsel-muted">{row.transaction_date}</p>
+                  </div>
+                  <p className={`font-mono font-semibold ${row.is_debit ? "text-[#cc3d3d]" : "text-[#0f6cc6]"}`}>
+                    {formatInrSigned(signedAmount(row.amount, row.is_debit))}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
         </article>
+      </section>
+
+      <section className="flex items-center justify-between rounded-xl bg-[#151b24] p-6 text-white">
+        <div>
+          <p className="text-4xl font-semibold">Chat with your data</p>
+          <p className="mt-2 text-sm text-[#c7d4e8]">Get instant answers about spending, tax savings, and investment growth.</p>
+        </div>
+        <button className="rounded-lg bg-parsel-primary px-6 py-3 text-base font-semibold">Open Assistant</button>
       </section>
     </div>
   );

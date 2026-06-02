@@ -1,6 +1,5 @@
 import { postJson } from "./client";
-
-type ChatReply = { reply: string; thread_id: string };
+import type { ChatReply } from "../lib/types";
 
 export function invokeChat(message: string) {
   return postJson<ChatReply>("/chat/invoke", { message });

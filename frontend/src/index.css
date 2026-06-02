@@ -3,23 +3,31 @@
 @tailwind utilities;
 
 :root {
-  --parsel-bg: #f7f6f2;
+  --parsel-bg: #1b1d23;
   --parsel-surface: #ffffff;
+  --parsel-soft: #f5f7fb;
   --parsel-text: #1f2937;
   --parsel-muted: #6b7280;
-  --parsel-accent: #2563eb;
-  --parsel-border: #e5e7eb;
+  --parsel-primary: #4a90e2;
+  --parsel-secondary: #546e7a;
+  --parsel-tertiary: #c28000;
+  --parsel-neutral: #333333;
+  --parsel-border: #d7dee8;
+  --parsel-emerald: #0f8f62;
+  --parsel-danger: #be123c;
 }
 
 body {
   margin: 0;
   font-family:
+    Geist,
     Inter,
     -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  background: var(--parsel-bg);
+  background: radial-gradient(circle at 1px 1px, #2b2f3a 1px, #1b1d23 0);
+  background-size: 16px 16px;
   color: var(--parsel-text);
 }
 
