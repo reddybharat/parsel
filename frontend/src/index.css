@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --parsel-bg: #f7f6f2;
+  --parsel-surface: #ffffff;
+  --parsel-text: #1f2937;
+  --parsel-muted: #6b7280;
+  --parsel-accent: #2563eb;
+  --parsel-border: #e5e7eb;
+}
+
+body {
+  margin: 0;
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  background: var(--parsel-bg);
+  color: var(--parsel-text);
+}
+
+#root {
+  min-height: 100vh;
+}

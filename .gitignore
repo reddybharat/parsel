@@ -5,3 +5,5 @@ __pycache__
 ENHANCEMENTS.md
 *.plan.md
 .cursor
+frontend/node_modules
+frontend/dist

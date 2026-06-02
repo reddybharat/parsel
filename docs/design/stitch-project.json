@@ -1,0 +1,369 @@
+{
+  "status": "ok",
+  "fetched_at": "2026-06-02",
+  "project_id": "projects/621062326748601563",
+  "project": {
+    "createTime": "2026-06-01T18:26:16.499403Z",
+    "designTheme": {
+      "bodyFont": "GEIST",
+      "bodyFontFamily": "Geist",
+      "colorMode": "LIGHT",
+      "colorVariant": "FIDELITY",
+      "customColor": "#10b981",
+      "designMd": "---\nname: Slate & Emerald Precision\ncolors:\n  surface: '#f7f9fb'\n  surface-dim: '#d8dadc'\n  surface-bright: '#f7f9fb'\n  surface-container-lowest: '#ffffff'\n  surface-container-low: '#f2f4f6'\n  surface-container: '#eceef0'\n  surface-container-high: '#e6e8ea'\n  surface-container-highest: '#e0e3e5'\n  on-surface: '#191c1e'\n  on-surface-variant: '#3c4a42'\n  inverse-surface: '#2d3133'\n  inverse-on-surface: '#eff1f3'\n  outline: '#6c7a71'\n  outline-variant: '#bbcabf'\n  surface-tint: '#006c49'\n  primary: '#006c49'\n  on-primary: '#ffffff'\n  primary-container: '#10b981'\n  on-primary-container: '#00422b'\n  inverse-primary: '#4edea3'\n  secondary: '#565e74'\n  on-secondary: '#ffffff'\n  secondary-container: '#dae2fd'\n  on-secondary-container: '#5c647a'\n  tertiary: '#bc0b3b'\n  on-tertiary: '#ffffff'\n  tertiary-container: '#ff7886'\n  on-tertiary-container: '#780021'\n  error: '#ba1a1a'\n  on-error: '#ffffff'\n  error-container: '#ffdad6'\n  on-error-container: '#93000a'\n  primary-fixed: '#6ffbbe'\n  primary-fixed-dim: '#4edea3'\n  on-primary-fixed: '#002113'\n  on-primary-fixed-variant: '#005236'\n  secondary-fixed: '#dae2fd'\n  secondary-fixed-dim: '#bec6e0'\n  on-secondary-fixed: '#131b2e'\n  on-secondary-fixed-variant: '#3f465c'\n  tertiary-fixed: '#ffdadb'\n  tertiary-fixed-dim: '#ffb2b7'\n  on-tertiary-fixed: '#40000d'\n  on-tertiary-fixed-variant: '#92002a'\n  background: '#f7f9fb'\n  on-background: '#191c1e'\n  surface-variant: '#e0e3e5'\ntypography:\n  display-kpi:\n    fontFamily: Geist\n    fontSize: 40px\n    fontWeight: '600'\n    lineHeight: 48px\n    letterSpacing: -0.02em\n  display-kpi-mobile:\n    fontFamily: Geist\n    fontSize: 32px\n    fontWeight: '600'\n    lineHeight: 40px\n    letterSpacing: -0.02em\n  headline-lg:\n    fontFamily: Geist\n    fontSize: 24px\n    fontWeight: '600'\n    lineHeight: 32px\n    letterSpacing: -0.01em\n  headline-md:\n    fontFamily: Geist\n    fontSize: 20px\n    fontWeight: '500'\n    lineHeight: 28px\n    letterSpacing: -0.01em\n  body-lg:\n    fontFamily: Geist\n    fontSize: 16px\n    fontWeight: '400'\n    lineHeight: 24px\n    letterSpacing: 0em\n  body-md:\n    fontFamily: Geist\n    fontSize: 14px\n    fontWeight: '400'\n    lineHeight: 20px\n    letterSpacing: 0em\n  amount-mono:\n    fontFamily: JetBrains Mono\n    fontSize: 16px\n    fontWeight: '500'\n    lineHeight: 24px\n    letterSpacing: -0.02em\n  label-caps:\n    fontFamily: Geist\n    fontSize: 12px\n    fontWeight: '600'\n    lineHeight: 16px\n    letterSpacing: 0.05em\nrounded:\n  sm: 0.25rem\n  DEFAULT: 0.5rem\n  md: 0.75rem\n  lg: 1rem\n  xl: 1.5rem\n  full: 9999px\nspacing:\n  base-unit: 4px\n  container-padding-desktop: 32px\n  container-padding-mobile: 16px\n  gutter: 24px\n  stack-sm: 8px\n  stack-md: 16px\n  stack-lg: 24px\n---\n\n## Brand & Style\n\nThis design system is built for a personal finance experience that feels like a private concierge rather than a traditional banking institution. The brand personality is **calm, sophisticated, and precise**, moving away from high-stress financial interfaces toward a sense of quiet control.\n\nThe design style follows a **Modern Minimalist** approach with a focus on **Precision Engineering**. We prioritize heavy whitespace, exceptional legibility, and a restricted color palette to reduce cognitive load. Visual hierarchy is established through structural alignment and purposeful color accents rather than heavy decorative elements. The emotional goal is to provide the user with a \"moment of clarity\" regarding their financial health.\n\n## Colors\n\nThe palette is anchored by **Slate & Emerald**.\n- **Primary (Emerald):** Used for primary actions, growth indicators, and \"Income\" states. It represents prosperity and stability.\n- **Secondary (Slate):** Used for core text, structural borders, and navigation. It provides a grounded, authoritative foundation.\n- **Semantic Accents:** \"Expenses\" are handled with a sophisticated **Rose/Coral** rather than a harsh red to keep the user calm even when reviewing spending.\n- **Surfaces:** We utilize a layered neutral system. The **Base** layer uses Neutral-50 to provide a soft canvas, while **Surfaces** (cards/containers) use pure White to pop forward.\n\n## Typography\n\nThe typography system uses **Geist** for its technical precision and modern feel. To enhance the premium \"finance-concierge\" aesthetic, we employ slightly tighter-than-default letter spacing on larger headings.\n\nA secondary font, **JetBrains Mono**, is introduced specifically for financial figures (amounts) to ensure every digit is perfectly aligned and easy to scan in lists and tables.\n\n**Regional Customization:** The Indian Rupee symbol (\u20b9) should always inherit the font-weight and color of the accompanying numerical value but may be set in a slightly lighter weight if the amount is bold, to maintain visual balance.\n\n## Layout & Spacing\n\nThe system utilizes a **Fixed Grid** for desktop (1200px max-width) to maintain a centered, editorial feel, while transitioning to a **Fluid Grid** on mobile devices.\n\n- **Rhythm:** An 8px linear scale is used for most components, with a 4px \"half-step\" allowed for tight UI elements like labels or small icons.\n- **Whitespace:** We intentionally use generous margins (`stack-lg`) between logical sections to prevent the interface from feeling \"crowded\"\u2014a common pain point in finance apps.\n- **Data Density:** While the overall layout is airy, data tables and lists use `stack-sm` padding to allow for high information density without sacrificing legibility.\n\n## Elevation & Depth\n\nThis design system avoids heavy drop shadows in favor of **Tonal Layering** and **Low-Contrast Outlines**.\n\n1.  **Level 0 (Base):** Neutral-50 background.\n2.  **Level 1 (Surface):** White cards with a 1px border in Slate-100. No shadow.\n3.  **Level 2 (Overlays/Modals):** White surfaces with a soft, diffused shadow (`0px 10px 25px rgba(15, 23, 42, 0.08)`) to indicate temporary interaction states.\n\nDepth is communicated through \"stacking\" white surfaces on top of the soft gray background, creating a clean, architectural feel.\n\n## Shapes\n\nThe shape language is defined by a consistent **12px (0.75rem)** radius for all primary containers and cards. This specific roundedness bridges the gap between clinical (sharp) and playful (pill-shaped), fitting the \"concierge\" persona.\n\n- **Small elements:** Buttons and input fields use a slightly smaller radius (8px) to feel more precise.\n- **Large elements:** Main dashboard sections use the standard 12px.\n- **Interactive States:** Focus states should use a 2px offset ring in Emerald-600 to maintain accessibility.\n\n## Components\n\n### Buttons\n- **Primary:** Background Emerald-600, Text White. High contrast, used for \"Add Transaction\" or \"Save.\"\n- **Secondary:** Background Slate-100, Text Slate-900. Used for \"Cancel\" or \"Edit.\"\n- **Ghost:** No background, Text Slate-500. Used for tertiary actions.\n\n### Cards\n- Always White background.\n- 12px corner radius.\n- 1px border in Slate-100.\n- Padding should be 24px for desktop, 16px for mobile.\n\n### Input Fields\n- Background White.\n- Border 1.5px Slate-100.\n- On focus: Border color shifts to Emerald-600.\n- Labels use `label-caps` in Slate-500.\n\n### Chips/Tags\n- **Income Chip:** Emerald-50 background, Emerald-600 text.\n- **Expense Chip:** Rose-50 background, Rose-500 text.\n- **Neutral Chip:** Slate-100 background, Slate-500 text.\n\n### Transaction Lists\n- Items separated by 1px Slate-100 dividers.\n- Left-aligned icon (category), center-aligned description, right-aligned amount (`amount-mono`).\n- Amounts use color coding: +\u20b9 for Emerald-600, -\u20b9 for Rose-500.",
+      "font": "GEIST",
+      "headlineFont": "GEIST",
+      "headlineFontFamily": "Geist",
+      "labelFont": "JETBRAINS_MONO",
+      "labelFontFamily": "Jetbrains Mono",
+      "namedColors": {
+        "background": "#f7f9fb",
+        "error": "#ba1a1a",
+        "error_container": "#ffdad6",
+        "inverse_on_surface": "#eff1f3",
+        "inverse_primary": "#4edea3",
+        "inverse_surface": "#2d3133",
+        "on_background": "#191c1e",
+        "on_error": "#ffffff",
+        "on_error_container": "#93000a",
+        "on_primary": "#ffffff",
+        "on_primary_container": "#00422b",
+        "on_primary_fixed": "#002113",
+        "on_primary_fixed_variant": "#005236",
+        "on_secondary": "#ffffff",
+        "on_secondary_container": "#5c647a",
+        "on_secondary_fixed": "#131b2e",
+        "on_secondary_fixed_variant": "#3f465c",
+        "on_surface": "#191c1e",
+        "on_surface_variant": "#3c4a42",
+        "on_tertiary": "#ffffff",
+        "on_tertiary_container": "#780021",
+        "on_tertiary_fixed": "#40000d",
+        "on_tertiary_fixed_variant": "#92002a",
+        "outline": "#6c7a71",
+        "outline_variant": "#bbcabf",
+        "primary": "#006c49",
+        "primary_container": "#10b981",
+        "primary_fixed": "#6ffbbe",
+        "primary_fixed_dim": "#4edea3",
+        "secondary": "#565e74",
+        "secondary_container": "#dae2fd",
+        "secondary_fixed": "#dae2fd",
+        "secondary_fixed_dim": "#bec6e0",
+        "surface": "#f7f9fb",
+        "surface_bright": "#f7f9fb",
+        "surface_container": "#eceef0",
+        "surface_container_high": "#e6e8ea",
+        "surface_container_highest": "#e0e3e5",
+        "surface_container_low": "#f2f4f6",
+        "surface_container_lowest": "#ffffff",
+        "surface_dim": "#d8dadc",
+        "surface_tint": "#006c49",
+        "surface_variant": "#e0e3e5",
+        "tertiary": "#bc0b3b",
+        "tertiary_container": "#ff7886",
+        "tertiary_fixed": "#ffdadb",
+        "tertiary_fixed_dim": "#ffb2b7"
+      },
+      "overrideNeutralColor": "#f8fafc",
+      "overridePrimaryColor": "#10b981",
+      "overrideSecondaryColor": "#0f172a",
+      "overrideTertiaryColor": "#f43f5e",
+      "roundness": "ROUND_EIGHT",
+      "spacing": {
+        "base-unit": "4px",
+        "container-padding-desktop": "32px",
+        "container-padding-mobile": "16px",
+        "gutter": "24px",
+        "stack-lg": "24px",
+        "stack-md": "16px",
+        "stack-sm": "8px"
+      },
+      "spacingScale": 2,
+      "typography": {
+        "amount-mono": {
+          "fontFamily": "JetBrains Mono",
+          "fontSize": "16px",
+          "fontWeight": "500",
+          "letterSpacing": "-0.02em",
+          "lineHeight": "24px"
+        },
+        "body-lg": {
+          "fontFamily": "Geist",
+          "fontSize": "16px",
+          "fontWeight": "400",
+          "letterSpacing": "0em",
+          "lineHeight": "24px"
+        },
+        "body-md": {
+          "fontFamily": "Geist",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "letterSpacing": "0em",
+          "lineHeight": "20px"
+        },
+        "display-kpi": {
+          "fontFamily": "Geist",
+          "fontSize": "40px",
+          "fontWeight": "600",
+          "letterSpacing": "-0.02em",
+          "lineHeight": "48px"
+        },
+        "display-kpi-mobile": {
+          "fontFamily": "Geist",
+          "fontSize": "32px",
+          "fontWeight": "600",
+          "letterSpacing": "-0.02em",
+          "lineHeight": "40px"
+        },
+        "headline-lg": {
+          "fontFamily": "Geist",
+          "fontSize": "24px",
+          "fontWeight": "600",
+          "letterSpacing": "-0.01em",
+          "lineHeight": "32px"
+        },
+        "headline-md": {
+          "fontFamily": "Geist",
+          "fontSize": "20px",
+          "fontWeight": "500",
+          "letterSpacing": "-0.01em",
+          "lineHeight": "28px"
+        },
+        "label-caps": {
+          "fontFamily": "Geist",
+          "fontSize": "12px",
+          "fontWeight": "600",
+          "letterSpacing": "0.05em",
+          "lineHeight": "16px"
+        }
+      }
+    },
+    "deviceType": "DESKTOP",
+    "metadata": {
+      "userRole": "OWNER"
+    },
+    "name": "projects/621062326748601563",
+    "origin": "STITCH",
+    "projectType": "TEXT_TO_UI_PRO",
+    "screenInstances": [
+      {
+        "height": 1024,
+        "id": "0384cfd3bdbf48e288583c2ef896098d",
+        "sourceScreen": "projects/621062326748601563/screens/0384cfd3bdbf48e288583c2ef896098d",
+        "width": 1280,
+        "x": 6535,
+        "y": 1097
+      },
+      {
+        "height": 1024,
+        "hidden": true,
+        "id": "0428b8b7db5941b999c25f44d8ee5928",
+        "sourceScreen": "projects/621062326748601563/screens/0428b8b7db5941b999c25f44d8ee5928",
+        "width": 1280,
+        "x": 9088
+      },
+      {
+        "height": 1024,
+        "id": "04b4388cf715405c944d9df6d4e394ce",
+        "sourceScreen": "projects/621062326748601563/screens/04b4388cf715405c944d9df6d4e394ce",
+        "width": 1280,
+        "x": 3847,
+        "y": 1097
+      },
+      {
+        "height": 1024,
+        "hidden": true,
+        "id": "12e7e77c7658436eabad27369e4d97b1",
+        "sourceScreen": "projects/621062326748601563/screens/12e7e77c7658436eabad27369e4d97b1",
+        "width": 1280,
+        "x": 5056,
+        "y": 1383
+      },
+      {
+        "height": 1024,
+        "id": "159ec27bbaf1483eb5a89c8a8251316f",
+        "sourceScreen": "projects/621062326748601563/screens/159ec27bbaf1483eb5a89c8a8251316f",
+        "width": 1280,
+        "x": 9223,
+        "y": 1097
+      },
+      {
+        "height": 1024,
+        "hidden": true,
+        "id": "1ee4cdbae4fe4bf585b3c425dae11483",
+        "sourceScreen": "projects/621062326748601563/screens/1ee4cdbae4fe4bf585b3c425dae11483",
+        "width": 1280,
+        "x": 7744,
+        "y": 1383
+      },
+      {
+        "height": 1024,
+        "hidden": true,
+        "id": "2c424a10ac974340a6ea42ddc8af1e9c",
+        "sourceScreen": "projects/621062326748601563/screens/2c424a10ac974340a6ea42ddc8af1e9c",
+        "width": 1280,
+        "x": 3712,
+        "y": 1383
+      },
+      {
+        "height": 1024,
+        "id": "2e7516c7a6af485eaf766f9370621b85",
+        "sourceScreen": "projects/621062326748601563/screens/2e7516c7a6af485eaf766f9370621b85",
+        "width": 1280,
+        "x": 2503,
+        "y": 1097
+      },
+      {
+        "height": 1024,
+        "hidden": true,
+        "id": "358596c2c9734315adffe807d9e6f49c",
+        "sourceScreen": "projects/621062326748601563/screens/358596c2c9734315adffe807d9e6f49c",
+        "width": 1280,
+        "x": 6400
+      },
+      {
+        "height": 1130,
+        "id": "451cba7993d44eb78dd649e2fdb31e8e",
+        "sourceScreen": "projects/621062326748601563/screens/451cba7993d44eb78dd649e2fdb31e8e",
+        "width": 1280,
+        "x": 1024,
+        "y": 2559
+      },
+      {
+        "height": 1024,
+        "hidden": true,
+        "id": "4a9f42a4cf9a4b2db2dc9b6a15bb777c",
+        "sourceScreen": "projects/621062326748601563/screens/4a9f42a4cf9a4b2db2dc9b6a15bb777c",
+        "width": 1280,
+        "x": 7744
+      },
+      {
+        "height": 1024,
+        "hidden": true,
+        "id": "827610913c3a4629bf9f38344ab76a7f",
+        "sourceScreen": "projects/621062326748601563/screens/827610913c3a4629bf9f38344ab76a7f",
+        "width": 1280,
+        "x": 2368,
+        "y": 1383
+      },
+      {
+        "height": 1127,
+        "hidden": true,
+        "id": "904b2f0c6d6346cea5e5e92910b91e98",
+        "sourceScreen": "projects/621062326748601563/screens/904b2f0c6d6346cea5e5e92910b91e98",
+        "width": 1280,
+        "x": 3712
+      },
+      {
+        "height": 1024,
+        "id": "9bab099e59cf40e1a4d1606678832f76",
+        "sourceScreen": "projects/621062326748601563/screens/9bab099e59cf40e1a4d1606678832f76",
+        "width": 1280,
+        "x": 1159,
+        "y": 1097
+      },
+      {
+        "height": 1024,
+        "id": "9fa0592d5f544f2c877f1e5b96485dc3",
+        "sourceScreen": "projects/621062326748601563/screens/9fa0592d5f544f2c877f1e5b96485dc3",
+        "width": 1280,
+        "x": 7879,
+        "y": 1097
+      },
+      {
+        "height": 920,
+        "hidden": true,
+        "id": "a70513eb36424549b1a4604c9ab11fa3",
+        "sourceScreen": "projects/621062326748601563/screens/a70513eb36424549b1a4604c9ab11fa3",
+        "width": 1280,
+        "x": 1024,
+        "y": 1383
+      },
+      {
+        "height": 540,
+        "hidden": true,
+        "id": "assets-48c8d07d9da54a12902e0231cf3973c5-1780338395005",
+        "sourceAsset": "assets/48c8d07d9da54a12902e0231cf3973c5",
+        "type": "DESIGN_SYSTEM_INSTANCE",
+        "width": 960,
+        "x": -35,
+        "y": 214
+      },
+      {
+        "height": 540,
+        "id": "assets-a0b7c36c28c145fea772891212cb50c9-1780338983881",
+        "sourceAsset": "assets/a0b7c36c28c145fea772891212cb50c9",
+        "type": "DESIGN_SYSTEM_INSTANCE",
+        "width": 960,
+        "y": 1383
+      },
+      {
+        "height": 1024,
+        "hidden": true,
+        "id": "bb4928806fc84647b503fae94116c6bd",
+        "sourceScreen": "projects/621062326748601563/screens/bb4928806fc84647b503fae94116c6bd",
+        "width": 1280,
+        "x": 5056
+      },
+      {
+        "height": 1024,
+        "hidden": true,
+        "id": "d0d3e9a445da4e3286b817e805ecb050",
+        "sourceScreen": "projects/621062326748601563/screens/d0d3e9a445da4e3286b817e805ecb050",
+        "width": 1280,
+        "x": 2368
+      },
+      {
+        "height": 860,
+        "hidden": true,
+        "id": "d4da6bf70a3a4af5bc1a4d3d557a863e",
+        "sourceScreen": "projects/621062326748601563/screens/d4da6bf70a3a4af5bc1a4d3d557a863e",
+        "width": 1280,
+        "x": 1024
+      },
+      {
+        "height": 1024,
+        "hidden": true,
+        "id": "f3357d5184fe4239ac6809195af355d5",
+        "sourceScreen": "projects/621062326748601563/screens/f3357d5184fe4239ac6809195af355d5",
+        "width": 1280,
+        "x": 6400,
+        "y": 1383
+      },
+      {
+        "height": 1024,
+        "hidden": true,
+        "id": "f344cb2db4634bdf82bd93da3d73e6b8",
+        "sourceScreen": "projects/621062326748601563/screens/f344cb2db4634bdf82bd93da3d73e6b8",
+        "width": 1280,
+        "x": 10567,
+        "y": 1097
+      },
+      {
+        "height": 1024,
+        "id": "faea2656541c48f1afb88a3b053af464",
+        "sourceScreen": "projects/621062326748601563/screens/faea2656541c48f1afb88a3b053af464",
+        "width": 1280,
+        "x": 5191,
+        "y": 1097
+      },
+      {
+        "height": 1104,
+        "hidden": true,
+        "id": "fc6f81a602fa4869a0261e918b60789a",
+        "sourceScreen": "projects/621062326748601563/screens/fc6f81a602fa4869a0261e918b60789a",
+        "width": 1280,
+        "x": 9088,
+        "y": 1383
+      }
+    ],
+    "thumbnailScreenshot": {
+      "downloadUrl": "https://lh3.googleusercontent.com/aida/ADBb0uhG7qICTuh6JVBMOdthB3dupPiYgUJUPG6hhcLXjZxMCI2O28X56zmxW03FKZjIhMtjHL2-dq-kyLfZzHgkvWBSiSVpeqsBwRRwodVr3rdSRMZ04RtaLMFYB_LFIEGyivSiQ_D8flGShi421Z05E55QekHGwMBrKrdwFu6B5VDIK4jTlqbEaRAq8gJ5UHJ7t-pTbtKu_t33rulP1c0hFvUiwP-ixx0az_SNgQ1_S0oDNOBX1ptDszbg",
+      "name": "projects/621062326748601563/files/b6320da8e71b4e6cb06ec49a2b1e84f1"
+    },
+    "title": "PARSEL Finance Tracker",
+    "updateTime": "2026-06-02T07:34:05.228116Z",
+    "visibility": "PUBLIC"
+  }
+}
