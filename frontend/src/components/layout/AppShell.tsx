@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 
 type ShellNavItem = {
   to: string;
@@ -76,9 +76,6 @@ const NAV_ITEMS: ShellNavItem[] = [
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const location = useLocation();
-  const isOverview = location.pathname === "/overview";
-
   return (
     <div className="flex h-dvh w-full flex-col bg-white text-parsel-text">
       <header className="flex w-full shrink-0 items-center justify-between border-b border-parsel-border px-4 py-2">
@@ -147,15 +144,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </aside>
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#f6f8fb]">
-          <div
-            className={
-              isOverview
-                ? "flex h-full min-h-0 flex-col overflow-hidden p-3"
-                : "flex-1 overflow-y-auto px-5 py-4"
-            }
-          >
-            {children}
-          </div>
+          <div className="flex h-full min-h-0 flex-col overflow-hidden p-3">{children}</div>
         </main>
       </div>
     </div>

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { EmptyState } from "../components/feedback/EmptyState";
 import { LoadingState } from "../components/feedback/LoadingState";
+import { FieldLabel } from "../components/ui/FieldLabel";
 import { ConfirmDeleteDialog } from "../components/transactions/ConfirmDeleteDialog";
 import { EditTransactionDialog } from "../components/transactions/EditTransactionDialog";
 import { TransactionTable } from "../components/transactions/TransactionTable";
@@ -39,10 +40,6 @@ function daysAgoLocal(days: number): string {
 
 const PRESET_ACTIVE = "rounded-full bg-[#e5edf9] px-3 py-1 text-xs font-semibold text-parsel-primary";
 const PRESET_IDLE = "rounded-full bg-[#f0f2f6] px-3 py-1 text-xs font-semibold text-parsel-secondary";
-
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-parsel-secondary">{children}</p>;
-}
 
 function pageNumbers(current: number, total: number): number[] {
   if (total <= 7) {
@@ -211,7 +208,7 @@ export function SearchPage() {
   const pages = result ? pageNumbers(result.page, totalPages) : [];
 
   return (
-    <div className="space-y-4">
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
       {error ? (
         <div className="flex items-center justify-between rounded-lg border border-[#f3c4c4] bg-[#fdecec] px-4 py-2 text-sm text-[#c44747]">
           <span>Failed to fetch data. Please try again.</span>
@@ -221,11 +218,7 @@ export function SearchPage() {
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-[40px] font-semibold tracking-tight text-parsel-neutral">Ledger</h2>
-          <p className="text-sm text-parsel-muted">Your detailed financial footprint, organized and verified.</p>
-        </div>
+      <div className="flex justify-end">
         <Link
           to="/ledger/add"
           className="rounded-lg bg-parsel-primary px-5 py-2 text-sm font-semibold text-white hover:opacity-90"

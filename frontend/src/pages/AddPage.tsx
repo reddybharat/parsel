@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { EmptyState } from "../components/feedback/EmptyState";
 import { ErrorState } from "../components/feedback/ErrorState";
 import { LoadingState } from "../components/feedback/LoadingState";
+import { FieldLabel } from "../components/ui/FieldLabel";
 import { createTransaction, downloadImportTemplate, fetchTrackerConfig, importTransactions } from "../api/tracker";
 
 function localDateIso(): string {
@@ -12,10 +13,6 @@ function localDateIso(): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
-}
-
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-parsel-secondary">{children}</p>;
 }
 
 export function AddPage() {
@@ -113,18 +110,14 @@ export function AddPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <Link
-          to="/ledger/search"
-          className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-parsel-secondary hover:text-parsel-primary"
-        >
-          <span aria-hidden>←</span>
-          Back to Ledger
-        </Link>
-        <h2 className="mt-2 text-[40px] font-semibold tracking-tight text-parsel-neutral">Import Data</h2>
-        <p className="text-sm text-parsel-muted">Effortlessly maintain records through manual entry or intelligent CSV processing.</p>
-      </div>
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
+      <Link
+        to="/ledger/search"
+        className="inline-flex w-fit items-center gap-1 text-xs font-semibold uppercase tracking-wide text-parsel-secondary hover:text-parsel-primary"
+      >
+        <span aria-hidden>←</span>
+        Back to Ledger
+      </Link>
 
       {loadingConfig ? <LoadingState label="Loading tracker configuration..." /> : null}
 
