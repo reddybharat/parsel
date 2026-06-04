@@ -13,8 +13,7 @@ const CHART_BAR_MUTED = "#e2e8f0";
 const CHART_FILL = "rgba(37, 99, 235, 0.18)";
 
 const SECTION_LABEL = "text-[11px] font-semibold uppercase tracking-wide text-parsel-secondary";
-const PRESET_ACTIVE = "rounded-md bg-[#e8eef8] px-2.5 py-0.5 text-[11px] font-semibold text-[#2563eb]";
-const PRESET_IDLE = "rounded-md px-2.5 py-0.5 text-[11px] font-semibold text-parsel-muted hover:bg-parsel-soft";
+const TREND_MONTHS = 12;
 const TILE = "flex min-h-0 flex-col overflow-hidden rounded-xl border border-parsel-border bg-white p-4 shadow-sm";
 const TILE_FILL = `${TILE} lg:h-full`;
 const CHART_AREA = "h-28 shrink-0 sm:h-32 lg:h-auto lg:min-h-[72px] lg:flex-1 lg:shrink";
@@ -131,13 +130,12 @@ export function OverviewPage() {
   const [data, setData] = useState<DashboardOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [trendMonths, setTrendMonths] = useState<6 | 12>(6);
 
-  async function load(months: 6 | 12 = trendMonths) {
+  async function load() {
     setLoading(true);
     setError(null);
     try {
-      const overview = await fetchDashboardOverview(months, 5);
+      const overview = await fetchDashboardOverview(TREND_MONTHS, 5);
       setData(overview);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load overview.");
@@ -147,8 +145,8 @@ export function OverviewPage() {
   }
 
   useEffect(() => {
-    void load(trendMonths);
-  }, [trendMonths]);
+    void load();
+  }, []);
 
   if (loading) return <LoadingState label="Loading overview..." />;
   if (error) return <ErrorState message={error} onRetry={() => void load()} />;
@@ -161,17 +159,7 @@ export function OverviewPage() {
       {/* Left: two large graph tiles */}
       <div className="grid min-h-0 gap-3 lg:grid-rows-2 lg:overflow-hidden">
         <article className={TILE_FILL}>
-          <div className="flex shrink-0 items-center justify-between gap-2">
-            <p className={SECTION_LABEL}>Net Portfolio Balance</p>
-            <div className="flex rounded-lg border border-parsel-border p-0.5">
-              <button type="button" className={trendMonths === 6 ? PRESET_ACTIVE : PRESET_IDLE} onClick={() => setTrendMonths(6)}>
-                6M
-              </button>
-              <button type="button" className={trendMonths === 12 ? PRESET_ACTIVE : PRESET_IDLE} onClick={() => setTrendMonths(12)}>
-                1Y
-              </button>
-            </div>
-          </div>
+          <p className={`${SECTION_LABEL} shrink-0`}>Net Portfolio Balance</p>
           <div className="mt-1 flex shrink-0 flex-wrap items-center gap-2">
             <p className="font-mono text-xl font-semibold text-parsel-neutral lg:text-2xl">{formatInrSigned(data.summary.portfolio_net)}</p>
             <DeltaBadge value={data.summary.spend_delta_pct} />

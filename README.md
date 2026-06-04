@@ -85,6 +85,12 @@ CREATE TABLE public.transactions (
   updated_at       timestamptz NOT NULL DEFAULT now(),
   version_no       integer NOT NULL DEFAULT 0
 );
+
+CREATE INDEX IF NOT EXISTS idx_transactions_transaction_date
+  ON public.transactions (transaction_date);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_recent
+  ON public.transactions (transaction_date DESC, created_at DESC);
 ```
 
 Allowed `category` and `payment_method` values are enforced by the API and match `backend/tracker/constants.py`.
