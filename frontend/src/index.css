@@ -8,7 +8,7 @@
   --parsel-soft: #f5f7fb;
   --parsel-text: #1f2937;
   --parsel-muted: #6b7280;
-  --parsel-primary: #4a90e2;
+  --parsel-primary: #2563eb;
   --parsel-secondary: #546e7a;
   --parsel-tertiary: #c28000;
   --parsel-neutral: #333333;
@@ -30,8 +30,14 @@ body {
   color: var(--parsel-text);
 }
 
+html,
+body,
 #root {
-  min-height: 100vh;
+  height: 100%;
+}
+
+#root {
+  width: 100%;
 }
 
 .chat-markdown {

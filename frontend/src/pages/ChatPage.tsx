@@ -123,7 +123,7 @@ export function ChatPage() {
         <header className="flex shrink-0 items-center justify-between border-b border-parsel-border px-4 py-3">
           <div className="flex items-center gap-2">
             <AssistantAvatar />
-            <h2 className="text-xl font-semibold">AI Assistant</h2>
+            <h2 className="text-xl font-semibold">Parsel AI</h2>
           </div>
           <button
             className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary hover:text-parsel-primary"

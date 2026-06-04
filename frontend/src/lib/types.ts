@@ -18,6 +18,11 @@ export type DashboardOverview = {
     total_outflow: number;
     current_month_investments: number;
   };
+  daily_spend: {
+    month_label: string;
+    total: number;
+    points: Array<{ day: number; spend: number }>;
+  };
 };
 
 export type Transaction = {

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { EmptyState } from "../components/feedback/EmptyState";
 import { ErrorState } from "../components/feedback/ErrorState";
@@ -19,6 +19,8 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 export function AddPage() {
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get("tab") === "bulk" ? "bulk" : "manual";
   const [categories, setCategories] = useState<string[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
@@ -32,7 +34,7 @@ export function AddPage() {
   const [paymentMethod, setPaymentMethod] = useState("");
   const [transactionDate, setTransactionDate] = useState(localDateIso());
   const [description, setDescription] = useState("");
-  const [tab, setTab] = useState<"manual" | "bulk">("manual");
+  const [tab, setTab] = useState<"manual" | "bulk">(initialTab);
 
   useEffect(() => {
     void (async () => {

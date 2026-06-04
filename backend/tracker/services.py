@@ -413,6 +413,45 @@ async def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict
           CROSS JOIN bounds b
           WHERE t.transaction_date >= b.month_now_start
             AND t.transaction_date <  b.month_next_start
+        ),
+        daily_agg AS (
+          SELECT
+            EXTRACT(DAY FROM t.transaction_date)::int AS day,
+            COALESCE(SUM(t.amount), 0)::float8 AS spend
+          FROM transactions t
+          CROSS JOIN bounds b
+          WHERE t.is_debit = TRUE
+            AND t.category <> :investments_category
+            AND t.transaction_date >= b.month_now_start
+            AND t.transaction_date < b.month_next_start
+          GROUP BY 1
+        ),
+        daily_series AS (
+          SELECT generate_series(
+            (SELECT month_now_start FROM bounds),
+            (SELECT month_next_start FROM bounds) - interval '1 day',
+            interval '1 day'
+          )::date AS day_date
+        ),
+        daily AS (
+          SELECT json_build_object(
+            'month_label', to_char((SELECT month_now_start FROM bounds), 'Mon YYYY'),
+            'total', (SELECT current_month_spend FROM summary),
+            'points', COALESCE(
+              (
+                SELECT json_agg(
+                  json_build_object(
+                    'day', EXTRACT(DAY FROM ds.day_date)::int,
+                    'spend', COALESCE(da.spend, 0)
+                  )
+                  ORDER BY ds.day_date
+                )
+                FROM daily_series ds
+                LEFT JOIN daily_agg da ON da.day = EXTRACT(DAY FROM ds.day_date)::int
+              ),
+              '[]'::json
+            )
+          ) AS daily_spend
         )
         SELECT
           json_build_object(
@@ -441,12 +480,14 @@ async def get_dashboard_overview(months: int = 6, recent_limit: int = 5) -> dict
               'total_inflow', tt.total_inflow,
               'total_outflow', tt.total_outflow,
               'current_month_investments', tt.current_month_investments
-            )
+            ),
+            'daily_spend', d.daily_spend
           ) AS overview
         FROM summary s
         CROSS JOIN trend t
         CROSS JOIN recent r
         CROSS JOIN totals tt
+        CROSS JOIN daily d
     """
     async with get_connection() as session:
         result = await session.execute(

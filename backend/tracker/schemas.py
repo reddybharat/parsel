@@ -175,8 +175,20 @@ class DashboardHighlightsResponse(BaseModel):
     current_month_investments: float = 0.0
 
 
+class DashboardDailySpendPoint(BaseModel):
+    day: int
+    spend: float
+
+
+class DashboardDailySpendResponse(BaseModel):
+    month_label: str
+    total: float
+    points: list[DashboardDailySpendPoint]
+
+
 class DashboardOverviewResponse(BaseModel):
     summary: DashboardSummaryResponse
     trend: DashboardTrendResponse
     recent: DashboardRecentResponse
     highlights: DashboardHighlightsResponse
+    daily_spend: DashboardDailySpendResponse

@@ -9,7 +9,7 @@ import { SearchPage } from "./pages/SearchPage";
 export default function App() {
   return (
     <AppShell>
-      <div className="space-y-4">
+      <div className="flex h-full min-h-0 flex-col [&>*]:h-full [&>*]:min-h-0">
         <Routes>
           <Route path="/" element={<Navigate to="/overview" replace />} />
           <Route path="/overview" element={<OverviewPage />} />
