@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --parsel-bg: #1b1d23;
+  --parsel-bg: #ffffff;
   --parsel-surface: #ffffff;
   --parsel-soft: #f5f7fb;
   --parsel-text: #1f2937;
@@ -26,11 +26,102 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  background: radial-gradient(circle at 1px 1px, #2b2f3a 1px, #1b1d23 0);
-  background-size: 16px 16px;
+  background: #ffffff;
   color: var(--parsel-text);
 }
 
 #root {
   min-height: 100vh;
+}
+
+.chat-markdown {
+  line-height: 1.5;
+}
+
+.chat-markdown > *:first-child {
+  margin-top: 0;
+}
+
+.chat-markdown > *:last-child {
+  margin-bottom: 0;
+}
+
+.chat-markdown p {
+  margin: 0.5em 0;
+}
+
+.chat-markdown ul,
+.chat-markdown ol {
+  margin: 0.5em 0;
+  padding-left: 1.25rem;
+}
+
+.chat-markdown li {
+  margin: 0.25em 0;
+}
+
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3 {
+  margin: 0.75em 0 0.35em;
+  font-weight: 600;
+}
+
+.chat-markdown h1 {
+  font-size: 1.125rem;
+}
+
+.chat-markdown h2 {
+  font-size: 1rem;
+}
+
+.chat-markdown h3 {
+  font-size: 0.9375rem;
+}
+
+.chat-markdown code {
+  border-radius: 0.25rem;
+  background: var(--parsel-soft);
+  padding: 0.1em 0.35em;
+  font-size: 0.875em;
+}
+
+.chat-markdown pre {
+  margin: 0.5em 0;
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  border: 1px solid var(--parsel-border);
+  background: var(--parsel-soft);
+  padding: 0.75rem;
+}
+
+.chat-markdown pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.chat-markdown table {
+  margin: 0.5em 0;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.chat-markdown th,
+.chat-markdown td {
+  border: 1px solid var(--parsel-border);
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+}
+
+.chat-markdown th {
+  background: var(--parsel-soft);
+  font-weight: 600;
+}
+
+.chat-markdown blockquote {
+  margin: 0.5em 0;
+  border-left: 3px solid var(--parsel-border);
+  padding-left: 0.75rem;
+  color: var(--parsel-muted);
 }

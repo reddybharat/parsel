@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { EmptyState } from "../components/feedback/EmptyState";
 import { LoadingState } from "../components/feedback/LoadingState";
@@ -15,14 +16,40 @@ import {
 import { formatInrSigned, signedAmount } from "../lib/format";
 import type { SearchResult, Transaction } from "../lib/types";
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+type DatePreset = "today" | "last7" | "month";
+
+function localDateIso(d = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
-function monthStartIso(): string {
-  const date = new Date();
-  date.setDate(1);
-  return date.toISOString().slice(0, 10);
+function monthStartLocal(): string {
+  const d = new Date();
+  d.setDate(1);
+  return localDateIso(d);
+}
+
+function daysAgoLocal(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return localDateIso(d);
+}
+
+const PRESET_ACTIVE = "rounded-full bg-[#e5edf9] px-3 py-1 text-xs font-semibold text-parsel-primary";
+const PRESET_IDLE = "rounded-full bg-[#f0f2f6] px-3 py-1 text-xs font-semibold text-parsel-secondary";
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-parsel-secondary">{children}</p>;
+}
+
+function pageNumbers(current: number, total: number): number[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  const set = new Set<number>([1, total, current, current - 1, current + 1]);
+  return [...set].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
 }
 
 export function SearchPage() {
@@ -36,21 +63,18 @@ export function SearchPage() {
   const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const [startDate, setStartDate] = useState(monthStartIso());
-  const [endDate, setEndDate] = useState(todayIso());
+  const [startDate, setStartDate] = useState(monthStartLocal());
+  const [endDate, setEndDate] = useState(localDateIso());
   const [category, setCategory] = useState("All");
   const [paymentMethod, setPaymentMethod] = useState("All");
   const [creditDebit, setCreditDebit] = useState("All");
+  const [activePreset, setActivePreset] = useState<DatePreset | null>(null);
   const [sortColumn, setSortColumn] = useState<"transaction_date" | "amount">("transaction_date");
   const [sortDesc, setSortDesc] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
 
-  const hasPrevious = (result?.page ?? 1) > 1;
-  const hasNext = useMemo(() => {
-    if (!result) return false;
-    return result.page * result.page_size < result.total;
-  }, [result]);
+  const totalPages = useMemo(() => (result ? Math.max(1, Math.ceil(result.total / result.page_size)) : 1), [result]);
 
   useEffect(() => {
     void (async () => {
@@ -64,7 +88,47 @@ export function SearchPage() {
     })();
   }, []);
 
-  async function runSearch(targetPage = page) {
+  function applyPreset(preset: DatePreset) {
+    const today = localDateIso();
+    if (preset === "today") {
+      setStartDate(today);
+      setEndDate(today);
+    } else if (preset === "last7") {
+      setStartDate(daysAgoLocal(6));
+      setEndDate(today);
+    } else {
+      setStartDate(monthStartLocal());
+      setEndDate(today);
+    }
+    setActivePreset(preset);
+  }
+
+  function onStartDateChange(value: string) {
+    setStartDate(value);
+    setActivePreset(null);
+  }
+
+  function onEndDateChange(value: string) {
+    setEndDate(value);
+    setActivePreset(null);
+  }
+
+  function clearFilters() {
+    setStartDate(monthStartLocal());
+    setEndDate(localDateIso());
+    setCategory("All");
+    setPaymentMethod("All");
+    setCreditDebit("All");
+    setActivePreset(null);
+  }
+
+  async function runSearch(
+    targetPage = page,
+    opts?: { sortColumn?: typeof sortColumn; sortDesc?: boolean; pageSize?: number },
+  ) {
+    const nextSortColumn = opts?.sortColumn ?? sortColumn;
+    const nextSortDesc = opts?.sortDesc ?? sortDesc;
+    const nextPageSize = opts?.pageSize ?? pageSize;
     setLoading(true);
     setError(null);
     try {
@@ -74,10 +138,10 @@ export function SearchPage() {
         category,
         payment_method: paymentMethod,
         is_debit: creditDebit === "All" ? undefined : creditDebit === "Debit",
-        sort_column: sortColumn,
-        sort_desc: sortDesc,
+        sort_column: nextSortColumn,
+        sort_desc: nextSortDesc,
         page: targetPage,
-        page_size: pageSize,
+        page_size: nextPageSize,
       });
       setPage(targetPage);
       setResult(data);
@@ -142,6 +206,10 @@ export function SearchPage() {
     }
   }
 
+  const rangeStart = result ? (result.page - 1) * result.page_size + 1 : 0;
+  const rangeEnd = result ? Math.min(result.page * result.page_size, result.total) : 0;
+  const pages = result ? pageNumbers(result.page, totalPages) : [];
+
   return (
     <div className="space-y-4">
       {error ? (
@@ -158,62 +226,96 @@ export function SearchPage() {
           <h2 className="text-[40px] font-semibold tracking-tight text-parsel-neutral">Ledger</h2>
           <p className="text-sm text-parsel-muted">Your detailed financial footprint, organized and verified.</p>
         </div>
-        <button className="rounded-lg bg-parsel-primary px-5 py-2 text-sm font-semibold text-white">+ Add Transaction</button>
+        <Link
+          to="/ledger/add"
+          className="rounded-lg bg-parsel-primary px-5 py-2 text-sm font-semibold text-white hover:opacity-90"
+        >
+          + Add Transaction
+        </Link>
       </div>
 
-      <form className="grid gap-3 rounded-xl border border-parsel-border bg-white p-3 md:grid-cols-4" onSubmit={onSearchSubmit}>
-        <div className="col-span-full flex flex-wrap gap-2">
-          <button className="rounded-full bg-[#e5edf9] px-3 py-1 text-xs font-semibold text-parsel-primary" type="button">Today</button>
-          <button className="rounded-full bg-[#f0f2f6] px-3 py-1 text-xs font-semibold text-parsel-secondary" type="button">Last 7 days</button>
-          <button className="rounded-full bg-[#f0f2f6] px-3 py-1 text-xs font-semibold text-parsel-secondary" type="button">This month</button>
-          <button className="rounded-full bg-[#f0f2f6] px-3 py-1 text-xs font-semibold text-parsel-secondary" type="button">All Filters</button>
-          <div className="ml-auto hidden rounded-lg border border-parsel-border px-3 py-1 text-xs text-parsel-muted md:block">
-            Search descriptions...
-          </div>
+      <form className="space-y-3 rounded-xl border border-parsel-border bg-white p-3" onSubmit={onSearchSubmit}>
+        <div className="flex flex-wrap gap-2">
+          <button
+            className={activePreset === "today" ? PRESET_ACTIVE : PRESET_IDLE}
+            type="button"
+            onClick={() => applyPreset("today")}
+          >
+            Today
+          </button>
+          <button
+            className={activePreset === "last7" ? PRESET_ACTIVE : PRESET_IDLE}
+            type="button"
+            onClick={() => applyPreset("last7")}
+          >
+            Last 7 days
+          </button>
+          <button
+            className={activePreset === "month" ? PRESET_ACTIVE : PRESET_IDLE}
+            type="button"
+            onClick={() => applyPreset("month")}
+          >
+            This month
+          </button>
         </div>
-        <input className="rounded-lg border border-parsel-border p-2 text-sm" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-        <input className="rounded-lg border border-parsel-border p-2 text-sm" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-        <select className="rounded-lg border border-parsel-border p-2" value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option>All</option>
-          {categories.map((item) => (
-            <option key={item}>{item}</option>
-          ))}
-        </select>
-        <select className="rounded-lg border border-parsel-border p-2" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-          <option>All</option>
-          {paymentMethods.map((item) => (
-            <option key={item}>{item}</option>
-          ))}
-        </select>
-        <select className="rounded-lg border border-parsel-border p-2" value={creditDebit} onChange={(e) => setCreditDebit(e.target.value)}>
-          <option>All</option>
-          <option>Credit</option>
-          <option>Debit</option>
-        </select>
-        <select
-          className="rounded-lg border border-parsel-border p-2"
-          value={sortColumn}
-          onChange={(e) => setSortColumn(e.target.value as "transaction_date" | "amount")}
-        >
-          <option value="transaction_date">Date</option>
-          <option value="amount">Amount</option>
-        </select>
-        <select
-          className="rounded-lg border border-parsel-border p-2"
-          value={sortDesc ? "desc" : "asc"}
-          onChange={(e) => setSortDesc(e.target.value === "desc")}
-        >
-          <option value="desc">Descending</option>
-          <option value="asc">Ascending</option>
-        </select>
-        <input className="rounded-lg border border-parsel-border p-2" type="number" min={10} max={50} step={5} value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} />
-        <div className="flex gap-2">
-          <button className="rounded-lg bg-parsel-primary px-3 py-2 text-white" type="submit" disabled={loading}>
-            Search
-          </button>
-          <button className="rounded-lg border border-parsel-border px-3 py-2" type="button" onClick={() => void onExport()}>
-            Export CSV
-          </button>
+        <div className="grid gap-3 md:grid-cols-6">
+          <div>
+            <FieldLabel>Start Date</FieldLabel>
+            <input
+              className="w-full rounded-lg border border-parsel-border p-2 text-sm"
+              type="date"
+              value={startDate}
+              onChange={(e) => onStartDateChange(e.target.value)}
+            />
+          </div>
+          <div>
+            <FieldLabel>End Date</FieldLabel>
+            <input
+              className="w-full rounded-lg border border-parsel-border p-2 text-sm"
+              type="date"
+              value={endDate}
+              onChange={(e) => onEndDateChange(e.target.value)}
+            />
+          </div>
+          <div>
+            <FieldLabel>Category</FieldLabel>
+            <select className="w-full rounded-lg border border-parsel-border p-2" value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="All">All Categories</option>
+              {categories.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <FieldLabel>Payment method</FieldLabel>
+            <select
+              className="w-full rounded-lg border border-parsel-border p-2"
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+            >
+              <option value="All">All Methods</option>
+              {paymentMethods.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <FieldLabel>Type</FieldLabel>
+            <select className="w-full rounded-lg border border-parsel-border p-2" value={creditDebit} onChange={(e) => setCreditDebit(e.target.value)}>
+              <option value="All">All Types</option>
+              <option value="Credit">Credit</option>
+              <option value="Debit">Debit</option>
+            </select>
+          </div>
+          <div className="flex items-end">
+            <button className="w-full rounded-lg bg-parsel-primary px-3 py-2 text-sm font-semibold text-white" type="submit" disabled={loading}>
+              Search
+            </button>
+          </div>
         </div>
       </form>
 
@@ -222,41 +324,123 @@ export function SearchPage() {
       {loading ? <LoadingState label="Searching ledger..." /> : null}
       {result && !loading ? (
         <div className="space-y-3">
-          <p className="text-sm text-gray-500">Showing {result.items.length} of {result.total} transactions</p>
           {result.items.length === 0 ? (
-            <>
-              <div className="rounded-xl border border-parsel-border bg-white py-20">
-                <EmptyState title="No transactions found" detail="Try adjusting your filters or search terms." />
-                <div className="mt-4 flex justify-center gap-3">
-                  <button className="rounded-lg border border-parsel-border px-4 py-2 text-sm">Clear all filters</button>
-                  <button className="rounded-lg bg-[#0d8b58] px-4 py-2 text-sm font-semibold text-white">Add New Entry</button>
-                </div>
+            <div className="rounded-xl border border-parsel-border bg-white py-20">
+              <EmptyState title="No transactions found" detail="Try adjusting your filters." />
+              <div className="mt-4 flex justify-center gap-3">
+                <button className="rounded-lg border border-parsel-border px-4 py-2 text-sm" type="button" onClick={clearFilters}>
+                  Clear all filters
+                </button>
+                <Link
+                  to="/ledger/add"
+                  className="rounded-lg bg-[#0d8b58] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+                >
+                  Add New Entry
+                </Link>
               </div>
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-xl border border-parsel-border bg-white p-4">
-                  <p className="text-xs uppercase tracking-wide text-parsel-secondary">Period Net Flow</p>
-                  <p className="mt-1 font-mono text-3xl font-semibold">₹0.00</p>
-                </div>
-                <div className="rounded-xl border border-parsel-border bg-white p-4">
-                  <p className="text-xs uppercase tracking-wide text-parsel-secondary">Total Income</p>
-                  <p className="mt-1 font-mono text-3xl font-semibold text-[#0c8756]">₹0.00</p>
-                </div>
-                <div className="rounded-xl border border-parsel-border bg-white p-4">
-                  <p className="text-xs uppercase tracking-wide text-parsel-secondary">Total Expenses</p>
-                  <p className="mt-1 font-mono text-3xl font-semibold text-[#c64040]">₹0.00</p>
-                </div>
-              </div>
-            </>
+            </div>
           ) : (
             <TransactionTable items={result.items} onEdit={(row) => setEditing(row)} onDelete={(row) => setDeleting(row)} />
           )}
-          <div className="flex gap-2">
-            <button className="rounded-lg border border-parsel-border px-3 py-2" disabled={!hasPrevious} onClick={() => void runSearch(page - 1)}>
-              Prev
+
+          <div className="flex flex-wrap items-end gap-3 rounded-xl border border-parsel-border bg-white p-3">
+            <div>
+              <FieldLabel>Sort by</FieldLabel>
+              <select
+                className="rounded-lg border border-parsel-border p-2 text-sm"
+                value={sortColumn}
+                onChange={(e) => {
+                  const col = e.target.value as "transaction_date" | "amount";
+                  setSortColumn(col);
+                  void runSearch(1, { sortColumn: col });
+                }}
+              >
+                <option value="transaction_date">Date</option>
+                <option value="amount">Amount</option>
+              </select>
+            </div>
+            <div>
+              <FieldLabel>Order</FieldLabel>
+              <select
+                className="rounded-lg border border-parsel-border p-2 text-sm"
+                value={sortDesc ? "desc" : "asc"}
+                onChange={(e) => {
+                  const desc = e.target.value === "desc";
+                  setSortDesc(desc);
+                  void runSearch(1, { sortDesc: desc });
+                }}
+              >
+                <option value="desc">Descending</option>
+                <option value="asc">Ascending</option>
+              </select>
+            </div>
+            <div>
+              <FieldLabel>Page size</FieldLabel>
+              <input
+                className="w-20 rounded-lg border border-parsel-border p-2 text-sm"
+                type="number"
+                min={10}
+                max={50}
+                step={5}
+                value={pageSize}
+                onChange={(e) => {
+                  const size = Number(e.target.value);
+                  setPageSize(size);
+                  void runSearch(1, { pageSize: size });
+                }}
+              />
+            </div>
+            <button
+              className="ml-auto inline-flex items-center gap-1 rounded-lg border border-parsel-border px-3 py-2 text-sm"
+              type="button"
+              onClick={() => void onExport()}
+            >
+              <span aria-hidden>↧</span>
+              Export CSV
             </button>
-            <button className="rounded-lg border border-parsel-border px-3 py-2" disabled={!hasNext} onClick={() => void runSearch(page + 1)}>
-              Next
-            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-parsel-muted">
+              Showing {rangeStart}-{rangeEnd} of {result.total} transactions
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                className="rounded-lg border border-parsel-border px-3 py-2 text-sm disabled:opacity-40"
+                type="button"
+                disabled={result.page <= 1}
+                onClick={() => void runSearch(result.page - 1)}
+              >
+                Prev
+              </button>
+              {pages.map((n, i) => {
+                const prev = pages[i - 1];
+                const showEllipsis = prev !== undefined && n - prev > 1;
+                return (
+                  <span key={n} className="flex items-center gap-1">
+                    {showEllipsis ? <span className="px-1 text-parsel-muted">…</span> : null}
+                    <button
+                      className={`min-w-[2.25rem] rounded-lg border px-2 py-2 text-sm ${
+                        n === result.page ? "border-parsel-primary font-semibold text-parsel-primary" : "border-parsel-border"
+                      }`}
+                      type="button"
+                      disabled={n === result.page}
+                      onClick={() => void runSearch(n)}
+                    >
+                      {n}
+                    </button>
+                  </span>
+                );
+              })}
+              <button
+                className="rounded-lg border border-parsel-border px-3 py-2 text-sm disabled:opacity-40"
+                type="button"
+                disabled={result.page >= totalPages}
+                onClick={() => void runSearch(result.page + 1)}
+              >
+                Next
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

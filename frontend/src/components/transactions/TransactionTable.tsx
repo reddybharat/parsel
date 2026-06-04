@@ -1,6 +1,11 @@
 import { formatInrSigned, signedAmount } from "../../lib/format";
 import type { Transaction } from "../../lib/types";
 
+function formatDisplayDate(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" });
+}
+
 export function TransactionTable({
   items,
   onEdit,
@@ -26,12 +31,18 @@ export function TransactionTable({
         <tbody>
           {items.map((row) => (
             <tr key={row.id} className="border-t border-parsel-border">
-              <td className="p-4">{row.transaction_date}</td>
+              <td className="p-4">{formatDisplayDate(row.transaction_date)}</td>
               <td className={`p-4 font-mono ${row.is_debit ? "text-[#cc3d3d]" : "text-[#2a6fce]"}`}>
                 {formatInrSigned(signedAmount(row.amount, row.is_debit))}
               </td>
               <td className="p-4">
-                <span className="rounded-full bg-[#ebedf2] px-2 py-1 text-xs font-medium text-parsel-secondary">{row.category}</span>
+                <span
+                  className={`rounded-full px-2 py-1 text-xs font-medium ${
+                    row.is_debit ? "bg-[#ebedf2] text-parsel-secondary" : "bg-[#e5edf9] text-parsel-primary"
+                  }`}
+                >
+                  {row.category}
+                </span>
               </td>
               <td className="p-4">{row.payment_method || "-"}</td>
               <td className="p-4">{row.description || "-"}</td>
