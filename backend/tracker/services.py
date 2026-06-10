@@ -386,38 +386,56 @@ async def get_dashboard_summary(bounds: dict[str, date]) -> dict:
 
 async def get_dashboard_trend(months: int, bounds: dict[str, date]) -> list:
     sql = """
-        WITH trend_agg AS (
-          SELECT
-            date_trunc('month', t.transaction_date)::date AS month_start,
-            COALESCE(SUM(t.amount), 0)::float8 AS spend
-          FROM transactions t
-          WHERE t.is_debit = TRUE
-            AND t.category <> :investments_category
-            AND t.transaction_date >= :trend_start
-            AND t.transaction_date < :month_next_start
-          GROUP BY 1
-        ),
-        trend_series AS (
-          SELECT generate_series(
-            :trend_start,
-            :month_now_start,
-            interval '1 month'
-          )::date AS month_start
-        )
-        SELECT json_agg(
-          json_build_object(
-            'month_label', to_char(ts.month_start, 'Mon'),
-            'spend', COALESCE(ta.spend, 0)
-          )
-          ORDER BY ts.month_start
-        ) AS points
-        FROM trend_series ts
-        LEFT JOIN trend_agg ta USING (month_start)
+        SELECT
+          date_trunc('month', t.transaction_date)::date AS month_start,
+          COALESCE(SUM(t.amount), 0)::float8 AS spend
+        FROM transactions t
+        WHERE t.is_debit = TRUE
+          AND t.category <> :investments_category
+          AND t.transaction_date >= :trend_start
+          AND t.transaction_date < :month_next_start
+        GROUP BY 1
     """
     async with get_connection() as session:
         result = await session.execute(text(sql), _dashboard_params(bounds))
-        row = result.mappings().first() or {}
-    return _parse_json_value(row.get("points"), [])
+        rows = result.mappings().all()
+
+    spend_by_month_start = {
+        row["month_start"]: float(row.get("spend") or 0)
+        for row in rows
+        if row.get("month_start") is not None
+    }
+
+    month_labels = (
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+    )
+    trend_start = bounds["trend_start"]
+    month_now_start = bounds["month_now_start"]
+
+    points: list[dict[str, Any]] = []
+    for offset in range(months):
+        month_start = _add_months(trend_start, offset)
+        if month_start > month_now_start:
+            break
+        points.append(
+            {
+                "month_label": month_labels[month_start.month - 1],
+                "spend": spend_by_month_start.get(month_start, 0.0),
+            }
+        )
+
+    return points
 
 
 async def get_dashboard_recent(recent_limit: int) -> list:

@@ -14,12 +14,25 @@ const CHART_FILL = "rgba(37, 99, 235, 0.18)";
 
 const SECTION_LABEL = "text-[11px] font-semibold uppercase tracking-wide text-parsel-secondary";
 const TREND_MONTHS = 12;
+const RECENT_ACTIVITY_LIMIT = 6;
 const TILE = "flex min-h-0 flex-col overflow-hidden rounded-xl border border-parsel-border bg-white p-4 shadow-sm";
 const TILE_FILL = `${TILE} lg:h-full`;
 const CHART_AREA = "h-28 shrink-0 sm:h-32 lg:h-auto lg:min-h-[72px] lg:flex-1 lg:shrink";
 
 type TrendPoint = DashboardOverview["trend"]["points"][number];
 type DailyPoint = DashboardOverview["daily_spend"]["points"][number];
+
+function ensureCurrentMonthPoint(points: TrendPoint[], months: number): TrendPoint[] {
+  if (points.length === 0) return points;
+
+  const currentMonthLabel = new Date().toLocaleString("en-US", { month: "short" });
+  const lastPoint = points[points.length - 1];
+  if (lastPoint?.month_label === currentMonthLabel) return points;
+
+  const withCurrentMonth = [...points, { month_label: currentMonthLabel, spend: 0 }];
+  if (withCurrentMonth.length <= months) return withCurrentMonth;
+  return withCurrentMonth.slice(withCurrentMonth.length - months);
+}
 
 function VerticalBarChart({ points }: { points: TrendPoint[] }) {
   if (points.length === 0) {
@@ -62,6 +75,7 @@ function DailySpendChart({ points }: { points: DailyPoint[] }) {
     return <div className="h-full min-h-[96px] rounded-lg bg-[#eef3fa]" />;
   }
 
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const width = 400;
   const height = 100;
   const paddingX = 8;
@@ -75,6 +89,8 @@ function DailySpendChart({ points }: { points: DailyPoint[] }) {
     x: paddingX + ((p.day - 1) / Math.max(maxDay - 1, 1)) * innerW,
     y: paddingY + innerH - (p.spend / maxSpend) * innerH,
   }));
+  const hoveredCoord = hoveredIndex === null ? null : coords[hoveredIndex] ?? null;
+  const hoveredPoint = hoveredIndex === null ? null : points[hoveredIndex] ?? null;
 
   const linePath = coords.map((c, i) => `${i === 0 ? "M" : "L"} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(" ");
   const areaPath = `${linePath} L ${coords[coords.length - 1]?.x.toFixed(1) ?? width} ${height - paddingY} L ${coords[0]?.x.toFixed(1) ?? 0} ${height - paddingY} Z`;
@@ -82,15 +98,39 @@ function DailySpendChart({ points }: { points: DailyPoint[] }) {
   return (
     <div className="flex h-full min-h-[96px] flex-col">
       <div className="relative min-h-0 flex-1">
+        {hoveredCoord && hoveredPoint ? (
+          <div
+            className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-[120%] rounded-md bg-[#0f172a] px-2 py-1 text-[10px] font-medium text-white shadow"
+            style={{
+              left: `${(hoveredCoord.x / width) * 100}%`,
+              top: `${(hoveredCoord.y / height) * 100}%`,
+            }}
+          >
+            Day {hoveredPoint.day}: {formatInrAmount(hoveredPoint.spend)}
+          </div>
+        ) : null}
         <svg
           viewBox={`0 0 ${width} ${height}`}
           className="absolute inset-0 h-full w-full"
           preserveAspectRatio="none"
           role="img"
           aria-label="Daily Spending Trends"
+          onMouseLeave={() => setHoveredIndex(null)}
         >
           <path d={areaPath} fill={CHART_FILL} />
           <path d={linePath} fill="none" stroke={CHART_BLUE} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+          {coords.map((coord, index) => (
+            <g key={`day-point-${points[index]?.day ?? index}`}>
+              <circle cx={coord.x} cy={coord.y} r={1.8} fill={CHART_BLUE} />
+              <circle
+                cx={coord.x}
+                cy={coord.y}
+                r={6}
+                fill="transparent"
+                onMouseEnter={() => setHoveredIndex(index)}
+              />
+            </g>
+          ))}
         </svg>
       </div>
       <div className="mt-1 flex shrink-0 justify-between text-[10px] text-parsel-muted">
@@ -135,7 +175,7 @@ export function OverviewPage() {
     setLoading(true);
     setError(null);
     try {
-      const overview = await fetchDashboardOverview(TREND_MONTHS, 5);
+      const overview = await fetchDashboardOverview(TREND_MONTHS, RECENT_ACTIVITY_LIMIT);
       setData(overview);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load overview.");
@@ -153,6 +193,7 @@ export function OverviewPage() {
   if (!data) return null;
 
   const topCategory = data.highlights.top_category;
+  const trendPoints = ensureCurrentMonthPoint(data.trend.points, TREND_MONTHS);
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 gap-3 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_minmax(260px,340px)] lg:grid-rows-1 lg:overflow-hidden">
@@ -167,7 +208,7 @@ export function OverviewPage() {
           <div className="mt-2 flex min-h-0 flex-1 flex-col border-t border-parsel-border pt-2">
             <p className={`${SECTION_LABEL} mb-1.5 shrink-0`}>Monthly Spending Trend</p>
             <div className={CHART_AREA}>
-              <VerticalBarChart points={data.trend.points} />
+              <VerticalBarChart points={trendPoints} />
             </div>
           </div>
         </article>
@@ -198,7 +239,7 @@ export function OverviewPage() {
           {data.recent.items.length === 0 ? (
             <EmptyState title="No recent transactions" detail="New entries will show here." />
           ) : (
-            <ul className="min-h-0 flex-1 space-y-1.5 overflow-hidden">
+            <ul className="mt-4 min-h-0 flex-1 space-y-1.5 overflow-hidden">
               {data.recent.items.map((row) => (
                 <li key={row.id} className="flex items-center gap-2 border-b border-parsel-border pb-1.5 last:border-0 last:pb-0">
                   <ActivityIcon label={row.description || row.category} />
