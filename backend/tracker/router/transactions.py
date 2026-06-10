@@ -56,7 +56,7 @@ async def search_transactions(
     if start_date > end_date:
         raise HTTPException(status_code=400, detail="start_date must be on or before end_date")
 
-    allowed_sort_columns = {"transaction_date", "amount"}
+    allowed_sort_columns = {"transaction_date", "amount", "category", "payment_method", "description"}
     if sort_column not in allowed_sort_columns:
         raise HTTPException(
             status_code=400,
@@ -87,6 +87,12 @@ async def search_transactions(
             )
         else:
             order_by = Transaction.amount
+    elif sort_column == "category":
+        order_by = func.lower(Transaction.category)
+    elif sort_column == "payment_method":
+        order_by = func.lower(func.coalesce(Transaction.payment_method, ""))
+    elif sort_column == "description":
+        order_by = func.lower(func.coalesce(Transaction.description, ""))
     else:
         order_by = Transaction.transaction_date
     order_by = order_by.desc() if sort_desc else order_by.asc()

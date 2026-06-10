@@ -5,9 +5,7 @@ export type SearchParams = {
   start_date: string;
   end_date: string;
   category?: string;
-  payment_method?: string;
-  is_debit?: boolean;
-  sort_column: "transaction_date" | "amount";
+  sort_column: "transaction_date" | "amount" | "category" | "payment_method" | "description";
   sort_desc: boolean;
   page: number;
   page_size: number;
