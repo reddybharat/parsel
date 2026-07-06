@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Dialog,
   DialogContent,
@@ -97,11 +98,11 @@ export function EditTransactionDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="edit-date">Date</Label>
-            <Input
+            <DatePicker
               id="edit-date"
-              type="date"
               value={transaction.transaction_date}
-              onChange={(e) => onChange({ ...transaction, transaction_date: e.target.value })}
+              onChange={(value) => onChange({ ...transaction, transaction_date: value })}
+              placeholder="Select date"
             />
           </div>
           <div className="space-y-2">

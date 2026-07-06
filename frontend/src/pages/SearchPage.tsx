@@ -5,7 +5,7 @@ import { EmptyState } from "../components/feedback/EmptyState";
 import { LoadingState } from "../components/feedback/LoadingState";
 import { StatusAlert, type FeedbackMessage } from "../components/feedback/StatusAlert";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import {
@@ -30,7 +30,7 @@ import {
 import { formatInrSigned, signedAmount } from "../lib/format";
 import type { SearchResult, Transaction } from "../lib/types";
 
-type DatePreset = "today" | "last7" | "month";
+type DatePreset = "lastMonth" | "today" | "last7" | "month";
 
 function localDateIso(d = new Date()): string {
   const y = d.getFullYear();
@@ -48,6 +48,19 @@ function monthStartLocal(): string {
 function daysAgoLocal(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() - days);
+  return localDateIso(d);
+}
+
+function lastMonthStartLocal(): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - 1);
+  return localDateIso(d);
+}
+
+function lastMonthEndLocal(): string {
+  const d = new Date();
+  d.setDate(0);
   return localDateIso(d);
 }
 
@@ -111,7 +124,10 @@ export function SearchPage() {
 
   function applyPreset(preset: DatePreset) {
     const today = localDateIso();
-    if (preset === "today") {
+    if (preset === "lastMonth") {
+      setStartDate(lastMonthStartLocal());
+      setEndDate(lastMonthEndLocal());
+    } else if (preset === "today") {
       setStartDate(today);
       setEndDate(today);
     } else if (preset === "last7") {
@@ -228,7 +244,7 @@ export function SearchPage() {
   const canExport = Boolean(result && result.total > 0);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
+    <div className="mx-auto flex h-full w-full max-w-content min-h-0 flex-col gap-3 overflow-hidden">
       {feedback ? <StatusAlert {...feedback} onDismiss={() => setFeedback(null)} /> : null}
       {error ? (
         <StatusAlert
@@ -249,6 +265,15 @@ export function SearchPage() {
       <form className="space-y-4 rounded-2xl border border-[#d9e0ea] bg-[#f8fafd] p-4 shadow-sm" onSubmit={onSearchSubmit}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-2">
+            <Button
+              className={activePreset === "lastMonth" ? "border-[#bdd3f8] bg-[#dbe9ff] text-[#2457b8] hover:bg-[#dbe9ff]" : ""}
+              type="button"
+              variant={activePreset === "lastMonth" ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => applyPreset("lastMonth")}
+            >
+              Last Month
+            </Button>
             <Button
               className={activePreset === "today" ? "border-[#bdd3f8] bg-[#dbe9ff] text-[#2457b8] hover:bg-[#dbe9ff]" : ""}
               type="button"
@@ -284,11 +309,11 @@ export function SearchPage() {
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[170px] space-y-2">
             <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Start Date</Label>
-            <Input type="date" value={startDate} onChange={(e) => onStartDateChange(e.target.value)} />
+            <DatePicker value={startDate} onChange={onStartDateChange} placeholder="Start date" />
           </div>
           <div className="min-w-[170px] space-y-2">
             <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">End Date</Label>
-            <Input type="date" value={endDate} onChange={(e) => onEndDateChange(e.target.value)} />
+            <DatePicker value={endDate} onChange={onEndDateChange} placeholder="End date" />
           </div>
           <div className="min-w-[180px] space-y-2">
             <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Category</Label>

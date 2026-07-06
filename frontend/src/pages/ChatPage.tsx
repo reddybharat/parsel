@@ -146,7 +146,7 @@ export function ChatPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <section className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col rounded-xl border border-parsel-border bg-white">
+      <section className="mx-auto flex h-full min-h-0 w-full max-w-content flex-col rounded-xl border border-parsel-border bg-white">
         <header className="flex shrink-0 justify-end border-b border-parsel-border px-6 py-3 md:px-8">
           <button
             className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary hover:text-parsel-primary"

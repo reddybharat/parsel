@@ -5,6 +5,7 @@ import { EmptyState } from "../components/feedback/EmptyState";
 import { LoadingState } from "../components/feedback/LoadingState";
 import { StatusAlert, type FeedbackMessage } from "../components/feedback/StatusAlert";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -158,7 +159,7 @@ export function AddPage() {
       ) : null}
 
       {!loadingConfig && categories.length > 0 ? (
-        <div className="mx-auto max-w-3xl rounded-xl border border-parsel-border bg-white">
+        <div className="mx-auto w-full max-w-content rounded-xl border border-parsel-border bg-white">
           <Tabs value={tab} onValueChange={(value) => setTab(value as "manual" | "bulk")}>
             <TabsList className="grid h-auto w-full grid-cols-2 rounded-none border-b border-parsel-border bg-transparent p-0">
               <TabsTrigger
@@ -219,7 +220,7 @@ export function AddPage() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Transaction Date</Label>
-                  <Input type="date" value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)} required />
+                  <DatePicker value={transactionDate} onChange={setTransactionDate} placeholder="Select date" />
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Payment Method</Label>

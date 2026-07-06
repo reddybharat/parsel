@@ -10,7 +10,7 @@ export default {
         sans: ["Geist Sans", "Geist", "Inter", "system-ui", "sans-serif"],
       },
       maxWidth: {
-        content: "80rem",
+        content: "72rem",
       },
       colors: {
         parsel: {
