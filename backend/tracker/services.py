@@ -348,78 +348,32 @@ def _parse_json_value(raw: Any, default: Any) -> Any:
     return raw
 
 
-async def get_dashboard_summary(bounds: dict[str, date]) -> dict:
-    sql = """
-        SELECT
-          COALESCE(SUM(CASE WHEN t.is_debit THEN -t.amount ELSE t.amount END), 0)::float8 AS portfolio_net,
-          COALESCE(SUM(CASE
-            WHEN t.is_debit = TRUE
-             AND t.category <> :investments_category
-             AND t.transaction_date >= :month_now_start
-             AND t.transaction_date < :month_next_start
-            THEN t.amount ELSE 0 END), 0)::float8 AS current_month_spend,
-          COALESCE(SUM(CASE
-            WHEN t.is_debit = TRUE
-             AND t.category <> :investments_category
-             AND t.transaction_date >= :prev_month_start
-             AND t.transaction_date < :month_now_start
-            THEN t.amount ELSE 0 END), 0)::float8 AS previous_month_spend
-        FROM transactions t
-    """
-    async with get_connection() as session:
-        result = await session.execute(text(sql), _dashboard_params(bounds))
-        row = result.mappings().first() or {}
-
-    current = float(row.get("current_month_spend") or 0)
-    previous = float(row.get("previous_month_spend") or 0)
-    spend_delta_pct = None
-    if previous > 0:
-        spend_delta_pct = ((current - previous) / previous) * 100.0
-
-    return {
-        "portfolio_net": float(row.get("portfolio_net") or 0),
-        "current_month_spend": current,
-        "previous_month_spend": previous,
-        "spend_delta_pct": spend_delta_pct,
-    }
+_MONTH_LABELS = (
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+)
 
 
-async def get_dashboard_trend(months: int, bounds: dict[str, date]) -> list:
-    sql = """
-        SELECT
-          date_trunc('month', t.transaction_date)::date AS month_start,
-          COALESCE(SUM(t.amount), 0)::float8 AS spend
-        FROM transactions t
-        WHERE t.is_debit = TRUE
-          AND t.category <> :investments_category
-          AND t.transaction_date >= :trend_start
-          AND t.transaction_date < :month_next_start
-        GROUP BY 1
-    """
-    async with get_connection() as session:
-        result = await session.execute(text(sql), _dashboard_params(bounds))
-        rows = result.mappings().all()
+def _parse_month_start(value: Any) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        return date.fromisoformat(value[:10])
+    return None
 
-    spend_by_month_start = {
-        row["month_start"]: float(row.get("spend") or 0)
-        for row in rows
-        if row.get("month_start") is not None
-    }
 
-    month_labels = (
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
-        "May",
-        "Jun",
-        "Jul",
-        "Aug",
-        "Sep",
-        "Oct",
-        "Nov",
-        "Dec",
-    )
+def _build_trend_points(
+    months: int,
+    bounds: dict[str, date],
+    trend_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    spend_by_month_start: dict[date, float] = {}
+    for row in trend_rows:
+        month_start = _parse_month_start(row.get("month_start"))
+        if month_start is not None:
+            spend_by_month_start[month_start] = float(row.get("spend") or 0)
     trend_start = bounds["trend_start"]
     month_now_start = bounds["month_now_start"]
 
@@ -430,15 +384,170 @@ async def get_dashboard_trend(months: int, bounds: dict[str, date]) -> list:
             break
         points.append(
             {
-                "month_label": month_labels[month_start.month - 1],
+                "month_label": _MONTH_LABELS[month_start.month - 1],
                 "spend": spend_by_month_start.get(month_start, 0.0),
             }
         )
-
     return points
 
 
-async def get_dashboard_recent(recent_limit: int) -> list:
+_DASHBOARD_AGGREGATES_SQL = """
+WITH current_month AS (
+  SELECT t.*
+  FROM transactions t
+  WHERE t.transaction_date >= :month_now_start
+    AND t.transaction_date < :month_next_start
+),
+spend_txns AS (
+  SELECT cm.*
+  FROM current_month cm
+  WHERE cm.is_debit = TRUE
+    AND cm.category <> :investments_category
+),
+summary AS (
+  SELECT
+    COALESCE(SUM(CASE WHEN t.is_debit THEN -t.amount ELSE t.amount END), 0)::float8 AS portfolio_net,
+    COALESCE(SUM(CASE
+      WHEN t.is_debit = TRUE
+       AND t.category <> :investments_category
+       AND t.transaction_date >= :month_now_start
+       AND t.transaction_date < :month_next_start
+      THEN t.amount ELSE 0 END), 0)::float8 AS current_month_spend,
+    COALESCE(SUM(CASE
+      WHEN t.is_debit = TRUE
+       AND t.category <> :investments_category
+       AND t.transaction_date >= :prev_month_start
+       AND t.transaction_date < :month_now_start
+      THEN t.amount ELSE 0 END), 0)::float8 AS previous_month_spend
+  FROM transactions t
+),
+trend_rows AS (
+  SELECT
+    date_trunc('month', t.transaction_date)::date AS month_start,
+    COALESCE(SUM(t.amount), 0)::float8 AS spend
+  FROM transactions t
+  WHERE t.is_debit = TRUE
+    AND t.category <> :investments_category
+    AND t.transaction_date >= :trend_start
+    AND t.transaction_date < :month_next_start
+  GROUP BY 1
+),
+highlights AS (
+  SELECT
+    COALESCE(SUM(CASE WHEN cm.is_debit = FALSE THEN cm.amount ELSE 0 END), 0)::float8 AS total_inflow,
+    COALESCE(SUM(CASE WHEN cm.is_debit = TRUE THEN cm.amount ELSE 0 END), 0)::float8 AS total_outflow,
+    COALESCE(SUM(CASE
+      WHEN cm.is_debit = TRUE AND cm.category = :investments_category
+      THEN cm.amount ELSE 0 END), 0)::float8 AS current_month_investments
+  FROM current_month cm
+),
+top_category AS (
+  SELECT st.category, COALESCE(SUM(st.amount), 0)::float8 AS spend
+  FROM spend_txns st
+  GROUP BY st.category
+  ORDER BY spend DESC
+  LIMIT 1
+),
+daily_agg AS (
+  SELECT
+    st.transaction_date AS day_date,
+    COALESCE(SUM(st.amount), 0)::float8 AS spend
+  FROM spend_txns st
+  GROUP BY st.transaction_date
+),
+daily_series AS (
+  SELECT generate_series(
+    :month_now_start,
+    :month_next_start - interval '1 day',
+    interval '1 day'
+  )::date AS day_date
+),
+daily_spend AS (
+  SELECT COALESCE(SUM(st.amount), 0)::float8 AS total
+  FROM spend_txns st
+)
+SELECT
+  s.portfolio_net,
+  s.current_month_spend,
+  s.previous_month_spend,
+  COALESCE(
+    (SELECT json_agg(json_build_object('month_start', tr.month_start, 'spend', tr.spend)) FROM trend_rows tr),
+    '[]'::json
+  ) AS trend_rows,
+  h.total_inflow,
+  h.total_outflow,
+  h.current_month_investments,
+  (SELECT json_build_object('category', tc.category, 'spend', tc.spend) FROM top_category tc) AS top_category,
+  to_char(:month_now_start, 'Mon YYYY') AS month_label,
+  (SELECT total FROM daily_spend) AS daily_total,
+  COALESCE(
+    (
+      SELECT json_agg(
+        json_build_object(
+          'day', EXTRACT(DAY FROM ds.day_date)::int,
+          'spend', COALESCE(da.spend, 0)
+        )
+        ORDER BY ds.day_date
+      )
+      FROM daily_series ds
+      LEFT JOIN daily_agg da ON da.day_date = ds.day_date
+    ),
+    '[]'::json
+  ) AS daily_points
+FROM summary s
+CROSS JOIN highlights h
+"""
+
+
+async def _get_dashboard_aggregates(bounds: dict[str, date], months: int) -> dict:
+    """Single-query dashboard aggregates (summary, trend, highlights, daily spend)."""
+    async with get_connection() as session:
+        result = await session.execute(
+            text(_DASHBOARD_AGGREGATES_SQL),
+            _dashboard_params(bounds),
+        )
+        row = result.mappings().first() or {}
+
+    current = float(row.get("current_month_spend") or 0)
+    previous = float(row.get("previous_month_spend") or 0)
+    spend_delta_pct = None
+    if previous > 0:
+        spend_delta_pct = ((current - previous) / previous) * 100.0
+
+    trend_rows = _parse_json_value(row.get("trend_rows"), [])
+    if not isinstance(trend_rows, list):
+        trend_rows = []
+
+    top_category = _parse_json_value(
+        row.get("top_category"),
+        {"category": None, "spend": 0.0},
+    )
+    if not isinstance(top_category, dict):
+        top_category = {"category": None, "spend": 0.0}
+
+    return {
+        "summary": {
+            "portfolio_net": float(row.get("portfolio_net") or 0),
+            "current_month_spend": current,
+            "previous_month_spend": previous,
+            "spend_delta_pct": spend_delta_pct,
+        },
+        "trend_points": _build_trend_points(months, bounds, trend_rows),
+        "highlights": {
+            "top_category": top_category,
+            "total_inflow": float(row.get("total_inflow") or 0),
+            "total_outflow": float(row.get("total_outflow") or 0),
+            "current_month_investments": float(row.get("current_month_investments") or 0),
+        },
+        "daily_spend": {
+            "month_label": row.get("month_label") or "",
+            "total": float(row.get("daily_total") or 0),
+            "points": _parse_json_value(row.get("daily_points"), []),
+        },
+    }
+
+
+async def _get_dashboard_recent(recent_limit: int) -> list:
     sql = """
         SELECT
           id::text,
@@ -470,126 +579,21 @@ async def get_dashboard_recent(recent_limit: int) -> list:
     ]
 
 
-async def get_dashboard_highlights(bounds: dict[str, date]) -> dict:
-    sql = """
-        SELECT
-          COALESCE(SUM(CASE WHEN t.is_debit = FALSE THEN t.amount ELSE 0 END), 0)::float8 AS total_inflow,
-          COALESCE(SUM(CASE WHEN t.is_debit = TRUE THEN t.amount ELSE 0 END), 0)::float8 AS total_outflow,
-          COALESCE(SUM(CASE
-            WHEN t.is_debit = TRUE AND t.category = :investments_category
-            THEN t.amount ELSE 0 END), 0)::float8 AS current_month_investments,
-          (
-            SELECT json_build_object('category', tc.category, 'spend', tc.spend)
-            FROM (
-              SELECT t2.category, COALESCE(SUM(t2.amount), 0)::float8 AS spend
-              FROM transactions t2
-              WHERE t2.is_debit = TRUE
-                AND t2.category <> :investments_category
-                AND t2.transaction_date >= :month_now_start
-                AND t2.transaction_date < :month_next_start
-              GROUP BY t2.category
-              ORDER BY spend DESC
-              LIMIT 1
-            ) tc
-          ) AS top_category
-        FROM transactions t
-        WHERE t.transaction_date >= :month_now_start
-          AND t.transaction_date < :month_next_start
-    """
-    async with get_connection() as session:
-        result = await session.execute(text(sql), _dashboard_params(bounds))
-        row = result.mappings().first() or {}
-
-    top_category = _parse_json_value(
-        row.get("top_category"),
-        {"category": None, "spend": 0.0},
-    )
-    if not isinstance(top_category, dict):
-        top_category = {"category": None, "spend": 0.0}
-
-    return {
-        "top_category": top_category,
-        "total_inflow": float(row.get("total_inflow") or 0),
-        "total_outflow": float(row.get("total_outflow") or 0),
-        "current_month_investments": float(row.get("current_month_investments") or 0),
-    }
-
-
-async def get_dashboard_daily_spend(bounds: dict[str, date]) -> dict:
-    sql = """
-        WITH daily_agg AS (
-          SELECT
-            EXTRACT(DAY FROM t.transaction_date)::int AS day,
-            COALESCE(SUM(t.amount), 0)::float8 AS spend
-          FROM transactions t
-          WHERE t.is_debit = TRUE
-            AND t.category <> :investments_category
-            AND t.transaction_date >= :month_now_start
-            AND t.transaction_date < :month_next_start
-          GROUP BY 1
-        ),
-        daily_series AS (
-          SELECT generate_series(
-            :month_now_start,
-            :month_next_start - interval '1 day',
-            interval '1 day'
-          )::date AS day_date
-        ),
-        month_spend AS (
-          SELECT COALESCE(SUM(t.amount), 0)::float8 AS total
-          FROM transactions t
-          WHERE t.is_debit = TRUE
-            AND t.category <> :investments_category
-            AND t.transaction_date >= :month_now_start
-            AND t.transaction_date < :month_next_start
-        )
-        SELECT
-          to_char(:month_now_start, 'Mon YYYY') AS month_label,
-          (SELECT total FROM month_spend) AS total,
-          COALESCE(
-            (
-              SELECT json_agg(
-                json_build_object(
-                  'day', EXTRACT(DAY FROM ds.day_date)::int,
-                  'spend', COALESCE(da.spend, 0)
-                )
-                ORDER BY ds.day_date
-              )
-              FROM daily_series ds
-              LEFT JOIN daily_agg da ON da.day = EXTRACT(DAY FROM ds.day_date)::int
-            ),
-            '[]'::json
-          ) AS points
-    """
-    async with get_connection() as session:
-        result = await session.execute(text(sql), _dashboard_params(bounds))
-        row = result.mappings().first() or {}
-
-    return {
-        "month_label": row.get("month_label") or "",
-        "total": float(row.get("total") or 0),
-        "points": _parse_json_value(row.get("points"), []),
-    }
-
-
 async def get_dashboard_overview(months: int = 12, recent_limit: int = 5) -> dict:
-    """Return dashboard data via parallel focused queries."""
+    """Return dashboard data via one aggregate query and one recent-transactions query."""
     months = max(1, min(int(months), 24))
     recent_limit = max(1, min(int(recent_limit), 20))
     bounds = _dashboard_bounds(months)
 
-    summary, trend_points, recent_items, highlights, daily_spend = await asyncio.gather(
-        get_dashboard_summary(bounds),
-        get_dashboard_trend(months, bounds),
-        get_dashboard_recent(recent_limit),
-        get_dashboard_highlights(bounds),
-        get_dashboard_daily_spend(bounds),
+    aggregates, recent_items = await asyncio.gather(
+        _get_dashboard_aggregates(bounds, months),
+        _get_dashboard_recent(recent_limit),
     )
 
     return {
-        "summary": summary,
-        "trend": {"months": months, "points": trend_points},
+        "summary": aggregates["summary"],
+        "trend": {"months": months, "points": aggregates["trend_points"]},
         "recent": {"items": recent_items},
-        "highlights": highlights,
-        "daily_spend": daily_spend,
+        "highlights": aggregates["highlights"],
+        "daily_spend": aggregates["daily_spend"],
     }

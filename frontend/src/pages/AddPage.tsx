@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { invalidateDashboardOverview } from "@/lib/dashboardQuery";
 import { createTransaction, downloadImportTemplate, fetchTrackerConfig, importTransactions } from "../api/tracker";
 
 function localDateIso(): string {
@@ -86,6 +87,7 @@ export function AddPage() {
         transaction_date: transactionDate,
         description: description.trim() || null,
       });
+      void invalidateDashboardOverview();
       setManualFeedback({ variant: "success", title: "Transaction saved" });
       setAmount(0);
       setDescription("");
@@ -122,6 +124,7 @@ export function AddPage() {
     setImportErrors(null);
     try {
       const result = await importTransactions(file);
+      void invalidateDashboardOverview();
       const errorCount = result.errors.length;
       setBulkFeedback({
         variant: errorCount ? "info" : "success",

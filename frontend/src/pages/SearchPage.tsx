@@ -20,6 +20,7 @@ import {
 import { ConfirmDeleteDialog } from "../components/transactions/ConfirmDeleteDialog";
 import { EditTransactionDialog } from "../components/transactions/EditTransactionDialog";
 import { TransactionTable } from "../components/transactions/TransactionTable";
+import { invalidateDashboardOverview } from "@/lib/dashboardQuery";
 import {
   deleteTransaction,
   exportTransactions,
@@ -195,6 +196,7 @@ export function SearchPage() {
     setSubmitting(true);
     try {
       await deleteTransaction(deleting.id);
+      void invalidateDashboardOverview();
       setFeedback({ variant: "success", title: "Transaction deleted" });
       setDeleting(null);
       await runSearch(page);
@@ -210,6 +212,7 @@ export function SearchPage() {
     setSubmitting(true);
     try {
       await updateTransaction(editing.id, editing);
+      void invalidateDashboardOverview();
       setEditing(null);
       setFeedback({ variant: "success", title: "Transaction updated" });
       await runSearch(page);

@@ -1,5 +1,7 @@
 import { NavLink } from "react-router-dom";
 
+import { prefetchDashboardOverview } from "@/lib/dashboardQuery";
+
 type ShellNavItem = {
   to: string;
   label: string;
@@ -101,6 +103,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <NavLink
                   key={item.to}
                   to={item.to}
+                  onMouseEnter={item.to === "/overview" ? () => void prefetchDashboardOverview() : undefined}
                   className={({ isActive }) =>
                     `flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition ${
                       isActive ? "bg-[#e8eef8] text-[#2563eb]" : "text-parsel-muted hover:bg-parsel-soft hover:text-parsel-text"

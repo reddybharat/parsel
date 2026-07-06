@@ -1,19 +1,30 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
-import { fetchDashboardOverview } from "@/api/dashboard";
-import { DailySpendLineChart } from "@/components/dashboard/DailySpendLineChart";
-import { MonthlySpendBarChart } from "@/components/dashboard/MonthlySpendBarChart";
+import { ChartSkeleton } from "@/components/dashboard/ChartSkeleton";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
-import { LoadingState } from "@/components/feedback/LoadingState";
+import {
+  dashboardOverviewQueryOptions,
+  TREND_MONTHS,
+} from "@/lib/dashboardQuery";
 import { formatInrAmount, formatInrSigned, formatRelativeDate } from "@/lib/format";
 import type { DashboardOverview } from "@/lib/types";
 
+const MonthlySpendBarChart = lazy(() =>
+  import("@/components/dashboard/MonthlySpendBarChart").then((m) => ({
+    default: m.MonthlySpendBarChart,
+  })),
+);
+const DailySpendLineChart = lazy(() =>
+  import("@/components/dashboard/DailySpendLineChart").then((m) => ({
+    default: m.DailySpendLineChart,
+  })),
+);
+
 const SECTION_LABEL = "text-[11px] font-semibold uppercase tracking-wide text-parsel-secondary";
-const TREND_MONTHS = 12;
-const RECENT_ACTIVITY_LIMIT = 6;
 const TILE = "flex min-h-0 flex-col overflow-hidden rounded-xl border border-parsel-border bg-white p-4 shadow-sm";
 const TILE_FILL = `${TILE} lg:h-full`;
 
@@ -54,34 +65,42 @@ function DeltaBadge({ value }: { value: number | null }) {
   );
 }
 
-export function OverviewPage() {
-  const [data, setData] = useState<DashboardOverview | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+function TextSkeleton({ className }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-[#e8eef4] ${className ?? ""}`} aria-hidden />;
+}
 
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const overview = await fetchDashboardOverview(TREND_MONTHS, RECENT_ACTIVITY_LIMIT);
-      setData(overview);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load overview.");
-    } finally {
-      setLoading(false);
-    }
+function RecentActivitySkeleton() {
+  return (
+    <ul className="mt-4 min-h-0 flex-1 space-y-1.5" aria-hidden>
+      {Array.from({ length: 4 }, (_, i) => (
+        <li key={i} className="flex items-center gap-2 pb-1.5">
+          <div className="h-7 w-7 shrink-0 animate-pulse rounded-lg bg-[#e8eef4]" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <TextSkeleton className="h-3 w-3/4" />
+            <TextSkeleton className="h-2.5 w-1/3" />
+          </div>
+          <TextSkeleton className="h-3 w-14" />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function OverviewPage() {
+  const { data, isPending, isError, error, refetch, isFetching } = useQuery(dashboardOverviewQueryOptions());
+
+  if (isError) {
+    return (
+      <ErrorState
+        message={error instanceof Error ? error.message : "Failed to load overview."}
+        onRetry={() => void refetch()}
+      />
+    );
   }
 
-  useEffect(() => {
-    void load();
-  }, []);
-
-  if (loading) return <LoadingState label="Loading overview..." />;
-  if (error) return <ErrorState message={error} onRetry={() => void load()} />;
-  if (!data) return null;
-
-  const topCategory = data.highlights.top_category;
-  const trendPoints = ensureCurrentMonthPoint(data.trend.points, TREND_MONTHS);
+  const showSkeletons = isPending && !data;
+  const topCategory = data?.highlights.top_category;
+  const trendPoints = data ? ensureCurrentMonthPoint(data.trend.points, TREND_MONTHS) : [];
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 gap-3 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_minmax(260px,340px)] lg:grid-rows-1 lg:overflow-hidden">
@@ -89,25 +108,60 @@ export function OverviewPage() {
         <article className={TILE_FILL}>
           <p className={`${SECTION_LABEL} shrink-0`}>Net Portfolio Balance</p>
           <div className="mt-1 flex shrink-0 flex-wrap items-center gap-2">
-            <p className="tabular-nums text-xl font-semibold text-parsel-neutral lg:text-2xl">{formatInrSigned(data.summary.portfolio_net)}</p>
-            <DeltaBadge value={data.summary.spend_delta_pct} />
+            {showSkeletons ? (
+              <>
+                <TextSkeleton className="h-7 w-36 lg:h-8" />
+                <TextSkeleton className="h-5 w-16 rounded-full" />
+              </>
+            ) : (
+              data && (
+                <>
+                  <p className="tabular-nums text-xl font-semibold text-parsel-neutral lg:text-2xl">
+                    {formatInrSigned(data.summary.portfolio_net)}
+                  </p>
+                  <DeltaBadge value={data.summary.spend_delta_pct} />
+                </>
+              )
+            )}
           </div>
           <div className="mt-2 flex min-h-0 flex-1 flex-col border-t border-parsel-border pt-2">
-            <MonthlySpendBarChart points={trendPoints} spendDeltaPct={data.summary.spend_delta_pct} />
+            {showSkeletons ? (
+              <ChartSkeleton />
+            ) : (
+              data && (
+                <Suspense fallback={<ChartSkeleton />}>
+                  <MonthlySpendBarChart points={trendPoints} spendDeltaPct={data.summary.spend_delta_pct} />
+                </Suspense>
+              )
+            )}
           </div>
         </article>
 
         <article className={TILE_FILL}>
           <p className={`${SECTION_LABEL} shrink-0`}>Total Monthly Spending</p>
-          <p className="mt-1 shrink-0 tabular-nums text-xl font-semibold text-parsel-neutral">
-            {formatInrAmount(data.summary.current_month_spend)}
-          </p>
+          {showSkeletons ? (
+            <TextSkeleton className="mt-1 h-7 w-32" />
+          ) : (
+            data && (
+              <p className="mt-1 shrink-0 tabular-nums text-xl font-semibold text-parsel-neutral">
+                {formatInrAmount(data.summary.current_month_spend)}
+              </p>
+            )
+          )}
           <div className="mt-2 flex min-h-0 flex-1 flex-col border-t border-parsel-border pt-2">
-            <DailySpendLineChart
-              points={data.daily_spend.points}
-              monthLabel={data.daily_spend.month_label}
-              monthTotal={data.daily_spend.total}
-            />
+            {showSkeletons ? (
+              <ChartSkeleton />
+            ) : (
+              data && (
+                <Suspense fallback={<ChartSkeleton />}>
+                  <DailySpendLineChart
+                    points={data.daily_spend.points}
+                    monthLabel={data.daily_spend.month_label}
+                    monthTotal={data.daily_spend.total}
+                  />
+                </Suspense>
+              )
+            )}
           </div>
         </article>
       </div>
@@ -120,29 +174,38 @@ export function OverviewPage() {
               View All
             </Link>
           </div>
-          {data.recent.items.length === 0 ? (
+          {showSkeletons ? (
+            <RecentActivitySkeleton />
+          ) : data && data.recent.items.length === 0 ? (
             <EmptyState title="No recent transactions" detail="New entries will show here." />
           ) : (
-            <ul className="mt-4 min-h-0 flex-1 space-y-1.5 overflow-hidden">
-              {data.recent.items.map((row) => (
-                <li key={row.id} className="flex items-center gap-2 border-b border-parsel-border pb-1.5 last:border-0 last:pb-0">
-                  <ActivityIcon label={row.description || row.category} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[12px] font-medium leading-tight">{row.description || row.category}</p>
-                    <p className="text-[10px] text-parsel-muted">{formatRelativeDate(row.transaction_date)}</p>
-                  </div>
-                  <p className={`shrink-0 tabular-nums text-[11px] font-semibold ${row.is_debit ? "text-[#dc2626]" : "text-[#2563eb]"}`}>
-                    {row.is_debit ? "−" : "+"} {formatInrAmount(row.amount)}
-                  </p>
-                </li>
-              ))}
-            </ul>
+            data && (
+              <ul className="mt-4 min-h-0 flex-1 space-y-1.5 overflow-hidden">
+                {data.recent.items.map((row) => (
+                  <li key={row.id} className="flex items-center gap-2 border-b border-parsel-border pb-1.5 last:border-0 last:pb-0">
+                    <ActivityIcon label={row.description || row.category} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12px] font-medium leading-tight">{row.description || row.category}</p>
+                      <p className="text-[10px] text-parsel-muted">{formatRelativeDate(row.transaction_date)}</p>
+                    </div>
+                    <p className={`shrink-0 tabular-nums text-[11px] font-semibold ${row.is_debit ? "text-[#dc2626]" : "text-[#2563eb]"}`}>
+                      {row.is_debit ? "−" : "+"} {formatInrAmount(row.amount)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )
           )}
         </article>
 
         <article className={TILE}>
           <p className={`${SECTION_LABEL} shrink-0`}>Top Category</p>
-          {topCategory.category ? (
+          {showSkeletons ? (
+            <div className="mt-2 space-y-2" aria-hidden>
+              <TextSkeleton className="h-5 w-28" />
+              <TextSkeleton className="h-6 w-24" />
+            </div>
+          ) : topCategory?.category ? (
             <div className="mt-2">
               <p className="text-base font-semibold leading-tight text-parsel-neutral">{topCategory.category}</p>
               <p className="mt-0.5 tabular-nums text-lg font-semibold text-[#2563eb]">{formatInrAmount(topCategory.spend)}</p>
@@ -190,6 +253,12 @@ export function OverviewPage() {
           </Link>
         </article>
       </div>
+
+      {isFetching && data && (
+        <span className="sr-only" aria-live="polite">
+          Refreshing overview
+        </span>
+      )}
     </div>
   );
 }
