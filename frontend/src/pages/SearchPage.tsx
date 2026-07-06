@@ -265,11 +265,11 @@ export function SearchPage() {
         />
       ) : null}
 
-      <form className="space-y-4 rounded-2xl border border-[#d9e0ea] bg-[#f8fafd] p-4 shadow-sm" onSubmit={onSearchSubmit}>
+      <form className="space-y-4 rounded-2xl border border-parsel-border bg-parsel-soft p-4 shadow-sm" onSubmit={onSearchSubmit}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-2">
             <Button
-              className={activePreset === "lastMonth" ? "border-[#bdd3f8] bg-[#dbe9ff] text-[#2457b8] hover:bg-[#dbe9ff]" : ""}
+              className={activePreset === "lastMonth" ? "border-parsel-nav-active-bg bg-parsel-nav-active-bg text-parsel-nav-active-text hover:bg-parsel-nav-active-bg" : ""}
               type="button"
               variant={activePreset === "lastMonth" ? "secondary" : "outline"}
               size="sm"
@@ -278,7 +278,7 @@ export function SearchPage() {
               Last Month
             </Button>
             <Button
-              className={activePreset === "today" ? "border-[#bdd3f8] bg-[#dbe9ff] text-[#2457b8] hover:bg-[#dbe9ff]" : ""}
+              className={activePreset === "today" ? "border-parsel-nav-active-bg bg-parsel-nav-active-bg text-parsel-nav-active-text hover:bg-parsel-nav-active-bg" : ""}
               type="button"
               variant={activePreset === "today" ? "secondary" : "outline"}
               size="sm"
@@ -287,7 +287,7 @@ export function SearchPage() {
               Today
             </Button>
             <Button
-              className={activePreset === "last7" ? "border-[#bdd3f8] bg-[#dbe9ff] text-[#2457b8] hover:bg-[#dbe9ff]" : ""}
+              className={activePreset === "last7" ? "border-parsel-nav-active-bg bg-parsel-nav-active-bg text-parsel-nav-active-text hover:bg-parsel-nav-active-bg" : ""}
               type="button"
               variant={activePreset === "last7" ? "secondary" : "outline"}
               size="sm"
@@ -296,7 +296,7 @@ export function SearchPage() {
               Last 7 days
             </Button>
             <Button
-              className={activePreset === "month" ? "border-[#bdd3f8] bg-[#dbe9ff] text-[#2457b8] hover:bg-[#dbe9ff]" : ""}
+              className={activePreset === "month" ? "border-parsel-nav-active-bg bg-parsel-nav-active-bg text-parsel-nav-active-text hover:bg-parsel-nav-active-bg" : ""}
               type="button"
               variant={activePreset === "month" ? "secondary" : "outline"}
               size="sm"
@@ -333,7 +333,7 @@ export function SearchPage() {
             Search
           </Button>
           {canExport ? (
-            <Button className="bg-[#0d8b58] hover:bg-[#0b7a4d]" type="button" onClick={() => void onExport()}>
+            <Button className="bg-parsel-emerald hover:bg-parsel-emerald/90" type="button" onClick={() => void onExport()}>
               Export CSV
             </Button>
           ) : null}
@@ -344,13 +344,13 @@ export function SearchPage() {
       {result && !loading ? (
         <div className="flex min-h-0 flex-1 flex-col gap-2">
           {result.items.length === 0 ? (
-            <div className="rounded-xl border border-parsel-border bg-white py-20">
+            <div className="rounded-xl border border-parsel-border bg-parsel-surface py-20">
               <EmptyState title="No transactions found" detail="Try adjusting your filters." />
               <div className="mt-4 flex justify-center gap-3">
                 <Button type="button" variant="outline" onClick={clearFilters}>
                   Clear all filters
                 </Button>
-                <Button asChild className="bg-[#0d8b58] hover:bg-[#0b7a4d]">
+                <Button asChild className="bg-parsel-emerald hover:bg-parsel-emerald/90">
                   <Link to="/ledger/add">Add New Entry</Link>
                 </Button>
               </div>
@@ -371,8 +371,8 @@ export function SearchPage() {
             />
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#d9e0ea] bg-[#f8fafd] px-4 py-2.5">
-            <p className="text-sm text-[#667085]">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-parsel-border bg-parsel-soft px-4 py-2.5">
+            <p className="text-sm text-parsel-muted">
               Showing {rangeStart}-{rangeEnd} of {result.total} transactions
             </p>
             <Pagination className="mx-0 w-auto justify-end">

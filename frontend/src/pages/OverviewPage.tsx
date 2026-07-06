@@ -33,7 +33,7 @@ const CategorySpendPieChart = lazy(() =>
 );
 
 const SECTION_LABEL = "text-[11px] font-semibold uppercase tracking-wide text-parsel-secondary";
-const TILE = "flex min-h-0 flex-col overflow-hidden rounded-xl border border-parsel-border bg-white p-4 shadow-sm";
+const TILE = "flex min-h-0 flex-col overflow-hidden rounded-xl border border-parsel-border bg-parsel-surface p-4 shadow-sm";
 const TILE_FILL = `${TILE} lg:h-full`;
 
 type TrendPoint = DashboardOverview["trend"]["points"][number];
@@ -53,7 +53,7 @@ function ensureCurrentMonthPoint(points: TrendPoint[], months: number): TrendPoi
 function ActivityIcon({ label }: { label: string }) {
   const initial = (label.trim()[0] ?? "?").toUpperCase();
   return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#eef2f7] text-xs font-semibold text-parsel-secondary">
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-parsel-icon-bg text-xs font-semibold text-parsel-secondary">
       {initial}
     </span>
   );
@@ -65,7 +65,7 @@ function DeltaBadge({ value }: { value: number | null }) {
   const label = `${isUp ? "+" : ""}${value.toFixed(1)}%`;
   return (
     <Badge
-      className={isUp ? "border-transparent bg-[#dcfce7] text-[#15803d] hover:bg-[#dcfce7]" : "border-transparent bg-[#fee2e2] text-[#b91c1c] hover:bg-[#fee2e2]"}
+      className={isUp ? "border-transparent bg-parsel-success-bg text-parsel-success-text hover:bg-parsel-success-bg" : "border-transparent bg-parsel-danger-bg text-parsel-danger-text hover:bg-parsel-danger-bg"}
       variant="secondary"
     >
       {isUp ? "↑" : "↓"} {label}
@@ -74,7 +74,7 @@ function DeltaBadge({ value }: { value: number | null }) {
 }
 
 function TextSkeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-[#e8eef4] ${className ?? ""}`} aria-hidden />;
+  return <div className={`animate-pulse rounded bg-parsel-soft ${className ?? ""}`} aria-hidden />;
 }
 
 function RecentActivitySkeleton() {
@@ -82,7 +82,7 @@ function RecentActivitySkeleton() {
     <ul className="min-h-0 flex-1 space-y-2" aria-hidden>
       {Array.from({ length: 11 }, (_, i) => (
         <li key={i} className="flex items-center gap-2.5 pb-2">
-          <div className="h-8 w-8 shrink-0 animate-pulse rounded-lg bg-[#e8eef4]" />
+          <div className="h-8 w-8 shrink-0 animate-pulse rounded-lg bg-parsel-soft" />
           <div className="min-w-0 flex-1 space-y-1.5">
             <TextSkeleton className="h-3.5 w-3/4" />
             <TextSkeleton className="h-3 w-1/3" />
@@ -142,7 +142,7 @@ function QuickActionsBlock() {
         </div>
       </article>
 
-      <article className="flex min-h-0 flex-col justify-between rounded-xl bg-[#2563eb] p-3 text-white shadow-sm lg:h-full">
+      <article className="flex min-h-0 flex-col justify-between rounded-xl bg-parsel-primary p-3 text-white shadow-sm lg:h-full">
         <div className="space-y-2">
           <p className="text-sm font-semibold leading-tight">Parsel AI</p>
           <p className="text-xs leading-relaxed text-white/90">
@@ -153,7 +153,7 @@ function QuickActionsBlock() {
         <Button
           asChild
           variant="outline"
-          className="mt-2 w-full border-white/40 bg-white text-[#2563eb] hover:bg-white/90 hover:text-[#2563eb]"
+          className="mt-2 w-full border-white/40 bg-parsel-surface text-parsel-primary hover:bg-parsel-surface/90 hover:text-parsel-primary"
         >
           <Link to="/chat">Ask a question</Link>
         </Button>
@@ -276,7 +276,7 @@ export function OverviewPage() {
         <article className={`${TILE} flex min-h-0 flex-col`}>
           <div className="mb-2 flex shrink-0 items-center justify-between border-b border-parsel-border pb-2">
             <p className={SECTION_LABEL}>Recent Activity</p>
-            <Link to="/ledger/search" className="text-xs font-semibold text-[#2563eb] hover:underline">
+            <Link to="/ledger/search" className="text-xs font-semibold text-parsel-inflow hover:underline">
               View All
             </Link>
           </div>
@@ -294,7 +294,7 @@ export function OverviewPage() {
                       <p className="truncate text-sm font-medium leading-tight">{row.description || row.category}</p>
                       <p className="text-xs text-parsel-muted">{formatRelativeDate(row.transaction_date)}</p>
                     </div>
-                    <p className={`shrink-0 tabular-nums text-sm font-semibold ${row.is_debit ? "text-[#dc2626]" : "text-[#2563eb]"}`}>
+                    <p className={`shrink-0 tabular-nums text-sm font-semibold ${row.is_debit ? "text-parsel-outflow" : "text-parsel-inflow"}`}>
                       {row.is_debit ? "−" : "+"} {formatInrAmount(row.amount)}
                     </p>
                   </li>

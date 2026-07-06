@@ -6,6 +6,7 @@
   --parsel-bg: #ffffff;
   --parsel-surface: #ffffff;
   --parsel-soft: #f5f7fb;
+  --parsel-canvas: #f6f8fb;
   --parsel-text: #1f2937;
   --parsel-muted: #6b7280;
   --parsel-primary: #2563eb;
@@ -15,6 +16,16 @@
   --parsel-border: #d7dee8;
   --parsel-emerald: #0f8f62;
   --parsel-danger: #be123c;
+  --parsel-nav-active-bg: #e8eef8;
+  --parsel-nav-active-text: #2563eb;
+  --parsel-inflow: #2563eb;
+  --parsel-outflow: #dc2626;
+  --parsel-success-bg: #dcfce7;
+  --parsel-success-text: #15803d;
+  --parsel-danger-bg: #fee2e2;
+  --parsel-danger-text: #b91c1c;
+  --parsel-avatar-bg: #dbe4f0;
+  --parsel-icon-bg: #eef2f7;
 
   --background: 0 0% 100%;
   --foreground: 220 13% 18%;
@@ -41,6 +52,57 @@
   --chart-3: 38 100% 38%;
   --chart-4: 160 84% 31%;
   --chart-5: 220 13% 20%;
+}
+
+.dark {
+  --parsel-bg: #0f1419;
+  --parsel-surface: #1a2230;
+  --parsel-soft: #243044;
+  --parsel-canvas: #121820;
+  --parsel-text: #e8edf4;
+  --parsel-muted: #94a3b8;
+  --parsel-primary: #60a5fa;
+  --parsel-secondary: #8b9cb3;
+  --parsel-tertiary: #f59e0b;
+  --parsel-neutral: #e2e8f0;
+  --parsel-border: #2d3a4d;
+  --parsel-emerald: #34d399;
+  --parsel-danger: #fb7185;
+  --parsel-nav-active-bg: #1e3a5f;
+  --parsel-nav-active-text: #60a5fa;
+  --parsel-inflow: #60a5fa;
+  --parsel-outflow: #f87171;
+  --parsel-success-bg: #14532d;
+  --parsel-success-text: #86efac;
+  --parsel-danger-bg: #450a0a;
+  --parsel-danger-text: #fca5a5;
+  --parsel-avatar-bg: #2d3a4d;
+  --parsel-icon-bg: #243044;
+
+  --background: 220 20% 8%;
+  --foreground: 210 20% 92%;
+  --card: 220 18% 13%;
+  --card-foreground: 210 20% 92%;
+  --popover: 220 18% 13%;
+  --popover-foreground: 210 20% 92%;
+  --primary: 217 91% 68%;
+  --primary-foreground: 220 20% 8%;
+  --secondary: 220 16% 18%;
+  --secondary-foreground: 210 20% 92%;
+  --muted: 220 16% 18%;
+  --muted-foreground: 215 14% 65%;
+  --accent: 220 16% 18%;
+  --accent-foreground: 210 20% 92%;
+  --destructive: 347 77% 65%;
+  --destructive-foreground: 220 20% 8%;
+  --border: 220 16% 24%;
+  --input: 220 16% 24%;
+  --ring: 217 91% 68%;
+  --chart-1: 217 91% 68%;
+  --chart-2: 215 16% 65%;
+  --chart-3: 38 92% 55%;
+  --chart-4: 160 70% 45%;
+  --chart-5: 210 20% 75%;
 }
 
 @layer base {
@@ -173,7 +235,7 @@ body,
     background-image: linear-gradient(
       90deg,
       var(--shimmer-base) 0%,
-      color-mix(in oklch, var(--shimmer-base) 35%, white) 50%,
+      color-mix(in oklch, var(--shimmer-base) 35%, var(--parsel-text)) 50%,
       var(--shimmer-base) 100%
     );
     background-size: var(--shimmer-spread) 100%;

@@ -162,7 +162,7 @@ export function AddPage() {
       ) : null}
 
       {!loadingConfig && categories.length > 0 ? (
-        <div className="mx-auto w-full max-w-content rounded-xl border border-parsel-border bg-white">
+        <div className="mx-auto w-full max-w-content rounded-xl border border-parsel-border bg-parsel-surface">
           <Tabs value={tab} onValueChange={(value) => setTab(value as "manual" | "bulk")}>
             <TabsList className="grid h-auto w-full grid-cols-2 rounded-none border-b border-parsel-border bg-transparent p-0">
               <TabsTrigger

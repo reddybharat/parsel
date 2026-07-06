@@ -35,8 +35,8 @@ export function CashFlowTiles({ inflow, outflow, investments, tileClassName }: C
   return (
     <div className="grid gap-3">
       <div className="grid grid-cols-2 gap-3">
-        <CashFlowTile label="Inflow" amount={inflow} amountClassName="text-[#2563eb]" tileClassName={tileClassName} />
-        <CashFlowTile label="Outflow" amount={outflow} amountClassName="text-[#dc2626]" tileClassName={tileClassName} />
+        <CashFlowTile label="Inflow" amount={inflow} amountClassName="text-parsel-inflow" tileClassName={tileClassName} />
+        <CashFlowTile label="Outflow" amount={outflow} amountClassName="text-parsel-outflow" tileClassName={tileClassName} />
       </div>
       <CashFlowTile
         label="Investments"

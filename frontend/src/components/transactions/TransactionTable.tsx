@@ -37,7 +37,7 @@ export function TransactionTable({
     const arrow = isActive ? (sortDesc ? "↓" : "↑") : "↕";
     return (
       <Button
-        className={`h-auto px-0 py-0 font-semibold hover:bg-transparent ${isActive ? "text-[#2f62be]" : "text-[#596376] hover:text-[#2f62be]"}`}
+        className={`h-auto px-0 py-0 font-semibold hover:bg-transparent ${isActive ? "text-parsel-nav-active-text" : "text-parsel-muted hover:text-parsel-nav-active-text"}`}
         type="button"
         variant="ghost"
         onClick={() => onSortChange(column)}
@@ -51,53 +51,53 @@ export function TransactionTable({
   }
 
   return (
-    <div className="min-h-0 overflow-auto rounded-2xl border border-[#d9e0ea] bg-white shadow-sm">
+    <div className="min-h-0 overflow-auto rounded-2xl border border-parsel-border bg-parsel-surface shadow-sm">
       <Table>
         <TableHeader>
-          <TableRow className="sticky top-0 z-10 border-[#e2e7f0] bg-[#f8fafd] hover:bg-[#f8fafd]">
-            <TableHead className="px-4 py-2.5 text-[10px] uppercase tracking-[0.08em] text-[#5e6878]">
+          <TableRow className="sticky top-0 z-10 border-parsel-border bg-parsel-soft hover:bg-parsel-soft">
+            <TableHead className="px-4 py-2.5 text-[10px] uppercase tracking-[0.08em] text-parsel-muted">
               <SortableHeader label="Date" column="transaction_date" />
             </TableHead>
-            <TableHead className="px-4 py-2.5 text-[10px] uppercase tracking-[0.08em] text-[#5e6878]">
+            <TableHead className="px-4 py-2.5 text-[10px] uppercase tracking-[0.08em] text-parsel-muted">
               <SortableHeader label="Amount" column="amount" />
             </TableHead>
-            <TableHead className="px-4 py-2.5 text-[10px] uppercase tracking-[0.08em] text-[#5e6878]">
+            <TableHead className="px-4 py-2.5 text-[10px] uppercase tracking-[0.08em] text-parsel-muted">
               <SortableHeader label="Category" column="category" />
             </TableHead>
-            <TableHead className="px-4 py-2.5 text-[10px] uppercase tracking-[0.08em] text-[#5e6878]">
+            <TableHead className="px-4 py-2.5 text-[10px] uppercase tracking-[0.08em] text-parsel-muted">
               <SortableHeader label="Payment" column="payment_method" />
             </TableHead>
-            <TableHead className="px-4 py-2.5 text-[10px] uppercase tracking-[0.08em] text-[#5e6878]">
+            <TableHead className="px-4 py-2.5 text-[10px] uppercase tracking-[0.08em] text-parsel-muted">
               <SortableHeader label="Description" column="description" />
             </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {items.map((row) => (
-            <TableRow key={row.id} className="border-[#edf1f7] hover:bg-[#fbfcff]">
-              <TableCell className="whitespace-nowrap px-4 py-2.5 text-[13px] text-[#2e3849]">
+            <TableRow key={row.id} className="border-parsel-border hover:bg-parsel-soft">
+              <TableCell className="whitespace-nowrap px-4 py-2.5 text-[13px] text-parsel-text">
                 {formatDisplayDate(row.transaction_date)}
               </TableCell>
               <TableCell
-                className={`whitespace-nowrap px-4 py-2.5 tabular-nums text-[13px] ${row.is_debit ? "text-[#d03a35]" : "text-[#2a6fce]"}`}
+                className={`whitespace-nowrap px-4 py-2.5 tabular-nums text-[13px] ${row.is_debit ? "text-parsel-outflow" : "text-parsel-inflow"}`}
               >
                 {formatInrSigned(signedAmount(row.amount, row.is_debit))}
               </TableCell>
               <TableCell className="px-4 py-2.5">
                 <Badge
-                  className={row.is_debit ? "bg-[#f0f2f5] text-[#626c7c] hover:bg-[#f0f2f5]" : "bg-[#e7efff] text-[#2f62be] hover:bg-[#e7efff]"}
+                  className={row.is_debit ? "bg-parsel-soft text-parsel-muted hover:bg-parsel-soft" : "bg-parsel-nav-active-bg text-parsel-nav-active-text hover:bg-parsel-nav-active-bg"}
                   variant="secondary"
                 >
                   {row.category}
                 </Badge>
               </TableCell>
-              <TableCell className="whitespace-nowrap px-4 py-2.5 text-[#4f5a6e]">{row.payment_method || "-"}</TableCell>
-              <TableCell className="px-4 py-2.5 text-[#2e3849]">
+              <TableCell className="whitespace-nowrap px-4 py-2.5 text-parsel-muted">{row.payment_method || "-"}</TableCell>
+              <TableCell className="px-4 py-2.5 text-parsel-text">
                 <div className="flex items-center justify-between gap-3">
                   <span className="truncate">{row.description || "-"}</span>
                   <div className="flex shrink-0 gap-1">
                     <Button
-                      className="text-[#5f6a7d] hover:bg-[#eef3fb] hover:text-[#5f6a7d]"
+                      className="text-parsel-muted hover:bg-parsel-nav-active-bg hover:text-parsel-muted"
                       type="button"
                       variant="ghost"
                       size="icon"
@@ -107,7 +107,7 @@ export function TransactionTable({
                       <Pencil className="size-4" />
                     </Button>
                     <Button
-                      className="text-[#b43d4e] hover:bg-[#fdf0f3] hover:text-[#b43d4e]"
+                      className="text-parsel-danger hover:bg-parsel-danger-bg hover:text-parsel-danger"
                       type="button"
                       variant="ghost"
                       size="icon"

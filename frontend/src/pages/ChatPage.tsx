@@ -31,7 +31,7 @@ const SUGGESTIONS = [
 function ParselAvatar() {
   return (
     <Avatar className="h-8 w-8">
-      <AvatarFallback className="bg-[#e7effb] text-parsel-primary">
+      <AvatarFallback className="bg-parsel-nav-active-bg text-parsel-primary">
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
           <path d="M12 2.5l1.2 3.6 3.8 1.2-3.8 1.2L12 12.5 10.8 8.9 7 7.7l3.8-1.2L12 2.5zm0 9.5l.9 2.7 2.9.9-2.9.9-.9 2.7-.9-2.7-2.9-.9 2.9-.9.9-2.7z" />
         </svg>
@@ -51,7 +51,7 @@ function ChatMessageRow({ message }: { message: ChatMessage }) {
         </MessageAvatar>
       ) : null}
       <MessageContent>
-        <Bubble className={isUser ? "bg-[#f2efee]" : undefined}>
+        <Bubble className={isUser ? "bg-parsel-soft" : undefined}>
           <BubbleContent className={!isUser ? "chat-markdown" : undefined}>
             {isUser ? (
               <p className="whitespace-pre-wrap">{message.content}</p>
@@ -146,7 +146,7 @@ export function ChatPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <section className="mx-auto flex h-full min-h-0 w-full max-w-content flex-col rounded-xl border border-parsel-border bg-white">
+      <section className="mx-auto flex h-full min-h-0 w-full max-w-content flex-col rounded-xl border border-parsel-border bg-parsel-surface">
         <header className="flex shrink-0 justify-end border-b border-parsel-border px-6 py-3 md:px-8">
           <button
             className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary hover:text-parsel-primary"
@@ -164,7 +164,7 @@ export function ChatPage() {
               <MessageScrollerContent>
                 {messages.length === 0 && !processing && (
                   <div className="space-y-4">
-                    <div className="space-y-2 rounded-lg border border-parsel-border bg-[#fafcff] p-3">
+                    <div className="space-y-2 rounded-lg border border-parsel-border bg-parsel-soft p-3">
                       <p className="text-sm text-parsel-muted">Try one of these prompts:</p>
                       <div className="grid gap-2 md:grid-cols-2">
                         {SUGGESTIONS.map((item) => (
@@ -211,7 +211,7 @@ export function ChatPage() {
             void send(draft);
           }}
         >
-          <div className="flex items-center gap-2 rounded-xl border border-parsel-border bg-[#fbfcff] px-3 py-1">
+          <div className="flex items-center gap-2 rounded-xl border border-parsel-border bg-parsel-soft px-3 py-1">
             <button className="text-parsel-muted opacity-50" type="button" disabled aria-label="Attach file (coming soon)">
               📎
             </button>
