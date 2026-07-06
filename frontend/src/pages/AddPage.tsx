@@ -2,9 +2,15 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { EmptyState } from "../components/feedback/EmptyState";
-import { ErrorState } from "../components/feedback/ErrorState";
 import { LoadingState } from "../components/feedback/LoadingState";
-import { FieldLabel } from "../components/ui/FieldLabel";
+import { StatusAlert, type FeedbackMessage } from "../components/feedback/StatusAlert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { createTransaction, downloadImportTemplate, fetchTrackerConfig, importTransactions } from "../api/tracker";
 
 function localDateIso(): string {
@@ -20,8 +26,10 @@ export function AddPage() {
   const initialTab = searchParams.get("tab") === "bulk" ? "bulk" : "manual";
   const [categories, setCategories] = useState<string[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
-  const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackMessage | null>(null);
+  const [manualFeedback, setManualFeedback] = useState<FeedbackMessage | null>(null);
+  const [bulkFeedback, setBulkFeedback] = useState<FeedbackMessage | null>(null);
+  const [importErrors, setImportErrors] = useState<string | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [file, setFile] = useState<File | null>(null);
 
@@ -40,7 +48,11 @@ export function AddPage() {
         setCategories(config.categories);
         setPaymentMethods(config.payment_methods);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load tracker config.");
+        setFeedback({
+          variant: "error",
+          title: "Failed to load configuration",
+          description: err instanceof Error ? err.message : "Failed to load tracker config.",
+        });
       } finally {
         setLoadingConfig(false);
       }
@@ -54,14 +66,15 @@ export function AddPage() {
     setPaymentMethod("");
     setTransactionDate(localDateIso());
     setDescription("");
-    setStatus(null);
-    setError(null);
+    setFeedback(null);
+    setManualFeedback(null);
+    setBulkFeedback(null);
+    setImportErrors(null);
   }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    setError(null);
-    setStatus(null);
+    setManualFeedback(null);
     try {
       await createTransaction({
         amount,
@@ -71,11 +84,15 @@ export function AddPage() {
         transaction_date: transactionDate,
         description: description.trim() || null,
       });
-      setStatus("Transaction saved.");
+      setManualFeedback({ variant: "success", title: "Transaction saved" });
       setAmount(0);
       setDescription("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save transaction.");
+      setManualFeedback({
+        variant: "error",
+        title: "Save failed",
+        description: err instanceof Error ? err.message : "Failed to save transaction.",
+      });
     }
   }
 
@@ -89,23 +106,35 @@ export function AddPage() {
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Template download failed.");
+      setBulkFeedback({
+        variant: "error",
+        title: "Download failed",
+        description: err instanceof Error ? err.message : "Template download failed.",
+      });
     }
   }
 
   async function onImport() {
     if (!file) return;
-    setError(null);
-    setStatus(null);
+    setBulkFeedback(null);
+    setImportErrors(null);
     try {
       const result = await importTransactions(file);
       const errorCount = result.errors.length;
-      setStatus(`Imported ${result.inserted} transaction(s).${errorCount ? ` ${errorCount} row(s) failed.` : ""}`);
+      setBulkFeedback({
+        variant: errorCount ? "info" : "success",
+        title: "Import complete",
+        description: `Imported ${result.inserted} transaction(s).${errorCount ? ` ${errorCount} row(s) failed.` : ""}`,
+      });
       if (errorCount) {
-        setError(result.errors.slice(0, 5).join("\n"));
+        setImportErrors(result.errors.slice(0, 5).join("\n"));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "CSV import failed.");
+      setBulkFeedback({
+        variant: "error",
+        title: "Import failed",
+        description: err instanceof Error ? err.message : "CSV import failed.",
+      });
     }
   }
 
@@ -119,6 +148,8 @@ export function AddPage() {
         Back to Ledger
       </Link>
 
+      {feedback ? <StatusAlert {...feedback} onDismiss={() => setFeedback(null)} /> : null}
+
       {loadingConfig ? <LoadingState label="Loading tracker configuration..." /> : null}
 
       {!loadingConfig && categories.length === 0 ? (
@@ -127,132 +158,135 @@ export function AddPage() {
 
       {!loadingConfig && categories.length > 0 ? (
         <div className="rounded-xl border border-parsel-border bg-white">
-          <div className="grid grid-cols-2 border-b border-parsel-border text-xs font-semibold uppercase tracking-wide">
-            <button
-              className={`py-3 ${tab === "manual" ? "border-b-2 border-parsel-primary text-parsel-primary" : "text-parsel-secondary"}`}
-              type="button"
-              onClick={() => setTab("manual")}
-            >
-              MANUAL ENTRY
-            </button>
-            <button
-              className={`py-3 ${tab === "bulk" ? "border-b-2 border-parsel-primary text-parsel-primary" : "text-parsel-secondary"}`}
-              type="button"
-              onClick={() => setTab("bulk")}
-            >
-              BULK IMPORT
-            </button>
-          </div>
-          {tab === "manual" ? (
-            <form className="grid gap-3 p-4 md:grid-cols-2" onSubmit={onSubmit}>
-              <div className="md:col-span-2">
-                <FieldLabel>Transaction Type</FieldLabel>
-                <div className="inline-flex rounded-lg bg-parsel-soft p-1">
-                  <button
-                    className={`rounded px-4 py-1 text-sm ${isDebit ? "bg-white text-parsel-primary" : "text-parsel-secondary"}`}
-                    type="button"
-                    onClick={() => setIsDebit(true)}
+          <Tabs value={tab} onValueChange={(value) => setTab(value as "manual" | "bulk")}>
+            <TabsList className="grid h-auto w-full grid-cols-2 rounded-none border-b border-parsel-border bg-transparent p-0">
+              <TabsTrigger
+                className="rounded-none py-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:border-b-2 data-[state=active]:border-parsel-primary data-[state=active]:text-parsel-primary data-[state=active]:shadow-none"
+                value="manual"
+              >
+                Manual Entry
+              </TabsTrigger>
+              <TabsTrigger
+                className="rounded-none py-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:border-b-2 data-[state=active]:border-parsel-primary data-[state=active]:text-parsel-primary data-[state=active]:shadow-none"
+                value="bulk"
+              >
+                Bulk Import
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent className="mt-0" value="manual">
+              <form className="grid gap-3 p-4 md:grid-cols-2" onSubmit={onSubmit}>
+                <div className="md:col-span-2 space-y-2">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Transaction Type</Label>
+                  <ToggleGroup
+                    className="inline-flex rounded-lg bg-parsel-soft p-1"
+                    type="single"
+                    value={isDebit ? "debit" : "credit"}
+                    onValueChange={(value) => {
+                      if (value) setIsDebit(value === "debit");
+                    }}
                   >
-                    Debit
-                  </button>
-                  <button
-                    className={`rounded px-4 py-1 text-sm ${!isDebit ? "bg-white text-parsel-primary" : "text-parsel-secondary"}`}
-                    type="button"
-                    onClick={() => setIsDebit(false)}
-                  >
-                    Credit
-                  </button>
+                    <ToggleGroupItem className="rounded px-4 py-1 text-sm data-[state=on]:bg-white data-[state=on]:text-parsel-primary" value="debit">
+                      Debit
+                    </ToggleGroupItem>
+                    <ToggleGroupItem className="rounded px-4 py-1 text-sm data-[state=on]:bg-white data-[state=on]:text-parsel-primary" value="credit">
+                      Credit
+                    </ToggleGroupItem>
+                  </ToggleGroup>
                 </div>
-              </div>
-              <div>
-                <FieldLabel>Amount</FieldLabel>
-                <div className="flex overflow-hidden rounded-lg border border-parsel-border">
-                  <span className="flex items-center bg-parsel-soft px-3 text-sm text-parsel-muted">₹</span>
-                  <input
-                    className="w-full border-0 p-2 text-sm outline-none"
-                    type="number"
-                    min={0.01}
-                    step={0.01}
-                    value={amount || ""}
-                    onChange={(e) => setAmount(Number(e.target.value))}
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Amount</Label>
+                  <div className="flex overflow-hidden rounded-md border border-input">
+                    <span className="flex items-center bg-parsel-soft px-3 text-sm text-parsel-muted">₹</span>
+                    <Input
+                      className="border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 tabular-nums"
+                      type="number"
+                      min={0.01}
+                      step={0.01}
+                      value={amount || ""}
+                      onChange={(e) => setAmount(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Category</Label>
+                  <NativeSelect value={category} onChange={(e) => setCategory(e.target.value)} required>
+                    <NativeSelectOption value="">Select Category</NativeSelectOption>
+                    {categories.map((item) => (
+                      <NativeSelectOption key={item} value={item}>
+                        {item}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Transaction Date</Label>
+                  <Input type="date" value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)} required />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Payment Method</Label>
+                  <NativeSelect value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                    <NativeSelectOption value="">Select Account</NativeSelectOption>
+                    {paymentMethods.map((item) => (
+                      <NativeSelectOption key={item} value={item}>
+                        {item}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </div>
+                <div className="md:col-span-2 space-y-2">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Description / Notes</Label>
+                  <Textarea
+                    rows={3}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="What was this for?"
                   />
                 </div>
-              </div>
-              <div>
-                <FieldLabel>Category</FieldLabel>
-                <select className="w-full rounded-lg border border-parsel-border p-2" value={category} onChange={(e) => setCategory(e.target.value)} required>
-                  <option value="">Select Category</option>
-                  {categories.map((item) => (
-                    <option key={item}>{item}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <FieldLabel>Transaction Date</FieldLabel>
-                <input
-                  className="w-full rounded-lg border border-parsel-border p-2"
-                  type="date"
-                  value={transactionDate}
-                  onChange={(e) => setTransactionDate(e.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <FieldLabel>Payment Method</FieldLabel>
-                <select className="w-full rounded-lg border border-parsel-border p-2" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-                  <option value="">Select Account</option>
-                  {paymentMethods.map((item) => (
-                    <option key={item}>{item}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <FieldLabel>Description / Notes</FieldLabel>
-                <textarea
-                  className="w-full rounded-lg border border-parsel-border p-2"
-                  rows={3}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="What was this for?"
-                />
-              </div>
-              <div className="flex justify-end gap-2 md:col-span-2">
-                <Link
-                  to="/ledger/search"
-                  className="rounded-lg bg-[#f0ece6] px-5 py-2 text-sm font-semibold text-parsel-neutral hover:opacity-90"
-                  onClick={resetManualForm}
-                >
-                  Cancel
-                </Link>
-                <button className="rounded-lg bg-parsel-primary px-5 py-2 text-sm font-semibold text-white" type="submit">
-                  Save Transaction
-                </button>
-              </div>
-            </form>
-          ) : (
-            <section className="space-y-3 p-4">
-              <p className="text-sm text-parsel-muted">Use the template to ensure valid columns and date format.</p>
-              <div className="flex flex-wrap gap-2">
-                <button className="rounded-lg border border-parsel-border px-3 py-2" type="button" onClick={() => void onDownloadTemplate()}>
-                  Download template
-                </button>
-                <input className="rounded-lg border border-parsel-border p-2 text-sm" type="file" accept=".csv" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-                <button
-                  className="rounded-lg bg-parsel-primary px-3 py-2 text-white disabled:opacity-50"
-                  type="button"
-                  onClick={() => void onImport()}
-                  disabled={!file}
-                >
-                  Import
-                </button>
-              </div>
-            </section>
-          )}
+                <div className="flex flex-wrap items-center justify-between gap-2 md:col-span-2">
+                  <div className="min-w-0 flex-1">
+                    {manualFeedback ? (
+                      <StatusAlert {...manualFeedback} onDismiss={() => setManualFeedback(null)} />
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button asChild variant="secondary" type="button">
+                      <Link to="/ledger/search" onClick={resetManualForm}>
+                        Cancel
+                      </Link>
+                    </Button>
+                    <Button type="submit">Save Transaction</Button>
+                  </div>
+                </div>
+              </form>
+            </TabsContent>
+            <TabsContent className="mt-0" value="bulk">
+              <section className="space-y-3 p-4">
+                <p className="text-sm text-parsel-muted">Use the template to ensure valid columns and date format.</p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input className="max-w-xs" type="file" accept=".csv" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                    <Button type="button" onClick={() => void onImport()} disabled={!file}>
+                      Import
+                    </Button>
+                  </div>
+                  <Button type="button" variant="outline" onClick={() => void onDownloadTemplate()}>
+                    Download template
+                  </Button>
+                </div>
+                {bulkFeedback ? <StatusAlert {...bulkFeedback} onDismiss={() => setBulkFeedback(null)} /> : null}
+                {importErrors ? (
+                  <StatusAlert
+                    variant="error"
+                    title="Import row errors"
+                    description={importErrors}
+                    onDismiss={() => setImportErrors(null)}
+                  />
+                ) : null}
+              </section>
+            </TabsContent>
+          </Tabs>
         </div>
       ) : null}
-
-      {status && <p className="whitespace-pre-line text-sm text-emerald-700">{status}</p>}
-      {error && <ErrorState message={error} />}
     </div>
   );
 }

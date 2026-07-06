@@ -1,4 +1,16 @@
-import type { Transaction } from "../../lib/types";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
+import type { Transaction } from "@/lib/types";
 
 export function EditTransactionDialog({
   open,
@@ -19,87 +31,96 @@ export function EditTransactionDialog({
   onSave: () => void;
   onCancel: () => void;
 }) {
-  if (!open || !transaction) return null;
+  if (!transaction) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#667085]/60 p-4 backdrop-blur-[1px]">
-      <div className="w-full max-w-xl rounded-xl border border-parsel-border bg-white shadow-lg">
-        <div className="flex items-center justify-between border-b border-parsel-border px-4 py-3">
-          <h3 className="text-2xl font-semibold tracking-tight text-parsel-neutral">Edit Transaction</h3>
-          <button className="text-parsel-muted" onClick={onCancel} type="button">
-            ✕
-          </button>
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onCancel()}>
+      <DialogContent className="max-w-xl sm:rounded-xl">
+        <DialogHeader>
+          <DialogTitle className="text-2xl font-semibold tracking-tight text-parsel-neutral">Edit Transaction</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="md:col-span-2 space-y-2">
+            <Label htmlFor="edit-amount">Amount</Label>
+            <Input
+              id="edit-amount"
+              className="text-destructive tabular-nums"
+              type="number"
+              min={0.01}
+              step={0.01}
+              value={transaction.amount}
+              onChange={(e) => onChange({ ...transaction, amount: Number(e.target.value) })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-category">Category</Label>
+            <NativeSelect
+              id="edit-category"
+              value={transaction.category}
+              onChange={(e) => onChange({ ...transaction, category: e.target.value })}
+            >
+              {categories.map((item) => (
+                <NativeSelectOption key={item} value={item}>
+                  {item}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-date">Date</Label>
+            <Input
+              id="edit-date"
+              type="date"
+              value={transaction.transaction_date}
+              onChange={(e) => onChange({ ...transaction, transaction_date: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-payment">Payment Method</Label>
+            <NativeSelect
+              id="edit-payment"
+              value={transaction.payment_method || ""}
+              onChange={(e) => onChange({ ...transaction, payment_method: e.target.value || null })}
+            >
+              <NativeSelectOption value="">Select payment method</NativeSelectOption>
+              {paymentMethods.map((item) => (
+                <NativeSelectOption key={item} value={item}>
+                  {item}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-type">Type</Label>
+            <NativeSelect
+              id="edit-type"
+              value={transaction.is_debit ? "Debit" : "Credit"}
+              onChange={(e) => onChange({ ...transaction, is_debit: e.target.value === "Debit" })}
+            >
+              <NativeSelectOption value="Debit">Debit</NativeSelectOption>
+              <NativeSelectOption value="Credit">Credit</NativeSelectOption>
+            </NativeSelect>
+          </div>
+          <div className="md:col-span-2 space-y-2">
+            <Label htmlFor="edit-description">Description</Label>
+            <Textarea
+              id="edit-description"
+              rows={3}
+              value={transaction.description || ""}
+              onChange={(e) => onChange({ ...transaction, description: e.target.value || null })}
+              placeholder="Description"
+            />
+          </div>
         </div>
-        <div className="grid gap-3 p-4 md:grid-cols-2">
-          <p className="md:col-span-2 text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Amount</p>
-          <input
-            className="rounded-lg border border-parsel-border p-2 font-mono text-[#d3375f] md:col-span-2"
-            type="number"
-            min={0.01}
-            step={0.01}
-            value={transaction.amount}
-            onChange={(e) => onChange({ ...transaction, amount: Number(e.target.value) })}
-          />
-          <p className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Category</p>
-          <p className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Date</p>
-          <select
-            className="rounded-lg border border-parsel-border p-2"
-            value={transaction.category}
-            onChange={(e) => onChange({ ...transaction, category: e.target.value })}
-          >
-            {categories.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
-          <input
-            className="rounded-lg border border-parsel-border p-2"
-            type="date"
-            value={transaction.transaction_date}
-            onChange={(e) => onChange({ ...transaction, transaction_date: e.target.value })}
-          />
-          <p className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Payment Method</p>
-          <p className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Type</p>
-          <select
-            className="rounded-lg border border-parsel-border p-2"
-            value={transaction.payment_method || ""}
-            onChange={(e) => onChange({ ...transaction, payment_method: e.target.value || null })}
-          >
-            <option value="">Select payment method</option>
-            {paymentMethods.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
-          <select
-            className="rounded-lg border border-parsel-border p-2"
-            value={transaction.is_debit ? "Debit" : "Credit"}
-            onChange={(e) => onChange({ ...transaction, is_debit: e.target.value === "Debit" })}
-          >
-            <option>Debit</option>
-            <option>Credit</option>
-          </select>
-          <p className="md:col-span-2 text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Description</p>
-          <textarea
-            className="rounded-lg border border-parsel-border p-2 md:col-span-2"
-            rows={3}
-            value={transaction.description || ""}
-            onChange={(e) => onChange({ ...transaction, description: e.target.value || null })}
-            placeholder="Description"
-          />
-        </div>
-        <div className="flex justify-end gap-2 border-t border-parsel-border px-4 py-3">
-          <button className="rounded-lg px-3 py-2 text-sm font-semibold text-parsel-secondary" onClick={onCancel} type="button">
+        <DialogFooter>
+          <Button variant="ghost" type="button" onClick={onCancel}>
             Cancel
-          </button>
-          <button
-            className="rounded-lg bg-[#dfe8fe] px-4 py-2 text-sm font-semibold text-[#5a71ae] disabled:opacity-50"
-            onClick={onSave}
-            type="button"
-            disabled={loading}
-          >
+          </Button>
+          <Button type="button" onClick={onSave} disabled={loading}>
             {loading ? "Saving..." : "Save Changes"}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

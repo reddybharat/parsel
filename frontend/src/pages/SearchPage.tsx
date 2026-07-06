@@ -3,7 +3,20 @@ import { Link } from "react-router-dom";
 
 import { EmptyState } from "../components/feedback/EmptyState";
 import { LoadingState } from "../components/feedback/LoadingState";
-import { FieldLabel } from "../components/ui/FieldLabel";
+import { StatusAlert, type FeedbackMessage } from "../components/feedback/StatusAlert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { ConfirmDeleteDialog } from "../components/transactions/ConfirmDeleteDialog";
 import { EditTransactionDialog } from "../components/transactions/EditTransactionDialog";
 import { TransactionTable } from "../components/transactions/TransactionTable";
@@ -38,9 +51,6 @@ function daysAgoLocal(days: number): string {
   return localDateIso(d);
 }
 
-const PRESET_ACTIVE = "rounded-full border border-[#bdd3f8] bg-[#dbe9ff] px-3 py-1.5 text-xs font-semibold text-[#2457b8]";
-const PRESET_IDLE = "rounded-full border border-[#e1e6ef] bg-white px-3 py-1.5 text-xs font-semibold text-[#5b6472] hover:bg-[#f8fafd]";
-
 function pageNumbers(current: number, total: number): number[] {
   if (total <= 7) {
     return Array.from({ length: total }, (_, i) => i + 1);
@@ -54,11 +64,13 @@ export function SearchPage() {
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorTitle, setErrorTitle] = useState("Something went wrong");
+  const [errorRetry, setErrorRetry] = useState<(() => void) | null>(null);
   const [result, setResult] = useState<SearchResult | null>(null);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [deleting, setDeleting] = useState<Transaction | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackMessage | null>(null);
 
   const [startDate, setStartDate] = useState(monthStartLocal());
   const [endDate, setEndDate] = useState(localDateIso());
@@ -73,6 +85,18 @@ export function SearchPage() {
 
   const totalPages = useMemo(() => (result ? Math.max(1, Math.ceil(result.total / result.page_size)) : 1), [result]);
 
+  function showError(title: string, description: string, retry?: () => void) {
+    setErrorTitle(title);
+    setError(description);
+    setErrorRetry(retry ? () => retry : null);
+  }
+
+  function clearError() {
+    setError(null);
+    setErrorTitle("Something went wrong");
+    setErrorRetry(null);
+  }
+
   useEffect(() => {
     void (async () => {
       try {
@@ -80,7 +104,7 @@ export function SearchPage() {
         setCategories(config.categories);
         setPaymentMethods(config.payment_methods);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load tracker config.");
+        showError("Failed to load configuration", err instanceof Error ? err.message : "Failed to load tracker config.");
       }
     })();
   }, []);
@@ -124,7 +148,7 @@ export function SearchPage() {
     const nextSortColumn = opts?.sortColumn ?? sortColumn;
     const nextSortDesc = opts?.sortDesc ?? sortDesc;
     setLoading(true);
-    setError(null);
+    clearError();
     try {
       const data = await searchTransactions({
         start_date: startDate,
@@ -138,7 +162,8 @@ export function SearchPage() {
       setPage(targetPage);
       setResult(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Search failed.");
+      const message = err instanceof Error ? err.message : "Search failed.";
+      showError("Search failed", message, () => void runSearch(targetPage, opts));
     } finally {
       setLoading(false);
     }
@@ -154,11 +179,11 @@ export function SearchPage() {
     setSubmitting(true);
     try {
       await deleteTransaction(deleting.id);
-      setStatusMessage("Transaction deleted.");
+      setFeedback({ variant: "success", title: "Transaction deleted" });
       setDeleting(null);
       await runSearch(page);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed.");
+      showError("Delete failed", err instanceof Error ? err.message : "Delete failed.");
     } finally {
       setSubmitting(false);
     }
@@ -170,10 +195,10 @@ export function SearchPage() {
     try {
       await updateTransaction(editing.id, editing);
       setEditing(null);
-      setStatusMessage("Transaction updated.");
+      setFeedback({ variant: "success", title: "Transaction updated" });
       await runSearch(page);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Update failed.");
+      showError("Update failed", err instanceof Error ? err.message : "Update failed.");
     } finally {
       setSubmitting(false);
     }
@@ -193,7 +218,7 @@ export function SearchPage() {
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export failed.");
+      showError("Export failed", err instanceof Error ? err.message : "Export failed.");
     }
   }
 
@@ -204,95 +229,88 @@ export function SearchPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
+      {feedback ? <StatusAlert {...feedback} onDismiss={() => setFeedback(null)} /> : null}
       {error ? (
-        <div className="flex items-center justify-between rounded-lg border border-[#f3c4c4] bg-[#fdecec] px-4 py-2 text-sm text-[#c44747]">
-          <span>Failed to fetch data. Please try again.</span>
-          <button className="rounded bg-white px-3 py-1 text-xs font-semibold" onClick={() => void runSearch(page)}>
-            Retry
-          </button>
-        </div>
+        <StatusAlert
+          variant="error"
+          title={errorTitle}
+          description={error}
+          onDismiss={clearError}
+          action={
+            errorRetry ? (
+              <Button size="sm" variant="outline" type="button" onClick={() => errorRetry()}>
+                Retry
+              </Button>
+            ) : undefined
+          }
+        />
       ) : null}
 
       <form className="space-y-4 rounded-2xl border border-[#d9e0ea] bg-[#f8fafd] p-4 shadow-sm" onSubmit={onSearchSubmit}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-2">
-            <button
-              className={activePreset === "today" ? PRESET_ACTIVE : PRESET_IDLE}
+            <Button
+              className={activePreset === "today" ? "border-[#bdd3f8] bg-[#dbe9ff] text-[#2457b8] hover:bg-[#dbe9ff]" : ""}
               type="button"
+              variant={activePreset === "today" ? "secondary" : "outline"}
+              size="sm"
               onClick={() => applyPreset("today")}
             >
               Today
-            </button>
-            <button
-              className={activePreset === "last7" ? PRESET_ACTIVE : PRESET_IDLE}
+            </Button>
+            <Button
+              className={activePreset === "last7" ? "border-[#bdd3f8] bg-[#dbe9ff] text-[#2457b8] hover:bg-[#dbe9ff]" : ""}
               type="button"
+              variant={activePreset === "last7" ? "secondary" : "outline"}
+              size="sm"
               onClick={() => applyPreset("last7")}
             >
               Last 7 days
-            </button>
-            <button
-              className={activePreset === "month" ? PRESET_ACTIVE : PRESET_IDLE}
+            </Button>
+            <Button
+              className={activePreset === "month" ? "border-[#bdd3f8] bg-[#dbe9ff] text-[#2457b8] hover:bg-[#dbe9ff]" : ""}
               type="button"
+              variant={activePreset === "month" ? "secondary" : "outline"}
+              size="sm"
               onClick={() => applyPreset("month")}
             >
               This month
-            </button>
+            </Button>
           </div>
-          <Link
-            to="/ledger/add"
-            className="rounded-lg bg-parsel-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90"
-          >
-            + Add Transaction
-          </Link>
+          <Button asChild>
+            <Link to="/ledger/add">+ Add Transaction</Link>
+          </Button>
         </div>
         <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[170px]">
-            <FieldLabel>Start Date</FieldLabel>
-            <input
-              className="h-10 rounded-lg border border-[#d7deea] bg-white px-3 text-sm"
-              type="date"
-              value={startDate}
-              onChange={(e) => onStartDateChange(e.target.value)}
-            />
+          <div className="min-w-[170px] space-y-2">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Start Date</Label>
+            <Input type="date" value={startDate} onChange={(e) => onStartDateChange(e.target.value)} />
           </div>
-          <div className="min-w-[170px]">
-            <FieldLabel>End Date</FieldLabel>
-            <input
-              className="h-10 rounded-lg border border-[#d7deea] bg-white px-3 text-sm"
-              type="date"
-              value={endDate}
-              onChange={(e) => onEndDateChange(e.target.value)}
-            />
+          <div className="min-w-[170px] space-y-2">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">End Date</Label>
+            <Input type="date" value={endDate} onChange={(e) => onEndDateChange(e.target.value)} />
           </div>
-          <div className="min-w-[180px]">
-            <FieldLabel>Category</FieldLabel>
-            <select className="h-10 rounded-lg border border-[#d7deea] bg-white px-3 text-sm" value={category} onChange={(e) => setCategory(e.target.value)}>
-              <option value="All">All Categories</option>
+          <div className="min-w-[180px] space-y-2">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Category</Label>
+            <NativeSelect value={category} onChange={(e) => setCategory(e.target.value)}>
+              <NativeSelectOption value="All">All Categories</NativeSelectOption>
               {categories.map((item) => (
-                <option key={item} value={item}>
+                <NativeSelectOption key={item} value={item}>
                   {item}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           </div>
-          <button className="h-10 rounded-lg bg-parsel-primary px-4 text-sm font-semibold text-white shadow-sm" type="submit" disabled={loading}>
+          <Button type="submit" disabled={loading}>
             Search
-          </button>
-          <span className="ml-auto text-xs text-parsel-muted"></span>
+          </Button>
           {canExport ? (
-            <button
-              className="inline-flex h-10 items-center gap-1 rounded-lg bg-[#0d8b58] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#0b7a4d]"
-              type="button"
-              onClick={() => void onExport()}
-            >
-              <span aria-hidden>↧</span>
+            <Button className="bg-[#0d8b58] hover:bg-[#0b7a4d]" type="button" onClick={() => void onExport()}>
               Export CSV
-            </button>
+            </Button>
           ) : null}
         </div>
       </form>
-
-      {statusMessage && <p className="text-sm text-emerald-700">{statusMessage}</p>}
 
       {loading ? <LoadingState label="Searching ledger..." /> : null}
       {result && !loading ? (
@@ -301,15 +319,12 @@ export function SearchPage() {
             <div className="rounded-xl border border-parsel-border bg-white py-20">
               <EmptyState title="No transactions found" detail="Try adjusting your filters." />
               <div className="mt-4 flex justify-center gap-3">
-                <button className="rounded-lg border border-parsel-border px-4 py-2 text-sm" type="button" onClick={clearFilters}>
+                <Button type="button" variant="outline" onClick={clearFilters}>
                   Clear all filters
-                </button>
-                <Link
-                  to="/ledger/add"
-                  className="rounded-lg bg-[#0d8b58] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-                >
-                  Add New Entry
-                </Link>
+                </Button>
+                <Button asChild className="bg-[#0d8b58] hover:bg-[#0b7a4d]">
+                  <Link to="/ledger/add">Add New Entry</Link>
+                </Button>
               </div>
             </div>
           ) : (
@@ -332,45 +347,50 @@ export function SearchPage() {
             <p className="text-sm text-[#667085]">
               Showing {rangeStart}-{rangeEnd} of {result.total} transactions
             </p>
-            <div className="flex items-center gap-1">
-              <button
-                className="rounded-lg border border-[#d6deea] bg-white px-3 py-1.5 text-sm text-[#5f6775] disabled:opacity-40"
-                type="button"
-                disabled={result.page <= 1}
-                onClick={() => void runSearch(result.page - 1)}
-              >
-                Prev
-              </button>
-              {pages.map((n, i) => {
-                const prev = pages[i - 1];
-                const showEllipsis = prev !== undefined && n - prev > 1;
-                return (
-                  <span key={n} className="flex items-center gap-1">
-                    {showEllipsis ? <span className="px-1 text-parsel-muted">…</span> : null}
-                    <button
-                      className={`min-w-[2rem] rounded-lg border px-2 py-1.5 text-sm ${
-                        n === result.page
-                          ? "border-[#86acf0] bg-[#e9f1ff] font-semibold text-[#2f62be]"
-                          : "border-[#d6deea] bg-white text-[#5f6775]"
-                      }`}
-                      type="button"
-                      disabled={n === result.page}
-                      onClick={() => void runSearch(n)}
-                    >
-                      {n}
-                    </button>
-                  </span>
-                );
-              })}
-              <button
-                className="rounded-lg border border-[#d6deea] bg-white px-3 py-1.5 text-sm text-[#5f6775] disabled:opacity-40"
-                type="button"
-                disabled={result.page >= totalPages}
-                onClick={() => void runSearch(result.page + 1)}
-              >
-                Next
-              </button>
-            </div>
+            <Pagination className="mx-0 w-auto justify-end">
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    className={result.page <= 1 ? "pointer-events-none opacity-40" : "cursor-pointer"}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (result.page > 1) void runSearch(result.page - 1);
+                    }}
+                  />
+                </PaginationItem>
+                {pages.map((n, i) => {
+                  const prev = pages[i - 1];
+                  const showEllipsis = prev !== undefined && n - prev > 1;
+                  return (
+                    <PaginationItem key={n}>
+                      {showEllipsis ? <PaginationEllipsis /> : null}
+                      <PaginationLink
+                        className="cursor-pointer"
+                        href="#"
+                        isActive={n === result.page}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          if (n !== result.page) void runSearch(n);
+                        }}
+                      >
+                        {n}
+                      </PaginationLink>
+                    </PaginationItem>
+                  );
+                })}
+                <PaginationItem>
+                  <PaginationNext
+                    className={result.page >= totalPages ? "pointer-events-none opacity-40" : "cursor-pointer"}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (result.page < totalPages) void runSearch(result.page + 1);
+                    }}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
           </div>
         </div>
       ) : null}

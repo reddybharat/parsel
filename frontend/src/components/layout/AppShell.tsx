@@ -144,7 +144,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </aside>
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#f6f8fb]">
-          <div className="flex h-full min-h-0 flex-col overflow-hidden p-3">{children}</div>
+          <div className="mx-auto flex h-full w-full max-w-7xl min-h-0 flex-col overflow-hidden px-4 py-3">{children}</div>
         </main>
       </div>
     </div>
