@@ -9,7 +9,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import type { Transaction } from "@/lib/types";
 
 export function EditTransactionDialog({
@@ -40,6 +42,33 @@ export function EditTransactionDialog({
           <DialogTitle className="text-2xl font-semibold tracking-tight text-parsel-neutral">Edit Transaction</DialogTitle>
         </DialogHeader>
         <div className="grid gap-3 md:grid-cols-2">
+          <div className="md:col-span-2 space-y-2">
+            <Label htmlFor="edit-type">Transaction Type</Label>
+            <div className="flex w-fit items-center gap-3">
+              <span
+                className={cn(
+                  "text-sm",
+                  transaction.is_debit ? "font-medium text-parsel-primary" : "text-parsel-muted",
+                )}
+              >
+                Debit
+              </span>
+              <Switch
+                id="edit-type"
+                checked={!transaction.is_debit}
+                onCheckedChange={(checked) => onChange({ ...transaction, is_debit: !checked })}
+                aria-label="Transaction type"
+              />
+              <span
+                className={cn(
+                  "text-sm",
+                  !transaction.is_debit ? "font-medium text-parsel-primary" : "text-parsel-muted",
+                )}
+              >
+                Credit
+              </span>
+            </div>
+          </div>
           <div className="md:col-span-2 space-y-2">
             <Label htmlFor="edit-amount">Amount</Label>
             <Input
@@ -88,17 +117,6 @@ export function EditTransactionDialog({
                   {item}
                 </NativeSelectOption>
               ))}
-            </NativeSelect>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-type">Type</Label>
-            <NativeSelect
-              id="edit-type"
-              value={transaction.is_debit ? "Debit" : "Credit"}
-              onChange={(e) => onChange({ ...transaction, is_debit: e.target.value === "Debit" })}
-            >
-              <NativeSelectOption value="Debit">Debit</NativeSelectOption>
-              <NativeSelectOption value="Credit">Credit</NativeSelectOption>
             </NativeSelect>
           </div>
           <div className="md:col-span-2 space-y-2">

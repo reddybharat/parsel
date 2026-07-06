@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
 import { createTransaction, downloadImportTemplate, fetchTrackerConfig, importTransactions } from "../api/tracker";
 
 function localDateIso(): string {
@@ -157,7 +158,7 @@ export function AddPage() {
       ) : null}
 
       {!loadingConfig && categories.length > 0 ? (
-        <div className="rounded-xl border border-parsel-border bg-white">
+        <div className="mx-auto max-w-3xl rounded-xl border border-parsel-border bg-white">
           <Tabs value={tab} onValueChange={(value) => setTab(value as "manual" | "bulk")}>
             <TabsList className="grid h-auto w-full grid-cols-2 rounded-none border-b border-parsel-border bg-transparent p-0">
               <TabsTrigger
@@ -174,24 +175,22 @@ export function AddPage() {
               </TabsTrigger>
             </TabsList>
             <TabsContent className="mt-0" value="manual">
-              <form className="grid gap-3 p-4 md:grid-cols-2" onSubmit={onSubmit}>
+              <form className="grid gap-x-6 gap-y-5 p-6 md:grid-cols-2 md:p-8" onSubmit={onSubmit}>
                 <div className="md:col-span-2 space-y-2">
                   <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Transaction Type</Label>
-                  <ToggleGroup
-                    className="inline-flex rounded-lg bg-parsel-soft p-1"
-                    type="single"
-                    value={isDebit ? "debit" : "credit"}
-                    onValueChange={(value) => {
-                      if (value) setIsDebit(value === "debit");
-                    }}
-                  >
-                    <ToggleGroupItem className="rounded px-4 py-1 text-sm data-[state=on]:bg-white data-[state=on]:text-parsel-primary" value="debit">
+                  <div className="flex w-fit items-center gap-3">
+                    <span className={cn("text-sm", isDebit ? "font-medium text-parsel-primary" : "text-parsel-muted")}>
                       Debit
-                    </ToggleGroupItem>
-                    <ToggleGroupItem className="rounded px-4 py-1 text-sm data-[state=on]:bg-white data-[state=on]:text-parsel-primary" value="credit">
+                    </span>
+                    <Switch
+                      checked={!isDebit}
+                      onCheckedChange={(checked) => setIsDebit(!checked)}
+                      aria-label="Transaction type"
+                    />
+                    <span className={cn("text-sm", !isDebit ? "font-medium text-parsel-primary" : "text-parsel-muted")}>
                       Credit
-                    </ToggleGroupItem>
-                  </ToggleGroup>
+                    </span>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Amount</Label>
@@ -260,9 +259,9 @@ export function AddPage() {
               </form>
             </TabsContent>
             <TabsContent className="mt-0" value="bulk">
-              <section className="space-y-3 p-4">
+              <section className="space-y-5 p-6 md:p-8">
                 <p className="text-sm text-parsel-muted">Use the template to ensure valid columns and date format.</p>
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <Input className="max-w-xs" type="file" accept=".csv" onChange={(e) => setFile(e.target.files?.[0] || null)} />
                     <Button type="button" onClick={() => void onImport()} disabled={!file}>

@@ -7,7 +7,7 @@ export function LoadingState({ label }: { label: string }) {
       role="status"
     >
       <Spinner className="size-5 text-parsel-primary" />
-      <span>{label}</span>
+      <span className="shimmer text-parsel-muted">{label}</span>
     </div>
   );
 }
