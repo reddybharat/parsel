@@ -1,3 +1,8 @@
+import { Pencil, Trash2 } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatInrSigned, signedAmount } from "../../lib/format";
 import type { Transaction } from "../../lib/types";
 
@@ -10,56 +15,114 @@ export function TransactionTable({
   items,
   onEdit,
   onDelete,
+  sortColumn,
+  sortDesc,
+  onSortChange,
 }: {
   items: Transaction[];
   onEdit: (row: Transaction) => void;
   onDelete: (row: Transaction) => void;
+  sortColumn: "transaction_date" | "amount" | "category" | "payment_method" | "description";
+  sortDesc: boolean;
+  onSortChange: (column: "transaction_date" | "amount" | "category" | "payment_method" | "description") => void;
 }) {
+  function SortableHeader({
+    label,
+    column,
+  }: {
+    label: string;
+    column: "transaction_date" | "amount" | "category" | "payment_method" | "description";
+  }) {
+    const isActive = sortColumn === column;
+    const arrow = isActive ? (sortDesc ? "↓" : "↑") : "↕";
+    return (
+      <Button
+        className={`h-auto px-0 py-0 font-semibold hover:bg-transparent ${isActive ? "text-[#2f62be]" : "text-[#596376] hover:text-[#2f62be]"}`}
+        type="button"
+        variant="ghost"
+        onClick={() => onSortChange(column)}
+      >
+        {label}
+        <span aria-hidden className="text-[11px] leading-none">
+          {arrow}
+        </span>
+      </Button>
+    );
+  }
+
   return (
-    <div className="overflow-x-auto rounded-xl border border-parsel-border bg-white">
-      <table className="min-w-full border-collapse text-sm">
-        <thead>
-          <tr className="border-b border-parsel-border text-left text-xs uppercase tracking-wide text-parsel-secondary">
-            <th className="p-4 font-semibold">Date</th>
-            <th className="p-4 font-semibold">Amount</th>
-            <th className="p-4 font-semibold">Category</th>
-            <th className="p-4 font-semibold">Payment</th>
-            <th className="p-4 font-semibold">Description</th>
-            <th className="p-4 font-semibold">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className="min-h-0 overflow-auto rounded-2xl border border-[#d9e0ea] bg-white shadow-sm">
+      <Table>
+        <TableHeader>
+          <TableRow className="sticky top-0 z-10 border-[#e2e7f0] bg-[#f8fafd] hover:bg-[#f8fafd]">
+            <TableHead className="px-4 py-2.5 text-[10px] uppercase tracking-[0.08em] text-[#5e6878]">
+              <SortableHeader label="Date" column="transaction_date" />
+            </TableHead>
+            <TableHead className="px-4 py-2.5 text-[10px] uppercase tracking-[0.08em] text-[#5e6878]">
+              <SortableHeader label="Amount" column="amount" />
+            </TableHead>
+            <TableHead className="px-4 py-2.5 text-[10px] uppercase tracking-[0.08em] text-[#5e6878]">
+              <SortableHeader label="Category" column="category" />
+            </TableHead>
+            <TableHead className="px-4 py-2.5 text-[10px] uppercase tracking-[0.08em] text-[#5e6878]">
+              <SortableHeader label="Payment" column="payment_method" />
+            </TableHead>
+            <TableHead className="px-4 py-2.5 text-[10px] uppercase tracking-[0.08em] text-[#5e6878]">
+              <SortableHeader label="Description" column="description" />
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {items.map((row) => (
-            <tr key={row.id} className="border-t border-parsel-border">
-              <td className="p-4">{formatDisplayDate(row.transaction_date)}</td>
-              <td className={`p-4 font-mono ${row.is_debit ? "text-[#cc3d3d]" : "text-[#2a6fce]"}`}>
+            <TableRow key={row.id} className="border-[#edf1f7] hover:bg-[#fbfcff]">
+              <TableCell className="whitespace-nowrap px-4 py-2.5 text-[13px] text-[#2e3849]">
+                {formatDisplayDate(row.transaction_date)}
+              </TableCell>
+              <TableCell
+                className={`whitespace-nowrap px-4 py-2.5 tabular-nums text-[13px] ${row.is_debit ? "text-[#d03a35]" : "text-[#2a6fce]"}`}
+              >
                 {formatInrSigned(signedAmount(row.amount, row.is_debit))}
-              </td>
-              <td className="p-4">
-                <span
-                  className={`rounded-full px-2 py-1 text-xs font-medium ${
-                    row.is_debit ? "bg-[#ebedf2] text-parsel-secondary" : "bg-[#e5edf9] text-parsel-primary"
-                  }`}
+              </TableCell>
+              <TableCell className="px-4 py-2.5">
+                <Badge
+                  className={row.is_debit ? "bg-[#f0f2f5] text-[#626c7c] hover:bg-[#f0f2f5]" : "bg-[#e7efff] text-[#2f62be] hover:bg-[#e7efff]"}
+                  variant="secondary"
                 >
                   {row.category}
-                </span>
-              </td>
-              <td className="p-4">{row.payment_method || "-"}</td>
-              <td className="p-4">{row.description || "-"}</td>
-              <td className="p-4">
-                <div className="flex gap-2">
-                  <button className="rounded-md px-2 py-1 text-parsel-secondary hover:bg-parsel-soft" type="button" onClick={() => onEdit(row)}>
-                    ✎
-                  </button>
-                  <button className="rounded-md px-2 py-1 text-[#b43d4e] hover:bg-[#fdf0f3]" type="button" onClick={() => onDelete(row)}>
-                    🗑
-                  </button>
+                </Badge>
+              </TableCell>
+              <TableCell className="whitespace-nowrap px-4 py-2.5 text-[#4f5a6e]">{row.payment_method || "-"}</TableCell>
+              <TableCell className="px-4 py-2.5 text-[#2e3849]">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="truncate">{row.description || "-"}</span>
+                  <div className="flex shrink-0 gap-1">
+                    <Button
+                      className="text-[#5f6a7d] hover:bg-[#eef3fb] hover:text-[#5f6a7d]"
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Edit transaction"
+                      onClick={() => onEdit(row)}
+                    >
+                      <Pencil className="size-4" />
+                    </Button>
+                    <Button
+                      className="text-[#b43d4e] hover:bg-[#fdf0f3] hover:text-[#b43d4e]"
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Delete transaction"
+                      onClick={() => onDelete(row)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
                 </div>
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

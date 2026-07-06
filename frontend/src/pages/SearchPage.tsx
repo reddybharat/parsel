@@ -3,10 +3,24 @@ import { Link } from "react-router-dom";
 
 import { EmptyState } from "../components/feedback/EmptyState";
 import { LoadingState } from "../components/feedback/LoadingState";
-import { FieldLabel } from "../components/ui/FieldLabel";
+import { StatusAlert, type FeedbackMessage } from "../components/feedback/StatusAlert";
+import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Label } from "@/components/ui/label";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { ConfirmDeleteDialog } from "../components/transactions/ConfirmDeleteDialog";
 import { EditTransactionDialog } from "../components/transactions/EditTransactionDialog";
 import { TransactionTable } from "../components/transactions/TransactionTable";
+import { invalidateDashboardOverview } from "@/lib/dashboardQuery";
 import {
   deleteTransaction,
   exportTransactions,
@@ -17,7 +31,7 @@ import {
 import { formatInrSigned, signedAmount } from "../lib/format";
 import type { SearchResult, Transaction } from "../lib/types";
 
-type DatePreset = "today" | "last7" | "month";
+type DatePreset = "lastMonth" | "today" | "last7" | "month";
 
 function localDateIso(d = new Date()): string {
   const y = d.getFullYear();
@@ -38,8 +52,18 @@ function daysAgoLocal(days: number): string {
   return localDateIso(d);
 }
 
-const PRESET_ACTIVE = "rounded-full bg-[#e5edf9] px-3 py-1 text-xs font-semibold text-parsel-primary";
-const PRESET_IDLE = "rounded-full bg-[#f0f2f6] px-3 py-1 text-xs font-semibold text-parsel-secondary";
+function lastMonthStartLocal(): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - 1);
+  return localDateIso(d);
+}
+
+function lastMonthEndLocal(): string {
+  const d = new Date();
+  d.setDate(0);
+  return localDateIso(d);
+}
 
 function pageNumbers(current: number, total: number): number[] {
   if (total <= 7) {
@@ -54,24 +78,38 @@ export function SearchPage() {
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorTitle, setErrorTitle] = useState("Something went wrong");
+  const [errorRetry, setErrorRetry] = useState<(() => void) | null>(null);
   const [result, setResult] = useState<SearchResult | null>(null);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [deleting, setDeleting] = useState<Transaction | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackMessage | null>(null);
 
   const [startDate, setStartDate] = useState(monthStartLocal());
   const [endDate, setEndDate] = useState(localDateIso());
   const [category, setCategory] = useState("All");
-  const [paymentMethod, setPaymentMethod] = useState("All");
-  const [creditDebit, setCreditDebit] = useState("All");
   const [activePreset, setActivePreset] = useState<DatePreset | null>(null);
-  const [sortColumn, setSortColumn] = useState<"transaction_date" | "amount">("transaction_date");
+  const [sortColumn, setSortColumn] = useState<"transaction_date" | "amount" | "category" | "payment_method" | "description">(
+    "transaction_date",
+  );
   const [sortDesc, setSortDesc] = useState(true);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(15);
+  const PAGE_SIZE = 15;
 
   const totalPages = useMemo(() => (result ? Math.max(1, Math.ceil(result.total / result.page_size)) : 1), [result]);
+
+  function showError(title: string, description: string, retry?: () => void) {
+    setErrorTitle(title);
+    setError(description);
+    setErrorRetry(retry ? () => retry : null);
+  }
+
+  function clearError() {
+    setError(null);
+    setErrorTitle("Something went wrong");
+    setErrorRetry(null);
+  }
 
   useEffect(() => {
     void (async () => {
@@ -80,14 +118,17 @@ export function SearchPage() {
         setCategories(config.categories);
         setPaymentMethods(config.payment_methods);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load tracker config.");
+        showError("Failed to load configuration", err instanceof Error ? err.message : "Failed to load tracker config.");
       }
     })();
   }, []);
 
   function applyPreset(preset: DatePreset) {
     const today = localDateIso();
-    if (preset === "today") {
+    if (preset === "lastMonth") {
+      setStartDate(lastMonthStartLocal());
+      setEndDate(lastMonthEndLocal());
+    } else if (preset === "today") {
       setStartDate(today);
       setEndDate(today);
     } else if (preset === "last7") {
@@ -114,36 +155,32 @@ export function SearchPage() {
     setStartDate(monthStartLocal());
     setEndDate(localDateIso());
     setCategory("All");
-    setPaymentMethod("All");
-    setCreditDebit("All");
     setActivePreset(null);
   }
 
   async function runSearch(
     targetPage = page,
-    opts?: { sortColumn?: typeof sortColumn; sortDesc?: boolean; pageSize?: number },
+    opts?: { sortColumn?: typeof sortColumn; sortDesc?: boolean },
   ) {
     const nextSortColumn = opts?.sortColumn ?? sortColumn;
     const nextSortDesc = opts?.sortDesc ?? sortDesc;
-    const nextPageSize = opts?.pageSize ?? pageSize;
     setLoading(true);
-    setError(null);
+    clearError();
     try {
       const data = await searchTransactions({
         start_date: startDate,
         end_date: endDate,
         category,
-        payment_method: paymentMethod,
-        is_debit: creditDebit === "All" ? undefined : creditDebit === "Debit",
         sort_column: nextSortColumn,
         sort_desc: nextSortDesc,
         page: targetPage,
-        page_size: nextPageSize,
+        page_size: PAGE_SIZE,
       });
       setPage(targetPage);
       setResult(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Search failed.");
+      const message = err instanceof Error ? err.message : "Search failed.";
+      showError("Search failed", message, () => void runSearch(targetPage, opts));
     } finally {
       setLoading(false);
     }
@@ -159,11 +196,12 @@ export function SearchPage() {
     setSubmitting(true);
     try {
       await deleteTransaction(deleting.id);
-      setStatusMessage("Transaction deleted.");
+      void invalidateDashboardOverview();
+      setFeedback({ variant: "success", title: "Transaction deleted" });
       setDeleting(null);
       await runSearch(page);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed.");
+      showError("Delete failed", err instanceof Error ? err.message : "Delete failed.");
     } finally {
       setSubmitting(false);
     }
@@ -174,11 +212,12 @@ export function SearchPage() {
     setSubmitting(true);
     try {
       await updateTransaction(editing.id, editing);
+      void invalidateDashboardOverview();
       setEditing(null);
-      setStatusMessage("Transaction updated.");
+      setFeedback({ variant: "success", title: "Transaction updated" });
       await runSearch(page);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Update failed.");
+      showError("Update failed", err instanceof Error ? err.message : "Update failed.");
     } finally {
       setSubmitting(false);
     }
@@ -190,7 +229,6 @@ export function SearchPage() {
         start_date: startDate,
         end_date: endDate,
         category,
-        payment_method: paymentMethod,
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -199,241 +237,188 @@ export function SearchPage() {
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export failed.");
+      showError("Export failed", err instanceof Error ? err.message : "Export failed.");
     }
   }
 
   const rangeStart = result ? (result.page - 1) * result.page_size + 1 : 0;
   const rangeEnd = result ? Math.min(result.page * result.page_size, result.total) : 0;
   const pages = result ? pageNumbers(result.page, totalPages) : [];
+  const canExport = Boolean(result && result.total > 0);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
+    <div className="mx-auto flex h-full w-full max-w-content min-h-0 flex-col gap-3 overflow-hidden">
+      {feedback ? <StatusAlert {...feedback} onDismiss={() => setFeedback(null)} /> : null}
       {error ? (
-        <div className="flex items-center justify-between rounded-lg border border-[#f3c4c4] bg-[#fdecec] px-4 py-2 text-sm text-[#c44747]">
-          <span>Failed to fetch data. Please try again.</span>
-          <button className="rounded bg-white px-3 py-1 text-xs font-semibold" onClick={() => void runSearch(page)}>
-            Retry
-          </button>
-        </div>
+        <StatusAlert
+          variant="error"
+          title={errorTitle}
+          description={error}
+          onDismiss={clearError}
+          action={
+            errorRetry ? (
+              <Button size="sm" variant="outline" type="button" onClick={() => errorRetry()}>
+                Retry
+              </Button>
+            ) : undefined
+          }
+        />
       ) : null}
 
-      <div className="flex justify-end">
-        <Link
-          to="/ledger/add"
-          className="rounded-lg bg-parsel-primary px-5 py-2 text-sm font-semibold text-white hover:opacity-90"
-        >
-          + Add Transaction
-        </Link>
-      </div>
-
-      <form className="space-y-3 rounded-xl border border-parsel-border bg-white p-3" onSubmit={onSearchSubmit}>
-        <div className="flex flex-wrap gap-2">
-          <button
-            className={activePreset === "today" ? PRESET_ACTIVE : PRESET_IDLE}
-            type="button"
-            onClick={() => applyPreset("today")}
-          >
-            Today
-          </button>
-          <button
-            className={activePreset === "last7" ? PRESET_ACTIVE : PRESET_IDLE}
-            type="button"
-            onClick={() => applyPreset("last7")}
-          >
-            Last 7 days
-          </button>
-          <button
-            className={activePreset === "month" ? PRESET_ACTIVE : PRESET_IDLE}
-            type="button"
-            onClick={() => applyPreset("month")}
-          >
-            This month
-          </button>
-        </div>
-        <div className="grid gap-3 md:grid-cols-6">
-          <div>
-            <FieldLabel>Start Date</FieldLabel>
-            <input
-              className="w-full rounded-lg border border-parsel-border p-2 text-sm"
-              type="date"
-              value={startDate}
-              onChange={(e) => onStartDateChange(e.target.value)}
-            />
-          </div>
-          <div>
-            <FieldLabel>End Date</FieldLabel>
-            <input
-              className="w-full rounded-lg border border-parsel-border p-2 text-sm"
-              type="date"
-              value={endDate}
-              onChange={(e) => onEndDateChange(e.target.value)}
-            />
-          </div>
-          <div>
-            <FieldLabel>Category</FieldLabel>
-            <select className="w-full rounded-lg border border-parsel-border p-2" value={category} onChange={(e) => setCategory(e.target.value)}>
-              <option value="All">All Categories</option>
-              {categories.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <FieldLabel>Payment method</FieldLabel>
-            <select
-              className="w-full rounded-lg border border-parsel-border p-2"
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
+      <form className="space-y-4 rounded-2xl border border-[#d9e0ea] bg-[#f8fafd] p-4 shadow-sm" onSubmit={onSearchSubmit}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              className={activePreset === "lastMonth" ? "border-[#bdd3f8] bg-[#dbe9ff] text-[#2457b8] hover:bg-[#dbe9ff]" : ""}
+              type="button"
+              variant={activePreset === "lastMonth" ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => applyPreset("lastMonth")}
             >
-              <option value="All">All Methods</option>
-              {paymentMethods.map((item) => (
-                <option key={item} value={item}>
+              Last Month
+            </Button>
+            <Button
+              className={activePreset === "today" ? "border-[#bdd3f8] bg-[#dbe9ff] text-[#2457b8] hover:bg-[#dbe9ff]" : ""}
+              type="button"
+              variant={activePreset === "today" ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => applyPreset("today")}
+            >
+              Today
+            </Button>
+            <Button
+              className={activePreset === "last7" ? "border-[#bdd3f8] bg-[#dbe9ff] text-[#2457b8] hover:bg-[#dbe9ff]" : ""}
+              type="button"
+              variant={activePreset === "last7" ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => applyPreset("last7")}
+            >
+              Last 7 days
+            </Button>
+            <Button
+              className={activePreset === "month" ? "border-[#bdd3f8] bg-[#dbe9ff] text-[#2457b8] hover:bg-[#dbe9ff]" : ""}
+              type="button"
+              variant={activePreset === "month" ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => applyPreset("month")}
+            >
+              This month
+            </Button>
+          </div>
+          <Button asChild>
+            <Link to="/ledger/add">+ Add Transaction</Link>
+          </Button>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[170px] space-y-2">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Start Date</Label>
+            <DatePicker value={startDate} onChange={onStartDateChange} placeholder="Start date" />
+          </div>
+          <div className="min-w-[170px] space-y-2">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">End Date</Label>
+            <DatePicker value={endDate} onChange={onEndDateChange} placeholder="End date" />
+          </div>
+          <div className="min-w-[180px] space-y-2">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Category</Label>
+            <NativeSelect value={category} onChange={(e) => setCategory(e.target.value)}>
+              <NativeSelectOption value="All">All Categories</NativeSelectOption>
+              {categories.map((item) => (
+                <NativeSelectOption key={item} value={item}>
                   {item}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           </div>
-          <div>
-            <FieldLabel>Type</FieldLabel>
-            <select className="w-full rounded-lg border border-parsel-border p-2" value={creditDebit} onChange={(e) => setCreditDebit(e.target.value)}>
-              <option value="All">All Types</option>
-              <option value="Credit">Credit</option>
-              <option value="Debit">Debit</option>
-            </select>
-          </div>
-          <div className="flex items-end">
-            <button className="w-full rounded-lg bg-parsel-primary px-3 py-2 text-sm font-semibold text-white" type="submit" disabled={loading}>
-              Search
-            </button>
-          </div>
+          <Button type="submit" disabled={loading}>
+            Search
+          </Button>
+          {canExport ? (
+            <Button className="bg-[#0d8b58] hover:bg-[#0b7a4d]" type="button" onClick={() => void onExport()}>
+              Export CSV
+            </Button>
+          ) : null}
         </div>
       </form>
 
-      {statusMessage && <p className="text-sm text-emerald-700">{statusMessage}</p>}
-
       {loading ? <LoadingState label="Searching ledger..." /> : null}
       {result && !loading ? (
-        <div className="space-y-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
           {result.items.length === 0 ? (
             <div className="rounded-xl border border-parsel-border bg-white py-20">
               <EmptyState title="No transactions found" detail="Try adjusting your filters." />
               <div className="mt-4 flex justify-center gap-3">
-                <button className="rounded-lg border border-parsel-border px-4 py-2 text-sm" type="button" onClick={clearFilters}>
+                <Button type="button" variant="outline" onClick={clearFilters}>
                   Clear all filters
-                </button>
-                <Link
-                  to="/ledger/add"
-                  className="rounded-lg bg-[#0d8b58] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-                >
-                  Add New Entry
-                </Link>
+                </Button>
+                <Button asChild className="bg-[#0d8b58] hover:bg-[#0b7a4d]">
+                  <Link to="/ledger/add">Add New Entry</Link>
+                </Button>
               </div>
             </div>
           ) : (
-            <TransactionTable items={result.items} onEdit={(row) => setEditing(row)} onDelete={(row) => setDeleting(row)} />
+            <TransactionTable
+              items={result.items}
+              sortColumn={sortColumn}
+              sortDesc={sortDesc}
+              onSortChange={(column) => {
+                const nextDesc = column === sortColumn ? !sortDesc : true;
+                setSortColumn(column);
+                setSortDesc(nextDesc);
+                void runSearch(1, { sortColumn: column, sortDesc: nextDesc });
+              }}
+              onEdit={(row) => setEditing(row)}
+              onDelete={(row) => setDeleting(row)}
+            />
           )}
 
-          <div className="flex flex-wrap items-end gap-3 rounded-xl border border-parsel-border bg-white p-3">
-            <div>
-              <FieldLabel>Sort by</FieldLabel>
-              <select
-                className="rounded-lg border border-parsel-border p-2 text-sm"
-                value={sortColumn}
-                onChange={(e) => {
-                  const col = e.target.value as "transaction_date" | "amount";
-                  setSortColumn(col);
-                  void runSearch(1, { sortColumn: col });
-                }}
-              >
-                <option value="transaction_date">Date</option>
-                <option value="amount">Amount</option>
-              </select>
-            </div>
-            <div>
-              <FieldLabel>Order</FieldLabel>
-              <select
-                className="rounded-lg border border-parsel-border p-2 text-sm"
-                value={sortDesc ? "desc" : "asc"}
-                onChange={(e) => {
-                  const desc = e.target.value === "desc";
-                  setSortDesc(desc);
-                  void runSearch(1, { sortDesc: desc });
-                }}
-              >
-                <option value="desc">Descending</option>
-                <option value="asc">Ascending</option>
-              </select>
-            </div>
-            <div>
-              <FieldLabel>Page size</FieldLabel>
-              <input
-                className="w-20 rounded-lg border border-parsel-border p-2 text-sm"
-                type="number"
-                min={10}
-                max={50}
-                step={5}
-                value={pageSize}
-                onChange={(e) => {
-                  const size = Number(e.target.value);
-                  setPageSize(size);
-                  void runSearch(1, { pageSize: size });
-                }}
-              />
-            </div>
-            <button
-              className="ml-auto inline-flex items-center gap-1 rounded-lg border border-parsel-border px-3 py-2 text-sm"
-              type="button"
-              onClick={() => void onExport()}
-            >
-              <span aria-hidden>↧</span>
-              Export CSV
-            </button>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-parsel-muted">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#d9e0ea] bg-[#f8fafd] px-4 py-2.5">
+            <p className="text-sm text-[#667085]">
               Showing {rangeStart}-{rangeEnd} of {result.total} transactions
             </p>
-            <div className="flex items-center gap-1">
-              <button
-                className="rounded-lg border border-parsel-border px-3 py-2 text-sm disabled:opacity-40"
-                type="button"
-                disabled={result.page <= 1}
-                onClick={() => void runSearch(result.page - 1)}
-              >
-                Prev
-              </button>
-              {pages.map((n, i) => {
-                const prev = pages[i - 1];
-                const showEllipsis = prev !== undefined && n - prev > 1;
-                return (
-                  <span key={n} className="flex items-center gap-1">
-                    {showEllipsis ? <span className="px-1 text-parsel-muted">…</span> : null}
-                    <button
-                      className={`min-w-[2.25rem] rounded-lg border px-2 py-2 text-sm ${
-                        n === result.page ? "border-parsel-primary font-semibold text-parsel-primary" : "border-parsel-border"
-                      }`}
-                      type="button"
-                      disabled={n === result.page}
-                      onClick={() => void runSearch(n)}
-                    >
-                      {n}
-                    </button>
-                  </span>
-                );
-              })}
-              <button
-                className="rounded-lg border border-parsel-border px-3 py-2 text-sm disabled:opacity-40"
-                type="button"
-                disabled={result.page >= totalPages}
-                onClick={() => void runSearch(result.page + 1)}
-              >
-                Next
-              </button>
-            </div>
+            <Pagination className="mx-0 w-auto justify-end">
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    className={result.page <= 1 ? "pointer-events-none opacity-40" : "cursor-pointer"}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (result.page > 1) void runSearch(result.page - 1);
+                    }}
+                  />
+                </PaginationItem>
+                {pages.map((n, i) => {
+                  const prev = pages[i - 1];
+                  const showEllipsis = prev !== undefined && n - prev > 1;
+                  return (
+                    <PaginationItem key={n}>
+                      {showEllipsis ? <PaginationEllipsis /> : null}
+                      <PaginationLink
+                        className="cursor-pointer"
+                        href="#"
+                        isActive={n === result.page}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          if (n !== result.page) void runSearch(n);
+                        }}
+                      >
+                        {n}
+                      </PaginationLink>
+                    </PaginationItem>
+                  );
+                })}
+                <PaginationItem>
+                  <PaginationNext
+                    className={result.page >= totalPages ? "pointer-events-none opacity-40" : "cursor-pointer"}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (result.page < totalPages) void runSearch(result.page + 1);
+                    }}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
           </div>
         </div>
       ) : null}

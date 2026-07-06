@@ -15,19 +15,43 @@
   --parsel-border: #d7dee8;
   --parsel-emerald: #0f8f62;
   --parsel-danger: #be123c;
+
+  --background: 0 0% 100%;
+  --foreground: 220 13% 18%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 13% 18%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 13% 18%;
+  --primary: 221 83% 53%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 27% 98%;
+  --secondary-foreground: 220 13% 18%;
+  --muted: 220 27% 98%;
+  --muted-foreground: 220 9% 46%;
+  --accent: 220 27% 98%;
+  --accent-foreground: 220 13% 18%;
+  --destructive: 347 77% 42%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 214 24% 88%;
+  --input: 214 24% 88%;
+  --ring: 221 83% 53%;
+  --radius: 0.5rem;
+  --chart-1: 221 83% 53%;
+  --chart-2: 215 16% 47%;
+  --chart-3: 38 100% 38%;
+  --chart-4: 160 84% 31%;
+  --chart-5: 220 13% 20%;
 }
 
-body {
-  margin: 0;
-  font-family:
-    Geist,
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-  background: #ffffff;
-  color: var(--parsel-text);
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    margin: 0;
+  }
 }
 
 html,
@@ -130,4 +154,44 @@ body,
   border-left: 3px solid var(--parsel-border);
   padding-left: 0.75rem;
   color: var(--parsel-muted);
+}
+
+@keyframes tw-shimmer {
+  0% {
+    background-position: 100% center;
+  }
+  100% {
+    background-position: 0% center;
+  }
+}
+
+@layer utilities {
+  .shimmer {
+    --shimmer-duration: 2s;
+    --shimmer-spread: calc(3ch + 40px);
+    --shimmer-base: var(--parsel-muted);
+    background-image: linear-gradient(
+      90deg,
+      var(--shimmer-base) 0%,
+      color-mix(in oklch, var(--shimmer-base) 35%, white) 50%,
+      var(--shimmer-base) 100%
+    );
+    background-size: var(--shimmer-spread) 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    animation: tw-shimmer var(--shimmer-duration) linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .shimmer {
+      animation: none;
+      background-image: none;
+      -webkit-text-fill-color: currentColor;
+      color: var(--shimmer-base, currentColor);
+      -webkit-background-clip: border-box;
+      background-clip: border-box;
+    }
+  }
 }

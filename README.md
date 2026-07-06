@@ -91,6 +91,16 @@ CREATE INDEX IF NOT EXISTS idx_transactions_transaction_date
 
 CREATE INDEX IF NOT EXISTS idx_transactions_recent
   ON public.transactions (transaction_date DESC, created_at DESC);
+
+-- Dashboard spend aggregations (debit, non-investment, date range)
+CREATE INDEX IF NOT EXISTS idx_transactions_dashboard_spend
+  ON public.transactions (transaction_date)
+  WHERE is_debit = TRUE AND category <> 'Investments';
+
+-- Monthly trend grouping for dashboard
+CREATE INDEX IF NOT EXISTS idx_transactions_month_start
+  ON public.transactions (date_trunc('month', transaction_date::timestamp))
+  WHERE is_debit = TRUE AND category <> 'Investments';
 ```
 
 Allowed `category` and `payment_method` values are enforced by the API and match `backend/tracker/constants.py`.

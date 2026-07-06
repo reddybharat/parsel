@@ -1,12 +1,21 @@
+import { AlertCircle } from "lucide-react";
+
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="space-y-3 rounded-xl border border-red-200 bg-red-50 p-4">
-      <p className="text-sm text-red-700">{message}</p>
+    <Alert variant="destructive" className="flex items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Something went wrong</AlertTitle>
+        <AlertDescription className="whitespace-pre-line">{message}</AlertDescription>
+      </div>
       {onRetry ? (
-        <button className="rounded-lg bg-red-600 px-3 py-2 text-sm text-white" onClick={onRetry} type="button">
+        <Button className="shrink-0" size="sm" variant="outline" onClick={onRetry} type="button">
           Retry
-        </button>
+        </Button>
       ) : null}
-    </div>
+    </Alert>
   );
 }
