@@ -186,9 +186,19 @@ class DashboardDailySpendResponse(BaseModel):
     points: list[DashboardDailySpendPoint]
 
 
+class DashboardCategorySpendItem(BaseModel):
+    category: str
+    spend: float
+
+
+class DashboardCategorySpendResponse(BaseModel):
+    items: list[DashboardCategorySpendItem]
+
+
 class DashboardOverviewResponse(BaseModel):
     summary: DashboardSummaryResponse
     trend: DashboardTrendResponse
     recent: DashboardRecentResponse
     highlights: DashboardHighlightsResponse
     daily_spend: DashboardDailySpendResponse
+    category_spend: DashboardCategorySpendResponse

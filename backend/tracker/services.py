@@ -448,6 +448,13 @@ top_category AS (
   ORDER BY spend DESC
   LIMIT 1
 ),
+category_spend AS (
+  SELECT st.category, COALESCE(SUM(st.amount), 0)::float8 AS spend
+  FROM spend_txns st
+  GROUP BY st.category
+  HAVING COALESCE(SUM(st.amount), 0) > 0
+  ORDER BY spend DESC
+),
 daily_agg AS (
   SELECT
     st.transaction_date AS day_date,
@@ -478,6 +485,11 @@ SELECT
   h.total_outflow,
   h.current_month_investments,
   (SELECT json_build_object('category', tc.category, 'spend', tc.spend) FROM top_category tc) AS top_category,
+  COALESCE(
+    (SELECT json_agg(json_build_object('category', cs.category, 'spend', cs.spend) ORDER BY cs.spend DESC)
+     FROM category_spend cs),
+    '[]'::json
+  ) AS category_spend_rows,
   to_char(:month_now_start, 'Mon YYYY') AS month_label,
   (SELECT total FROM daily_spend) AS daily_total,
   COALESCE(
@@ -525,6 +537,19 @@ async def _get_dashboard_aggregates(bounds: dict[str, date], months: int) -> dic
     if not isinstance(top_category, dict):
         top_category = {"category": None, "spend": 0.0}
 
+    category_spend_rows = _parse_json_value(row.get("category_spend_rows"), [])
+    if not isinstance(category_spend_rows, list):
+        category_spend_rows = []
+
+    category_spend_items = [
+        {
+            "category": str(item.get("category") or ""),
+            "spend": float(item.get("spend") or 0),
+        }
+        for item in category_spend_rows
+        if isinstance(item, dict) and item.get("category")
+    ]
+
     return {
         "summary": {
             "portfolio_net": float(row.get("portfolio_net") or 0),
@@ -544,6 +569,7 @@ async def _get_dashboard_aggregates(bounds: dict[str, date], months: int) -> dic
             "total": float(row.get("daily_total") or 0),
             "points": _parse_json_value(row.get("daily_points"), []),
         },
+        "category_spend": {"items": category_spend_items},
     }
 
 
@@ -596,4 +622,5 @@ async def get_dashboard_overview(months: int = 12, recent_limit: int = 5) -> dic
         "recent": {"items": recent_items},
         "highlights": aggregates["highlights"],
         "daily_spend": aggregates["daily_spend"],
+        "category_spend": aggregates["category_spend"],
     }

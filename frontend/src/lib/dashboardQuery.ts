@@ -2,7 +2,7 @@ import { fetchDashboardOverview } from "@/api/dashboard";
 import { queryClient } from "@/lib/queryClient";
 
 export const TREND_MONTHS = 12;
-export const RECENT_ACTIVITY_LIMIT = 6;
+export const RECENT_ACTIVITY_LIMIT = 11;
 
 export const dashboardOverviewQueryKey = [
   "dashboard",

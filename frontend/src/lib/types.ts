@@ -23,6 +23,9 @@ export type DashboardOverview = {
     total: number;
     points: Array<{ day: number; spend: number }>;
   };
+  category_spend: {
+    items: Array<{ category: string; spend: number }>;
+  };
 };
 
 export type Transaction = {
