@@ -6,8 +6,13 @@ import { LoadingState } from "../components/feedback/LoadingState";
 import { StatusAlert, type FeedbackMessage } from "../components/feedback/StatusAlert";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,6 +20,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { invalidateDashboardOverview } from "@/lib/dashboardQuery";
 import { createTransaction, downloadImportTemplate, fetchTrackerConfig, importTransactions } from "../api/tracker";
+
+const fieldLabelClass = "text-xs font-semibold uppercase tracking-wide text-parsel-secondary";
 
 function localDateIso(): string {
   const d = new Date();
@@ -162,7 +169,7 @@ export function AddPage() {
       ) : null}
 
       {!loadingConfig && categories.length > 0 ? (
-        <div className="mx-auto w-full max-w-content rounded-xl border border-parsel-border bg-white">
+        <div className="mx-auto w-full max-w-content rounded-xl border border-parsel-border bg-parsel-surface">
           <Tabs value={tab} onValueChange={(value) => setTab(value as "manual" | "bulk")}>
             <TabsList className="grid h-auto w-full grid-cols-2 rounded-none border-b border-parsel-border bg-transparent p-0">
               <TabsTrigger
@@ -179,112 +186,155 @@ export function AddPage() {
               </TabsTrigger>
             </TabsList>
             <TabsContent className="mt-0" value="manual">
-              <form className="grid gap-x-6 gap-y-5 p-6 md:grid-cols-2 md:p-8" onSubmit={onSubmit}>
-                <div className="md:col-span-2 space-y-2">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Transaction Type</Label>
-                  <div className="flex w-fit items-center gap-3">
-                    <span className={cn("text-sm", isDebit ? "font-medium text-parsel-primary" : "text-parsel-muted")}>
-                      Debit
-                    </span>
-                    <Switch
-                      checked={!isDebit}
-                      onCheckedChange={(checked) => setIsDebit(!checked)}
-                      aria-label="Transaction type"
+              <form className="p-6 md:p-8" onSubmit={onSubmit}>
+                <FieldGroup className="grid gap-x-6 gap-y-5 md:grid-cols-2">
+                  <Field className="md:col-span-2">
+                    <FieldLabel className={fieldLabelClass}>Transaction Type</FieldLabel>
+                    <div className="flex w-fit items-center gap-3">
+                      <span className={cn("text-sm", isDebit ? "font-medium text-parsel-primary" : "text-parsel-muted")}>
+                        Debit
+                      </span>
+                      <Switch
+                        checked={!isDebit}
+                        onCheckedChange={(checked) => setIsDebit(!checked)}
+                        aria-label="Transaction type"
+                      />
+                      <span className={cn("text-sm", !isDebit ? "font-medium text-parsel-primary" : "text-parsel-muted")}>
+                        Credit
+                      </span>
+                    </div>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="add-amount" className={fieldLabelClass}>
+                      Amount
+                    </FieldLabel>
+                    <div className="flex overflow-hidden rounded-md border border-input">
+                      <span className="flex items-center bg-parsel-soft px-3 text-sm text-parsel-muted">₹</span>
+                      <Input
+                        id="add-amount"
+                        className="border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 tabular-nums"
+                        type="number"
+                        min={0.01}
+                        step={0.01}
+                        value={amount || ""}
+                        onChange={(e) => setAmount(Number(e.target.value))}
+                      />
+                    </div>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="add-category" className={fieldLabelClass}>
+                      Category
+                    </FieldLabel>
+                    <NativeSelect
+                      id="add-category"
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      required
+                    >
+                      <NativeSelectOption value="">Select Category</NativeSelectOption>
+                      {categories.map((item) => (
+                        <NativeSelectOption key={item} value={item}>
+                          {item}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="add-date" className={fieldLabelClass}>
+                      Transaction Date
+                    </FieldLabel>
+                    <DatePicker
+                      id="add-date"
+                      value={transactionDate}
+                      onChange={setTransactionDate}
+                      placeholder="Select date"
                     />
-                    <span className={cn("text-sm", !isDebit ? "font-medium text-parsel-primary" : "text-parsel-muted")}>
-                      Credit
-                    </span>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Amount</Label>
-                  <div className="flex overflow-hidden rounded-md border border-input">
-                    <span className="flex items-center bg-parsel-soft px-3 text-sm text-parsel-muted">₹</span>
-                    <Input
-                      className="border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 tabular-nums"
-                      type="number"
-                      min={0.01}
-                      step={0.01}
-                      value={amount || ""}
-                      onChange={(e) => setAmount(Number(e.target.value))}
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="add-payment" className={fieldLabelClass}>
+                      Payment Method
+                    </FieldLabel>
+                    <NativeSelect
+                      id="add-payment"
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                    >
+                      <NativeSelectOption value="">Select Account</NativeSelectOption>
+                      {paymentMethods.map((item) => (
+                        <NativeSelectOption key={item} value={item}>
+                          {item}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                  </Field>
+                  <Field className="md:col-span-2">
+                    <FieldLabel htmlFor="add-description" className={fieldLabelClass}>
+                      Description / Notes
+                    </FieldLabel>
+                    <Textarea
+                      id="add-description"
+                      rows={3}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="What was this for?"
                     />
+                  </Field>
+                  <div className="flex flex-wrap items-center justify-between gap-2 md:col-span-2">
+                    <div className="min-w-0 flex-1">
+                      {manualFeedback ? (
+                        <StatusAlert {...manualFeedback} onDismiss={() => setManualFeedback(null)} />
+                      ) : null}
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Button asChild variant="secondary" type="button">
+                        <Link to="/ledger/search" onClick={resetManualForm}>
+                          Cancel
+                        </Link>
+                      </Button>
+                      <Button type="submit">Save Transaction</Button>
+                    </div>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Category</Label>
-                  <NativeSelect value={category} onChange={(e) => setCategory(e.target.value)} required>
-                    <NativeSelectOption value="">Select Category</NativeSelectOption>
-                    {categories.map((item) => (
-                      <NativeSelectOption key={item} value={item}>
-                        {item}
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Transaction Date</Label>
-                  <DatePicker value={transactionDate} onChange={setTransactionDate} placeholder="Select date" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Payment Method</Label>
-                  <NativeSelect value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-                    <NativeSelectOption value="">Select Account</NativeSelectOption>
-                    {paymentMethods.map((item) => (
-                      <NativeSelectOption key={item} value={item}>
-                        {item}
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
-                </div>
-                <div className="md:col-span-2 space-y-2">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Description / Notes</Label>
-                  <Textarea
-                    rows={3}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="What was this for?"
-                  />
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-2 md:col-span-2">
-                  <div className="min-w-0 flex-1">
-                    {manualFeedback ? (
-                      <StatusAlert {...manualFeedback} onDismiss={() => setManualFeedback(null)} />
-                    ) : null}
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <Button asChild variant="secondary" type="button">
-                      <Link to="/ledger/search" onClick={resetManualForm}>
-                        Cancel
-                      </Link>
-                    </Button>
-                    <Button type="submit">Save Transaction</Button>
-                  </div>
-                </div>
+                </FieldGroup>
               </form>
             </TabsContent>
             <TabsContent className="mt-0" value="bulk">
-              <section className="space-y-5 p-6 md:p-8">
-                <p className="text-sm text-parsel-muted">Use the template to ensure valid columns and date format.</p>
-                <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Input className="max-w-xs" type="file" accept=".csv" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-                    <Button type="button" onClick={() => void onImport()} disabled={!file}>
-                      Import
-                    </Button>
-                  </div>
-                  <Button type="button" variant="outline" onClick={() => void onDownloadTemplate()}>
-                    Download template
-                  </Button>
-                </div>
-                {bulkFeedback ? <StatusAlert {...bulkFeedback} onDismiss={() => setBulkFeedback(null)} /> : null}
-                {importErrors ? (
-                  <StatusAlert
-                    variant="error"
-                    title="Import row errors"
-                    description={importErrors}
-                    onDismiss={() => setImportErrors(null)}
-                  />
-                ) : null}
+              <section className="p-6 md:p-8">
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="bulk-csv" className={fieldLabelClass}>
+                      CSV File
+                    </FieldLabel>
+                    <FieldDescription>
+                      Use the template to ensure valid columns and date format.
+                    </FieldDescription>
+                    <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Input
+                          id="bulk-csv"
+                          className="max-w-xs"
+                          type="file"
+                          accept=".csv"
+                          onChange={(e) => setFile(e.target.files?.[0] || null)}
+                        />
+                        <Button type="button" onClick={() => void onImport()} disabled={!file}>
+                          Import
+                        </Button>
+                      </div>
+                      <Button type="button" variant="outline" onClick={() => void onDownloadTemplate()}>
+                        Download template
+                      </Button>
+                    </div>
+                  </Field>
+                  {bulkFeedback ? <StatusAlert {...bulkFeedback} onDismiss={() => setBulkFeedback(null)} /> : null}
+                  {importErrors ? (
+                    <StatusAlert
+                      variant="error"
+                      title="Import row errors"
+                      description={importErrors}
+                      onDismiss={() => setImportErrors(null)}
+                    />
+                  ) : null}
+                </FieldGroup>
               </section>
             </TabsContent>
           </Tabs>

@@ -2,6 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "./components/layout/AppShell";
+import { ThemeProvider } from "./lib/theme";
 import { AddPage } from "./pages/AddPage";
 import { ChatPage } from "./pages/ChatPage";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -10,6 +11,7 @@ import { queryClient } from "./lib/queryClient";
 
 export default function App() {
   return (
+    <ThemeProvider>
     <QueryClientProvider client={queryClient}>
       <AppShell>
         <div className="flex h-full min-h-0 flex-col [&>*]:h-full [&>*]:min-h-0">
@@ -23,5 +25,6 @@ export default function App() {
         </div>
       </AppShell>
     </QueryClientProvider>
+    </ThemeProvider>
   );
 }

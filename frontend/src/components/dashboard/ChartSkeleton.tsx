@@ -5,12 +5,12 @@ export function ChartSkeleton() {
         {Array.from({ length: 12 }, (_, i) => (
           <div
             key={i}
-            className="flex-1 animate-pulse rounded-sm bg-[#e8eef4]"
+            className="flex-1 animate-pulse rounded-sm bg-parsel-soft"
             style={{ height: `${28 + (i % 4) * 14}%` }}
           />
         ))}
       </div>
-      <div className="h-3 w-24 animate-pulse rounded bg-[#e8eef4]" />
+      <div className="h-3 w-24 animate-pulse rounded bg-parsel-soft" />
     </div>
   );
 }

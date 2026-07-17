@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 
 import { prefetchDashboardOverview } from "@/lib/dashboardQuery";
+import { ThemeToggle } from "./ThemeToggle";
 
 type ShellNavItem = {
   to: string;
@@ -61,15 +62,6 @@ function LogoutIcon() {
   );
 }
 
-function SunIcon() {
-  return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
-      <circle cx="12" cy="12" r="4" />
-      <path strokeLinecap="round" d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-    </svg>
-  );
-}
-
 const NAV_ITEMS: ShellNavItem[] = [
   { to: "/overview", label: "Home", icon: <HomeIcon /> },
   { to: "/ledger/search", label: "Ledger", icon: <LedgerIcon /> },
@@ -79,24 +71,16 @@ const NAV_ITEMS: ShellNavItem[] = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-dvh w-full flex-col bg-white text-parsel-text">
+    <div className="flex h-dvh w-full flex-col bg-parsel-bg text-parsel-text">
       <header className="flex w-full shrink-0 items-center justify-between border-b border-parsel-border px-4 py-2">
         <div>
-          <h1 className="text-[28px] font-semibold tracking-tight text-[#2563eb]">Parsel</h1>
+          <h1 className="text-[28px] font-semibold tracking-tight text-parsel-primary">Parsel</h1>
           <p className="text-xs text-parsel-muted">Your personal finance tracker</p>
         </div>
-        <button
-          type="button"
-          className="rounded-lg p-2 text-parsel-muted hover:bg-parsel-soft disabled:opacity-50"
-          disabled
-          aria-label="Theme (coming soon)"
-          title="Theme (coming soon)"
-        >
-          <SunIcon />
-        </button>
+        <ThemeToggle />
       </header>
       <div className="flex min-h-0 w-full flex-1">
-        <aside className="flex w-[220px] shrink-0 border-r border-parsel-border bg-white">
+        <aside className="flex w-[220px] shrink-0 border-r border-parsel-border bg-parsel-surface">
           <div className="flex min-h-0 w-full flex-col px-3 py-3">
             <nav className="space-y-0.5">
               {NAV_ITEMS.map((item) => (
@@ -106,7 +90,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   onMouseEnter={item.to === "/overview" ? () => void prefetchDashboardOverview() : undefined}
                   className={({ isActive }) =>
                     `flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition ${
-                      isActive ? "bg-[#e8eef8] text-[#2563eb]" : "text-parsel-muted hover:bg-parsel-soft hover:text-parsel-text"
+                      isActive ? "bg-parsel-nav-active-bg text-parsel-nav-active-text" : "text-parsel-muted hover:bg-parsel-soft hover:text-parsel-text"
                     }`
                   }
                 >
@@ -123,7 +107,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="border-t border-parsel-border pt-3">
                 <div className="flex items-center gap-2.5 rounded-xl border border-parsel-border bg-parsel-soft p-2.5">
                   <span
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#dbe4f0] text-xs font-semibold text-parsel-secondary"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-parsel-avatar-bg text-xs font-semibold text-parsel-secondary"
                     aria-hidden
                   >
                     AU
@@ -134,7 +118,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </div>
                   <button
                     type="button"
-                    className="shrink-0 text-[#dc2626] hover:text-[#b91c1c] disabled:opacity-50"
+                    className="shrink-0 text-parsel-outflow hover:text-parsel-danger-text disabled:opacity-50"
                     disabled
                     aria-label="Log out (coming soon)"
                     title="Log out (coming soon)"
@@ -146,7 +130,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </aside>
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#f6f8fb]">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-parsel-canvas">
           <div className="flex h-full w-full min-h-0 flex-col overflow-hidden px-4 py-3">{children}</div>
         </main>
       </div>
