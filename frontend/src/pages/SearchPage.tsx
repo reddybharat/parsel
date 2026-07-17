@@ -6,7 +6,7 @@ import { LoadingState } from "../components/feedback/LoadingState";
 import { StatusAlert, type FeedbackMessage } from "../components/feedback/StatusAlert";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Label } from "@/components/ui/label";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import {
   Pagination,
@@ -30,6 +30,8 @@ import {
 } from "../api/tracker";
 import { formatInrSigned, signedAmount } from "../lib/format";
 import type { SearchResult, Transaction } from "../lib/types";
+
+const fieldLabelClass = "text-xs font-semibold uppercase tracking-wide text-parsel-secondary";
 
 type DatePreset = "lastMonth" | "today" | "last7" | "month";
 
@@ -309,18 +311,24 @@ export function SearchPage() {
             <Link to="/ledger/add">+ Add Transaction</Link>
           </Button>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[170px] space-y-2">
-            <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Start Date</Label>
-            <DatePicker value={startDate} onChange={onStartDateChange} placeholder="Start date" />
-          </div>
-          <div className="min-w-[170px] space-y-2">
-            <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">End Date</Label>
-            <DatePicker value={endDate} onChange={onEndDateChange} placeholder="End date" />
-          </div>
-          <div className="min-w-[180px] space-y-2">
-            <Label className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">Category</Label>
-            <NativeSelect value={category} onChange={(e) => setCategory(e.target.value)}>
+        <div className="flex items-end gap-3">
+          <Field className="w-auto min-w-[170px] flex-1">
+            <FieldLabel htmlFor="search-start" className={fieldLabelClass}>
+              Start Date
+            </FieldLabel>
+            <DatePicker id="search-start" value={startDate} onChange={onStartDateChange} placeholder="Start date" />
+          </Field>
+          <Field className="w-auto min-w-[170px] flex-1">
+            <FieldLabel htmlFor="search-end" className={fieldLabelClass}>
+              End Date
+            </FieldLabel>
+            <DatePicker id="search-end" value={endDate} onChange={onEndDateChange} placeholder="End date" />
+          </Field>
+          <Field className="w-auto min-w-[180px] flex-1">
+            <FieldLabel htmlFor="search-category" className={fieldLabelClass}>
+              Category
+            </FieldLabel>
+            <NativeSelect id="search-category" value={category} onChange={(e) => setCategory(e.target.value)}>
               <NativeSelectOption value="All">All Categories</NativeSelectOption>
               {categories.map((item) => (
                 <NativeSelectOption key={item} value={item}>
@@ -328,12 +336,16 @@ export function SearchPage() {
                 </NativeSelectOption>
               ))}
             </NativeSelect>
-          </div>
-          <Button type="submit" disabled={loading}>
+          </Field>
+          <Button className="shrink-0" type="submit" disabled={loading}>
             Search
           </Button>
           {canExport ? (
-            <Button className="bg-parsel-emerald hover:bg-parsel-emerald/90" type="button" onClick={() => void onExport()}>
+            <Button
+              className="shrink-0 bg-parsel-emerald hover:bg-parsel-emerald/90"
+              type="button"
+              onClick={() => void onExport()}
+            >
               Export CSV
             </Button>
           ) : null}

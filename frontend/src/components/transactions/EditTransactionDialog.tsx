@@ -7,8 +7,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -42,9 +42,9 @@ export function EditTransactionDialog({
         <DialogHeader>
           <DialogTitle className="text-2xl font-semibold tracking-tight text-parsel-neutral">Edit Transaction</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className="md:col-span-2 space-y-2">
-            <Label htmlFor="edit-type">Transaction Type</Label>
+        <FieldGroup className="grid gap-3 md:grid-cols-2">
+          <Field className="md:col-span-2">
+            <FieldLabel htmlFor="edit-type">Transaction Type</FieldLabel>
             <div className="flex w-fit items-center gap-3">
               <span
                 className={cn(
@@ -69,9 +69,9 @@ export function EditTransactionDialog({
                 Credit
               </span>
             </div>
-          </div>
-          <div className="md:col-span-2 space-y-2">
-            <Label htmlFor="edit-amount">Amount</Label>
+          </Field>
+          <Field className="md:col-span-2">
+            <FieldLabel htmlFor="edit-amount">Amount</FieldLabel>
             <Input
               id="edit-amount"
               className="text-destructive tabular-nums"
@@ -81,9 +81,9 @@ export function EditTransactionDialog({
               value={transaction.amount}
               onChange={(e) => onChange({ ...transaction, amount: Number(e.target.value) })}
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-category">Category</Label>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="edit-category">Category</FieldLabel>
             <NativeSelect
               id="edit-category"
               value={transaction.category}
@@ -95,18 +95,18 @@ export function EditTransactionDialog({
                 </NativeSelectOption>
               ))}
             </NativeSelect>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-date">Date</Label>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="edit-date">Date</FieldLabel>
             <DatePicker
               id="edit-date"
               value={transaction.transaction_date}
               onChange={(value) => onChange({ ...transaction, transaction_date: value })}
               placeholder="Select date"
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-payment">Payment Method</Label>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="edit-payment">Payment Method</FieldLabel>
             <NativeSelect
               id="edit-payment"
               value={transaction.payment_method || ""}
@@ -119,9 +119,9 @@ export function EditTransactionDialog({
                 </NativeSelectOption>
               ))}
             </NativeSelect>
-          </div>
-          <div className="md:col-span-2 space-y-2">
-            <Label htmlFor="edit-description">Description</Label>
+          </Field>
+          <Field className="md:col-span-2">
+            <FieldLabel htmlFor="edit-description">Description</FieldLabel>
             <Textarea
               id="edit-description"
               rows={3}
@@ -129,8 +129,8 @@ export function EditTransactionDialog({
               onChange={(e) => onChange({ ...transaction, description: e.target.value || null })}
               placeholder="Description"
             />
-          </div>
-        </div>
+          </Field>
+        </FieldGroup>
         <DialogFooter>
           <Button variant="ghost" type="button" onClick={onCancel}>
             Cancel

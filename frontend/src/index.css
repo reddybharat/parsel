@@ -47,11 +47,15 @@
   --input: 214 24% 88%;
   --ring: 221 83% 53%;
   --radius: 0.5rem;
+  /* Blue shade ramp from Parsel primary (#2563eb); chart-1 is brand for single-series charts */
   --chart-1: 221 83% 53%;
-  --chart-2: 215 16% 47%;
-  --chart-3: 38 100% 38%;
-  --chart-4: 160 84% 31%;
-  --chart-5: 220 13% 20%;
+  --chart-2: 221 83% 68%;
+  --chart-3: 221 78% 44%;
+  --chart-4: 221 72% 36%;
+  --chart-5: 221 65% 28%;
+  --chart-6: 221 83% 78%;
+  --chart-7: 214 45% 58%;
+  --chart-8: 214 35% 48%;
 }
 
 .dark {
@@ -98,11 +102,15 @@
   --border: 220 16% 24%;
   --input: 220 16% 24%;
   --ring: 217 91% 68%;
+  /* Blue shade ramp for dark surfaces; chart-1 is brand for single-series charts */
   --chart-1: 217 91% 68%;
-  --chart-2: 215 16% 65%;
-  --chart-3: 38 92% 55%;
-  --chart-4: 160 70% 45%;
-  --chart-5: 210 20% 75%;
+  --chart-2: 217 91% 78%;
+  --chart-3: 217 80% 58%;
+  --chart-4: 217 72% 48%;
+  --chart-5: 217 65% 40%;
+  --chart-6: 217 91% 86%;
+  --chart-7: 214 40% 62%;
+  --chart-8: 214 30% 52%;
 }
 
 @layer base {
