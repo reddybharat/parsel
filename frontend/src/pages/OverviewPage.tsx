@@ -26,9 +26,9 @@ const DailySpendLineChart = lazy(() =>
     default: m.DailySpendLineChart,
   })),
 );
-const CategorySpendPieChart = lazy(() =>
-  import("@/components/dashboard/CategorySpendPieChart").then((m) => ({
-    default: m.CategorySpendPieChart,
+const CategorySpendBarChart = lazy(() =>
+  import("@/components/dashboard/CategorySpendBarChart").then((m) => ({
+    default: m.CategorySpendBarChart,
   })),
 );
 
@@ -248,7 +248,7 @@ export function OverviewPage() {
           ) : (
             data && (
               <Suspense fallback={<ChartSkeleton />}>
-                <CategorySpendPieChart
+                <CategorySpendBarChart
                   items={data.category_spend.items}
                   monthLabel={data.daily_spend.month_label}
                 />
