@@ -5,8 +5,6 @@ import { EmptyState } from "@/components/feedback/EmptyState";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
   type ChartConfig,
@@ -72,12 +70,12 @@ export function CategorySpendPieChart({
 
   if (items.length === 0) {
     return (
-      <Card className="border-0 shadow-none">
-        <CardHeader className="p-0 pb-2">
+      <Card className="flex flex-col border-0 shadow-none">
+        <CardHeader className="items-center p-0 pb-0">
           <CardTitle className="text-sm font-semibold">Category Spend</CardTitle>
           <CardDescription>{monthLabel || "This month"}</CardDescription>
         </CardHeader>
-        <CardContent className="px-0 pt-4">
+        <CardContent className="flex-1 px-0 pb-0 pt-4">
           <EmptyState title="No spending data" detail="Category breakdown appears when you have spend this month." />
         </CardContent>
       </Card>
@@ -86,22 +84,30 @@ export function CategorySpendPieChart({
 
   return (
     <Card className="flex h-full min-h-0 flex-col border-0 shadow-none">
-      <CardHeader className="shrink-0 p-0 pb-2">
+      <CardHeader className="items-center p-0 pb-0">
         <CardTitle className="text-sm font-semibold">Category Spend</CardTitle>
         <CardDescription>{monthLabel || "This month"}</CardDescription>
       </CardHeader>
-      <CardContent className="flex min-h-0 flex-1 flex-col justify-center px-0 pb-0">
-        <ChartContainer config={chartConfig} className="mx-auto aspect-square w-full max-h-full">
+      <CardContent className="flex-1 px-0 pb-0">
+        <ChartContainer config={chartConfig} className="mx-auto aspect-square max-h-[250px]">
           <PieChart>
             <ChartTooltip
               cursor={false}
-              content={<ChartTooltipContent hideLabel formatter={(value) => formatInrAmount(Number(value))} />}
+              content={
+                <ChartTooltipContent
+                  hideLabel
+                  formatter={(value, name) => (
+                    <div className="flex flex-1 items-center justify-between gap-4 leading-none">
+                      <span className="text-muted-foreground">{name}</span>
+                      <span className="font-medium tabular-nums text-foreground">
+                        {formatInrAmount(Number(value))}
+                      </span>
+                    </div>
+                  )}
+                />
+              }
             />
-            <Pie data={chartData} dataKey="spend" nameKey="category" />
-            <ChartLegend
-              content={<ChartLegendContent nameKey="slug" />}
-              className="-translate-y-2 flex-wrap gap-2 *:basis-1/2 *:justify-center"
-            />
+            <Pie data={chartData} dataKey="spend" nameKey="category" stroke="0" />
           </PieChart>
         </ChartContainer>
       </CardContent>
