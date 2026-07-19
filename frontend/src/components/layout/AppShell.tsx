@@ -1,5 +1,6 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 
+import { useAuth } from "@/lib/auth";
 import { prefetchDashboardOverview } from "@/lib/dashboardQuery";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -62,6 +63,15 @@ function LogoutIcon() {
   );
 }
 
+function initialsFromUsername(username: string | null): string {
+  if (!username) return "?";
+  const parts = username.split(/[._-]+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
+  }
+  return username.slice(0, 2).toUpperCase();
+}
+
 const NAV_ITEMS: ShellNavItem[] = [
   { to: "/overview", label: "Home", icon: <HomeIcon /> },
   { to: "/ledger/search", label: "Ledger", icon: <LedgerIcon /> },
@@ -70,6 +80,16 @@ const NAV_ITEMS: ShellNavItem[] = [
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const { username, email, logout } = useAuth();
+  const navigate = useNavigate();
+  const displayName = username ?? email ?? "Signed in";
+  const initials = initialsFromUsername(username ?? email);
+
+  function handleLogout() {
+    logout();
+    navigate("/login", { replace: true });
+  }
+
   return (
     <div className="flex h-dvh w-full flex-col bg-parsel-bg text-parsel-text">
       <header className="flex w-full shrink-0 items-center justify-between border-b border-parsel-border px-4 py-2">
@@ -110,18 +130,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-parsel-avatar-bg text-xs font-semibold text-parsel-secondary"
                     aria-hidden
                   >
-                    AU
+                    {initials}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">Active User</p>
-                    <p className="text-xs text-parsel-muted">Premium Plan</p>
+                    <p className="truncate text-sm font-medium" title={displayName}>
+                      {displayName}
+                    </p>
+                    <p className="text-xs text-parsel-muted">Signed in</p>
                   </div>
                   <button
                     type="button"
-                    className="shrink-0 text-parsel-outflow hover:text-parsel-danger-text disabled:opacity-50"
-                    disabled
-                    aria-label="Log out (coming soon)"
-                    title="Log out (coming soon)"
+                    className="shrink-0 text-parsel-outflow hover:text-parsel-danger-text"
+                    onClick={handleLogout}
+                    aria-label="Log out"
+                    title="Log out"
                   >
                     <LogoutIcon />
                   </button>

@@ -20,6 +20,7 @@ Table: public.transactions
 
 Columns:
 - id                  uuid PRIMARY KEY (default gen_random_uuid())
+- user_id             uuid NOT NULL  — always filter with user_id = '<id from system message>'
 - amount              numeric NOT NULL  — transaction amount in INR (always > 0)
 - is_debit            boolean NOT NULL  — True for Debit (spend), False for Credit (income)
 - category            text NOT NULL     — one of: {", ".join(CATEGORIES)}
@@ -32,6 +33,7 @@ Columns:
 
 Notes:
 - Amounts are in Indian Rupees (INR).
+- Always include `user_id = '<uuid>'` from the conversation system message on every query.
 - For spending vs investments: treat "Investments" category as investments, not ordinary spending unless the user asks for investments specifically.
 """.strip(),
 }

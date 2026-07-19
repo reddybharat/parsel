@@ -3,9 +3,11 @@ from typing import Optional
 from uuid import UUID
 import time
 
-from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from sqlalchemy import case, delete, func, insert, select, update
 
+from auth.deps import get_current_user
+from auth.models import User
 from common.database import get_connection
 from common.logger import get_logger
 from tracker.models import Transaction
@@ -51,6 +53,7 @@ async def search_transactions(
     sort_desc: bool = Query(True),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
 ) -> TransactionsSearchResult:
     t0 = time.perf_counter()
     if start_date > end_date:
@@ -66,6 +69,7 @@ async def search_transactions(
     offset_start = (page - 1) * page_size
 
     where_parts = [
+        Transaction.user_id == current_user.id,
         Transaction.transaction_date >= start_date,
         Transaction.transaction_date <= end_date,
     ]
@@ -136,9 +140,16 @@ async def export_transactions(
     end_date: date = Query(...),
     category: Optional[str] = Query(None),
     payment_method: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
 ) -> Response:
     t0 = time.perf_counter()
-    csv_data = await export_transactions_csv(start_date, end_date, category, payment_method)
+    csv_data = await export_transactions_csv(
+        start_date,
+        end_date,
+        category,
+        payment_method,
+        user_id=current_user.id,
+    )
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
         "export_transactions completed in %.1f ms (category=%s, range=%s..%s)",
@@ -157,10 +168,13 @@ async def export_transactions(
 
 
 @router.post("/import")
-async def import_transactions(file: UploadFile = File(...)) -> dict:
+async def import_transactions(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+) -> dict:
     t0 = time.perf_counter()
     content = await file.read()
-    inserted, errors = await import_transactions_from_csv(content)
+    inserted, errors = await import_transactions_from_csv(content, user_id=current_user.id)
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
         "import_transactions completed in %.1f ms (inserted=%d, errors=%d)",
@@ -172,7 +186,10 @@ async def import_transactions(file: UploadFile = File(...)) -> dict:
 
 
 @router.get("/import-template")
-async def import_template() -> Response:
+async def import_template(
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    del current_user  # auth gate only
     csv_data = transactions_csv_template()
     return Response(
         content=csv_data,
@@ -182,11 +199,15 @@ async def import_template() -> Response:
 
 
 @router.post("", response_model=TransactionResponse)
-async def create_transaction(payload: TransactionCreate) -> TransactionResponse:
+async def create_transaction(
+    payload: TransactionCreate,
+    current_user: User = Depends(get_current_user),
+) -> TransactionResponse:
     t0 = time.perf_counter()
     stmt = (
         insert(Transaction)
         .values(
+            user_id=current_user.id,
             amount=float(payload.amount),
             is_debit=bool(payload.is_debit),
             category=payload.category.strip(),
@@ -207,7 +228,11 @@ async def create_transaction(payload: TransactionCreate) -> TransactionResponse:
 
 
 @router.patch("/{transaction_id}", response_model=TransactionResponse)
-async def update_transaction(transaction_id: UUID, payload: TransactionUpdate) -> TransactionResponse:
+async def update_transaction(
+    transaction_id: UUID,
+    payload: TransactionUpdate,
+    current_user: User = Depends(get_current_user),
+) -> TransactionResponse:
     t0 = time.perf_counter()
     payload_dict = payload.model_dump(exclude_unset=True)
     if not payload_dict:
@@ -224,7 +249,7 @@ async def update_transaction(transaction_id: UUID, payload: TransactionUpdate) -
 
     stmt = (
         update(Transaction)
-        .where(Transaction.id == transaction_id)
+        .where(Transaction.id == transaction_id, Transaction.user_id == current_user.id)
         .values(**payload_dict)
         .returning(Transaction)
     )
@@ -239,9 +264,15 @@ async def update_transaction(transaction_id: UUID, payload: TransactionUpdate) -
 
 
 @router.delete("/{transaction_id}", status_code=204)
-async def delete_transaction(transaction_id: UUID) -> None:
+async def delete_transaction(
+    transaction_id: UUID,
+    current_user: User = Depends(get_current_user),
+) -> None:
     t0 = time.perf_counter()
-    stmt = delete(Transaction).where(Transaction.id == transaction_id)
+    stmt = delete(Transaction).where(
+        Transaction.id == transaction_id,
+        Transaction.user_id == current_user.id,
+    )
     async with get_connection() as session:
         result = await session.execute(stmt)
         rowcount = result.rowcount or 0

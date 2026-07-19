@@ -55,6 +55,9 @@ Environment variables are loaded from `backend/.env` when the API starts (`pytho
 | Variable | Required | Purpose |
 |---|---|---|
 | `DATABASE_URL` | Yes | PostgreSQL URL (`postgresql://…` or `postgresql+asyncpg://…`) |
+| `JWT_SECRET` | Yes | Secret key used to sign access tokens (use a long random string) |
+| `JWT_EXPIRE_DAYS` | No | Access token lifetime in days (default: `7`) |
+| `ENV` | No | Set to `production` to disable `/docs`, `/redoc`, and `/openapi.json` |
 | `GROQ_API_KEY` | For chat | Groq API key for the chat assistant |
 | `GROQ_MODEL` | No | Groq model id (default: `llama-3.3-70b-versatile`) |
 | `CORS_ORIGINS` | No | Comma-separated allowed frontend origins (default includes `http://localhost:5173` and `http://127.0.0.1:5173`) |
@@ -63,52 +66,36 @@ Example `backend/.env`:
 
 ```env
 DATABASE_URL=postgresql://user:password@localhost:5432/parsel
+JWT_SECRET=replace-with-a-long-random-string
 GROQ_API_KEY=your_groq_key_here
 ```
 
-|---|---|---|
-
 ## Database
 
-Tracker and dashboard endpoints expect a `public.transactions` table. There is no migration runner in this repo yet; create the table in your PostgreSQL database before using the app:
+Schema SQL lives in [`migrations/`](migrations/). There is no migration runner; apply scripts with `psql` (or any Postgres client) against the database in `DATABASE_URL`.
 
-```sql
-CREATE TABLE public.transactions (
-  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  amount           numeric NOT NULL CHECK (amount > 0),
-  is_debit         boolean NOT NULL,
-  category         text NOT NULL,
-  payment_method   text,
-  transaction_date date NOT NULL,
-  description      text,
-  created_at       timestamptz NOT NULL DEFAULT now(),
-  updated_at       timestamptz NOT NULL DEFAULT now(),
-  version_no       integer NOT NULL DEFAULT 0
-);
+| Script | When |
+|---|---|
+| [`migrations/001_initial_transactions.sql`](migrations/001_initial_transactions.sql) | Fresh DB — original `transactions` table (pre-auth baseline) |
+| [`migrations/002_users_and_transaction_user_id.sql`](migrations/002_users_and_transaction_user_id.sql) | Add `users` + `transactions.user_id` (multi-user auth) |
 
-CREATE INDEX IF NOT EXISTS idx_transactions_transaction_date
-  ON public.transactions (transaction_date);
-
-CREATE INDEX IF NOT EXISTS idx_transactions_recent
-  ON public.transactions (transaction_date DESC, created_at DESC);
-
--- Dashboard spend aggregations (debit, non-investment, date range)
-CREATE INDEX IF NOT EXISTS idx_transactions_dashboard_spend
-  ON public.transactions (transaction_date)
-  WHERE is_debit = TRUE AND category <> 'Investments';
-
--- Monthly trend grouping for dashboard
-CREATE INDEX IF NOT EXISTS idx_transactions_month_start
-  ON public.transactions (date_trunc('month', transaction_date::timestamp))
-  WHERE is_debit = TRUE AND category <> 'Investments';
-```
+See [`migrations/README.md`](migrations/README.md) for the exact order, backfill steps, and verification queries.
 
 Allowed `category` and `payment_method` values are enforced by the API and match `backend/tracker/constants.py`.
+
+## Auth
+
+- `POST /auth/register` — `{ username, email, password }` (username 3–32: letters/numbers/`_`; password min 8); returns a JWT.
+- `POST /auth/login` — `{ login, password }` where `login` is username or email; returns a JWT.
+- All tracker, dashboard, config, and chat routes require `Authorization: Bearer <token>`.
+- Each user only sees and mutates their own transactions.
 
 ## UI routes
 
 | Path | Page |
 |---|---|
+| `/login` | Sign in |
+| `/register` | Create account |
 | `/overview` | Dashboard |
 | `/ledger/search` | Transaction search and management |
 | `/ledger/add` | Add transaction and CSV import |

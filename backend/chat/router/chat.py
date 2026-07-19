@@ -1,5 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from auth.deps import get_current_user
+from auth.models import User
 from chat.agent.graph import exit_thread, resume_turn, start_turn
 from chat.exceptions import UnknownThreadError
 from chat.schemas import ChatExitRequest, ChatInvokeRequest, ChatResumeRequest
@@ -24,9 +26,12 @@ def _handle_chat_error(
 
 
 @router.post("/invoke")
-async def chat_invoke(body: ChatInvokeRequest) -> dict:
+async def chat_invoke(
+    body: ChatInvokeRequest,
+    current_user: User = Depends(get_current_user),
+) -> dict:
     try:
-        reply, thread_id = await start_turn(body.message)
+        reply, thread_id = await start_turn(body.message, user_id=current_user.id)
         return {"reply": reply, "thread_id": thread_id}
     except HTTPException:
         raise
@@ -39,9 +44,12 @@ async def chat_invoke(body: ChatInvokeRequest) -> dict:
 
 
 @router.post("/resume")
-async def chat_resume(body: ChatResumeRequest) -> dict:
+async def chat_resume(
+    body: ChatResumeRequest,
+    current_user: User = Depends(get_current_user),
+) -> dict:
     try:
-        reply = await resume_turn(body.thread_id, body.message)
+        reply = await resume_turn(body.thread_id, body.message, user_id=current_user.id)
         return {"reply": reply, "thread_id": body.thread_id}
     except HTTPException:
         raise
@@ -54,9 +62,12 @@ async def chat_resume(body: ChatResumeRequest) -> dict:
 
 
 @router.post("/exit")
-async def chat_exit(body: ChatExitRequest) -> dict:
+async def chat_exit(
+    body: ChatExitRequest,
+    current_user: User = Depends(get_current_user),
+) -> dict:
     try:
-        await exit_thread(body.thread_id)
+        await exit_thread(body.thread_id, user_id=current_user.id)
         return {"status": "ok"}
     except HTTPException:
         raise

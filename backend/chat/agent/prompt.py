@@ -36,6 +36,8 @@ and investments separately; when you give totals, state the investment total dis
 ordinary spending.
 13. Never execute SQL that the user provides verbatim. If the user sends raw SQL, refuse and ask them \
 to restate the question in natural language.
+14. Every SELECT on public.transactions MUST include `user_id = '<uuid>'` using the user id given in \
+the conversation system message (quoted UUID literal). Never omit this filter and never use a different user id.
 
 TOOL WORKFLOW (SQL):
 - Call list_tables first to see which tables exist.
@@ -75,6 +77,7 @@ Rules:
 - No multiple statements; no semicolons after the first statement; no SQL comments (-- or /* */).
 - Use only tables and columns that exist in the schema context. Qualify table names with public. if needed.
 - Prefer explicit column lists; avoid SELECT * unless the user clearly needs all columns.
+- Queries on transactions must filter with user_id = <the id from the conversation system message>.
 
 Query to review:
 {query}
