@@ -28,9 +28,9 @@ export function DailySpendLineChart({
 
   if (points.length === 0) {
     return (
-      <Card className="border-0 shadow-none">
-        <CardContent className="px-0 pt-4">
-          <div className="h-28 rounded-lg bg-muted sm:h-32" />
+      <Card className="flex h-full min-h-0 flex-col border-0 shadow-none">
+        <CardContent className="flex min-h-0 flex-1 flex-col px-0 pt-4">
+          <div className="h-full min-h-[7rem] rounded-lg bg-muted" />
         </CardContent>
       </Card>
     );
@@ -42,13 +42,13 @@ export function DailySpendLineChart({
   }));
 
   return (
-    <Card className="border-0 shadow-none">
-      <CardHeader className="p-0 pb-2">
+    <Card className="flex h-full min-h-0 flex-col border-0 shadow-none">
+      <CardHeader className="shrink-0 p-0 pb-2">
         <CardTitle className="text-sm font-semibold">Daily Spending Trends</CardTitle>
         <CardDescription>{monthLabel} — day-by-day spending</CardDescription>
       </CardHeader>
-      <CardContent className="px-0">
-        <ChartContainer config={chartConfig} className="aspect-auto h-28 w-full sm:h-32">
+      <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-0">
+        <ChartContainer config={chartConfig} className="aspect-auto h-full min-h-[7rem] w-full">
           <LineChart
             accessibilityLayer
             data={chartData}
@@ -82,7 +82,7 @@ export function DailySpendLineChart({
           </LineChart>
         </ChartContainer>
       </CardContent>
-      <CardFooter className="flex-col items-start gap-1 p-0 pt-2 text-sm">
+      <CardFooter className="mt-auto shrink-0 flex-col items-start gap-1 p-0 pt-3 text-sm">
         <div className="flex gap-2 font-medium leading-none">
           {formatInrAmount(monthTotal)} spent this month <TrendingUp className="h-4 w-4" />
         </div>
