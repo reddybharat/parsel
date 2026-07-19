@@ -4,6 +4,7 @@ from auth.models import User
 from auth.schemas import LoginRequest, RegisterRequest, TokenResponse
 from auth.security import create_access_token, unauthorized
 from auth.service import (
+    AccountInactiveError,
     EmailAlreadyRegisteredError,
     InvalidCredentialsError,
     UsernameAlreadyTakenError,
@@ -37,6 +38,8 @@ async def register(body: RegisterRequest) -> TokenResponse:
 async def login(body: LoginRequest) -> TokenResponse:
     try:
         user = await authenticate_user(body.login, body.password)
+    except AccountInactiveError as exc:
+        raise unauthorized(str(exc)) from exc
     except InvalidCredentialsError as exc:
         raise unauthorized(str(exc)) from exc
     return _token_response(user)

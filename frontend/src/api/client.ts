@@ -39,8 +39,17 @@ async function parseError(response: Response): Promise<Error> {
     const body = await response.json();
     if (typeof body?.detail === "string") return new Error(body.detail);
     if (Array.isArray(body?.detail)) {
-      const first = body.detail[0];
-      if (typeof first?.msg === "string") return new Error(first.msg);
+      const messages = body.detail
+        .map((item: { loc?: unknown[]; msg?: string }) => {
+          if (typeof item?.msg !== "string") return null;
+          const msg = item.msg.replace(/^Value error,\s*/i, "");
+          const field = Array.isArray(item.loc)
+            ? item.loc.filter((part) => part !== "body").join(".")
+            : "";
+          return field ? `${field}: ${msg}` : msg;
+        })
+        .filter((msg: string | null): msg is string => Boolean(msg));
+      if (messages.length) return new Error(messages.join(" "));
     }
   } catch {
     // no-op

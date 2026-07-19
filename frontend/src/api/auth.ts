@@ -13,6 +13,12 @@ export async function register(
   username: string,
   email: string,
   password: string,
+  confirmPassword: string,
 ): Promise<TokenResponse> {
-  return postJson<TokenResponse>("/auth/register", { username, email, password });
+  return postJson<TokenResponse>("/auth/register", {
+    username,
+    email,
+    password,
+    confirm_password: confirmPassword,
+  });
 }

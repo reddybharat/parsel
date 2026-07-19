@@ -14,11 +14,16 @@
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS public.users (
-  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  username      text NOT NULL UNIQUE,
-  email         text NOT NULL UNIQUE,
-  password_hash text NOT NULL,
-  created_at    timestamptz NOT NULL DEFAULT now()
+  id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  username             text NOT NULL UNIQUE,
+  email                text NOT NULL UNIQUE,
+  password_hash        text NOT NULL,
+  is_active            boolean NOT NULL DEFAULT true,
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  updated_at           timestamptz NOT NULL DEFAULT now(),
+  password_changed_at  timestamptz NOT NULL DEFAULT now(),
+  last_login_at        timestamptz,
+  version_no           integer NOT NULL DEFAULT 0
 );
 
 ALTER TABLE public.transactions

@@ -1,4 +1,5 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, type ComponentProps } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,43 @@ import { useAuth } from "@/lib/auth";
 
 type Mode = "login" | "register";
 
+const PASSWORD_HINT =
+  "At least 8 characters, with uppercase, lowercase, a number, and a symbol.";
+
+function passwordStrengthError(password: string): string | null {
+  if (password.length < 8) return "Password must be at least 8 characters.";
+  if (!/[A-Z]/.test(password)) return "Password must include an uppercase letter.";
+  if (!/[a-z]/.test(password)) return "Password must include a lowercase letter.";
+  if (!/[0-9]/.test(password)) return "Password must include a number.";
+  if (!/[^A-Za-z0-9]/.test(password)) return "Password must include a symbol.";
+  return null;
+}
+
+function PasswordInput({
+  id,
+  visible,
+  onToggleVisible,
+  ...props
+}: Omit<ComponentProps<typeof Input>, "type"> & {
+  visible: boolean;
+  onToggleVisible: () => void;
+}) {
+  return (
+    <div className="relative">
+      <Input id={id} type={visible ? "text" : "password"} className="pr-10" {...props} />
+      <button
+        type="button"
+        className="absolute inset-y-0 right-0 flex items-center px-3 text-parsel-muted hover:text-parsel-text"
+        onClick={onToggleVisible}
+        aria-label={visible ? "Hide password" : "Show password"}
+        aria-controls={id}
+      >
+        {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+    </div>
+  );
+}
+
 export function AuthPage({ mode }: { mode: Mode }) {
   const { isAuthenticated, login, register } = useAuth();
   const navigate = useNavigate();
@@ -16,6 +54,9 @@ export function AuthPage({ mode }: { mode: Mode }) {
   const [email, setEmail] = useState("");
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -31,10 +72,23 @@ export function AuthPage({ mode }: { mode: Mode }) {
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+
+    if (isRegister) {
+      const strengthError = passwordStrengthError(password);
+      if (strengthError) {
+        setError(strengthError);
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError("Passwords do not match.");
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       if (isRegister) {
-        await register(username.trim(), email.trim(), password);
+        await register(username.trim(), email.trim(), password, confirmPassword);
       } else {
         await login(loginId.trim(), password);
       }
@@ -106,16 +160,35 @@ export function AuthPage({ mode }: { mode: Mode }) {
             )}
             <Field>
               <FieldLabel htmlFor="password">Password</FieldLabel>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
                 autoComplete={isRegister ? "new-password" : "current-password"}
                 required
                 minLength={isRegister ? 8 : 1}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                visible={showPassword}
+                onToggleVisible={() => setShowPassword((v) => !v)}
               />
+              {isRegister ? (
+                <p className="mt-1.5 text-xs text-parsel-muted">{PASSWORD_HINT}</p>
+              ) : null}
             </Field>
+            {isRegister ? (
+              <Field>
+                <FieldLabel htmlFor="confirm-password">Confirm password</FieldLabel>
+                <PasswordInput
+                  id="confirm-password"
+                  autoComplete="new-password"
+                  required
+                  minLength={8}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  visible={showConfirmPassword}
+                  onToggleVisible={() => setShowConfirmPassword((v) => !v)}
+                />
+              </Field>
+            ) : null}
           </FieldGroup>
 
           {error ? (

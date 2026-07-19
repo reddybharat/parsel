@@ -29,4 +29,6 @@ async def get_current_user(
     user = await get_user_by_id(user_id)
     if user is None:
         raise unauthorized("User not found.")
+    if not user.is_active:
+        raise unauthorized("Account is disabled.")
     return user

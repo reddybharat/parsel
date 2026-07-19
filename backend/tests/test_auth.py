@@ -14,6 +14,7 @@ from auth.deps import get_current_user
 from auth.models import User
 from auth.security import create_access_token, hash_password, verify_password
 from auth.service import (
+    AccountInactiveError,
     EmailAlreadyRegisteredError,
     InvalidCredentialsError,
     UsernameAlreadyTakenError,
@@ -23,6 +24,18 @@ from main import app
 client = TestClient(app)
 
 ALICE_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
+STRONG_PASSWORD = "Password1!"
+
+
+def _register_payload(**overrides):
+    payload = {
+        "username": "alice",
+        "email": "alice@example.com",
+        "password": STRONG_PASSWORD,
+        "confirm_password": STRONG_PASSWORD,
+    }
+    payload.update(overrides)
+    return payload
 
 
 def _user(
@@ -34,7 +47,7 @@ def _user(
         id=user_id,
         username=username,
         email=email,
-        password_hash=hash_password("password123"),
+        password_hash=hash_password(STRONG_PASSWORD),
     )
 
 
@@ -53,14 +66,7 @@ def test_hash_and_verify_password():
 def test_register_returns_token():
     user = _user()
     with patch("auth.router.register_user", new_callable=AsyncMock, return_value=user):
-        response = client.post(
-            "/auth/register",
-            json={
-                "username": "alice",
-                "email": "alice@example.com",
-                "password": "password123",
-            },
-        )
+        response = client.post("/auth/register", json=_register_payload())
     assert response.status_code == 201
     data = response.json()
     assert data["token_type"] == "bearer"
@@ -73,14 +79,7 @@ def test_register_duplicate_username_conflict():
         new_callable=AsyncMock,
         side_effect=UsernameAlreadyTakenError("Username is already taken."),
     ):
-        response = client.post(
-            "/auth/register",
-            json={
-                "username": "alice",
-                "email": "alice@example.com",
-                "password": "password123",
-            },
-        )
+        response = client.post("/auth/register", json=_register_payload())
     assert response.status_code == 409
 
 
@@ -92,13 +91,58 @@ def test_register_duplicate_email_conflict():
     ):
         response = client.post(
             "/auth/register",
-            json={
-                "username": "alice2",
-                "email": "alice@example.com",
-                "password": "password123",
-            },
+            json=_register_payload(username="alice2"),
         )
     assert response.status_code == 409
+
+
+def test_register_rejects_invalid_email():
+    response = client.post(
+        "/auth/register",
+        json=_register_payload(email="not-an-email"),
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert any("valid email" in str(item.get("msg", "")).lower() for item in detail)
+
+
+def test_register_rejects_invalid_username():
+    response = client.post(
+        "/auth/register",
+        json=_register_payload(username="bad name!"),
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert any("letters, numbers, and underscores" in str(item.get("msg", "")) for item in detail)
+
+
+def test_register_rejects_short_password():
+    response = client.post(
+        "/auth/register",
+        json=_register_payload(password="Short1!", confirm_password="Short1!"),
+    )
+    assert response.status_code == 422
+
+
+def test_register_rejects_weak_password():
+    response = client.post(
+        "/auth/register",
+        json=_register_payload(password="password123", confirm_password="password123"),
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    msgs = " ".join(str(item.get("msg", "")).lower() for item in detail)
+    assert "uppercase" in msgs or "symbol" in msgs
+
+
+def test_register_rejects_password_mismatch():
+    response = client.post(
+        "/auth/register",
+        json=_register_payload(confirm_password="Password2!"),
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert any("do not match" in str(item.get("msg", "")).lower() for item in detail)
 
 
 def test_login_success():
@@ -106,7 +150,7 @@ def test_login_success():
     with patch("auth.router.authenticate_user", new_callable=AsyncMock, return_value=user):
         response = client.post(
             "/auth/login",
-            json={"login": "alice", "password": "password123"},
+            json={"login": "alice", "password": STRONG_PASSWORD},
         )
     assert response.status_code == 200
     assert "access_token" in response.json()
@@ -125,15 +169,29 @@ def test_login_invalid_credentials():
     assert response.status_code == 401
 
 
+def test_login_inactive_account():
+    with patch(
+        "auth.router.authenticate_user",
+        new_callable=AsyncMock,
+        side_effect=AccountInactiveError("Account is disabled."),
+    ):
+        response = client.post(
+            "/auth/login",
+            json={"login": "alice", "password": STRONG_PASSWORD},
+        )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Account is disabled."
+
+
 def test_login_with_email_success():
     user = _user()
     with patch("auth.router.authenticate_user", new_callable=AsyncMock, return_value=user) as mock_auth:
         response = client.post(
             "/auth/login",
-            json={"login": "alice@example.com", "password": "password123"},
+            json={"login": "alice@example.com", "password": STRONG_PASSWORD},
         )
     assert response.status_code == 200
-    mock_auth.assert_awaited_once_with("alice@example.com", "password123")
+    mock_auth.assert_awaited_once_with("alice@example.com", STRONG_PASSWORD)
 
 
 def test_protected_route_requires_auth():
