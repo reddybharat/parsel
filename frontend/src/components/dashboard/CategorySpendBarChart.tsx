@@ -41,6 +41,37 @@ function toChartData(items: CategorySpendItem[]) {
   }));
 }
 
+function FirstCategoryLabel({
+  x,
+  y,
+  height,
+  value,
+  index,
+}: {
+  x?: number | string;
+  y?: number | string;
+  height?: number | string;
+  value?: string | number;
+  index?: number;
+}) {
+  if (index !== 0 || value == null || x == null || y == null || height == null) {
+    return null;
+  }
+
+  return (
+    <text
+      x={Number(x) + 8}
+      y={Number(y) + Number(height) / 2}
+      textAnchor="start"
+      dominantBaseline="middle"
+      className="fill-background"
+      fontSize={12}
+    >
+      {value}
+    </text>
+  );
+}
+
 function CategoryBarChart({
   data,
   className,
@@ -71,18 +102,21 @@ function CategoryBarChart({
           content={
             <ChartTooltipContent
               hideLabel
-              formatter={(value) => formatInrAmount(Number(value))}
+              hideIndicator
+              formatter={(value, _name, item) => {
+                const category = item.payload?.category;
+                const label = typeof category === "string" ? category : "";
+                return (
+                  <span className="font-medium text-foreground">
+                    {label ? `${label}: ${formatInrAmount(Number(value))}` : formatInrAmount(Number(value))}
+                  </span>
+                );
+              }}
             />
           }
         />
         <Bar dataKey="spend" fill="var(--color-spend)" radius={4}>
-          <LabelList
-            dataKey="category"
-            position="insideLeft"
-            offset={8}
-            className="fill-background"
-            fontSize={12}
-          />
+          <LabelList dataKey="category" content={<FirstCategoryLabel />} />
           <LabelList
             dataKey="spend"
             position="right"
