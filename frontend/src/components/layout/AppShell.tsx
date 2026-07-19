@@ -57,8 +57,9 @@ function SettingsIcon() {
 
 function LogoutIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12H3m12 0l-3-3m3 3l-3 3M7 5h4a2 2 0 012 2v10a2 2 0 01-2 2H7" />
+    <svg className={ICON_CLASS} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12H3m12 0l-3.5-3.5M15 12l-3.5 3.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h2" />
     </svg>
   );
 }
@@ -124,7 +125,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <SettingsIcon />
                 Settings
               </p>
-              <div className="border-t border-parsel-border pt-3">
+              <div className="space-y-2 border-t border-parsel-border pt-3">
                 <div className="flex items-center gap-2.5 rounded-xl border border-parsel-border bg-parsel-soft p-2.5">
                   <span
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-parsel-avatar-bg text-xs font-semibold text-parsel-secondary"
@@ -138,16 +139,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     </p>
                     <p className="text-xs text-parsel-muted">Signed in</p>
                   </div>
-                  <button
-                    type="button"
-                    className="shrink-0 text-parsel-outflow hover:text-parsel-danger-text"
-                    onClick={handleLogout}
-                    aria-label="Log out"
-                    title="Log out"
-                  >
-                    <LogoutIcon />
-                  </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-parsel-border bg-parsel-surface px-2.5 py-2 text-sm font-medium text-parsel-muted transition hover:border-parsel-danger/40 hover:bg-parsel-danger-bg hover:text-parsel-danger-text"
+                >
+                  <LogoutIcon />
+                  <span>Log out</span>
+                </button>
               </div>
             </div>
           </div>
