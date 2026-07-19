@@ -7,7 +7,7 @@ One graph run per session; follow-ups resume via Command(resume=...).
 
 import uuid
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph
 from langgraph.types import Command
 
@@ -74,26 +74,16 @@ async def thread_exists(thread_id: str) -> bool:
 async def start_turn(message: str, *, user_id: uuid.UUID) -> tuple[str, str]:
     """Start a new chat thread: run agent, interrupt at wait_user.
 
-    Returns (reply, thread_id). user_id is injected into the prompt so generated
-    SQL filters to that user's rows.
+    Returns (reply, thread_id). user_id is stored in graph state and used to
+    format SYSTEM_PROMPT_TEMPLATE in the agent node.
     """
     thread_id = f"{user_id}:{uuid.uuid4()}"
     graph = _get_graph()
     logger.info("Starting thread_id=%s user_id=%s", thread_id, user_id)
-    uid = str(user_id)
     result = await graph.ainvoke(
         {
-            "messages": [
-                SystemMessage(
-                    content=(
-                        f"The current user's id is {uid}. "
-                        f"Every SELECT on public.transactions MUST include "
-                        f"WHERE user_id = '{uid}' (or an equivalent AND user_id = '{uid}'). "
-                        f"Never query another user's data."
-                    )
-                ),
-                HumanMessage(content=message),
-            ]
+            "messages": [HumanMessage(content=message)],
+            "user_id": str(user_id),
         },
         config=_thread_config(thread_id),
     )

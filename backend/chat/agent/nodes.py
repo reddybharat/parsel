@@ -6,39 +6,34 @@ from langgraph.graph import END
 from langgraph.types import Command, interrupt
 
 from chat.agent.llm import get_llm
+from chat.agent.prompt import SYSTEM_PROMPT_TEMPLATE
 from chat.agent.replies import final_user_reply
-from chat.agent.prompt import SYSTEM_PROMPT
 from chat.agent.state import AgentState
 from chat.agent.tools import ALL_TOOLS
 from common.logger import get_logger
 
 logger = get_logger(__name__)
 
-_inner_agent = None
 
-
-def _get_inner_agent():
-    """Lazily build and cache the inner agent (LLM + tools)."""
-    global _inner_agent
-    if _inner_agent is not None:
-        return _inner_agent
-
-    logger.info("Building inner agent (LLM + tools)")
+def _get_inner_agent(user_id: str):
+    """Build the inner agent with a system prompt scoped to this user."""
+    logger.info("Building inner agent (LLM + tools) for user_id=%s", user_id)
     llm = get_llm()
     logger.info("LLM initialized: %s", type(llm).__name__)
-    _inner_agent = create_agent(
+    agent = create_agent(
         model=llm,
         tools=ALL_TOOLS,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=SYSTEM_PROMPT_TEMPLATE.format(user_id=user_id),
     )
     logger.info("Inner agent created successfully")
-    return _inner_agent
+    return agent
 
 
 async def agent_node(state: AgentState) -> Command:
     """Run the inner LLM agent, then route to wait_user for continue/exit."""
-    logger.info("agent_node called with %d messages", len(state["messages"]))
-    inner = _get_inner_agent()
+    user_id = state["user_id"]
+    logger.info("agent_node called with %d messages user_id=%s", len(state["messages"]), user_id)
+    inner = _get_inner_agent(user_id)
 
     logger.info("Invoking inner agent...")
     result = await inner.ainvoke({"messages": state["messages"]})

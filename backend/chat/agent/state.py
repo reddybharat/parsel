@@ -2,16 +2,13 @@
 
 from typing import Annotated
 
+from langchain_core.messages import BaseMessage
 from langgraph.graph import MessagesState
 from langgraph.graph.message import add_messages
-from langchain_core.messages import BaseMessage
 
 
 class AgentState(MessagesState):
-    """Graph state carrying the conversation message history.
-
-    The `messages` key uses the add_messages reducer so each node
-    can append new messages without overwriting existing ones.
-    """
+    """Graph state: conversation history plus the owning user id."""
 
     messages: Annotated[list[BaseMessage], add_messages]
+    user_id: str

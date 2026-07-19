@@ -109,7 +109,10 @@ async def execute_query(query: str) -> str:
     if not is_database_configured():
         logger.error("Database not configured for execute_query")
         return json.dumps(
-            {"error": "Database is not configured. Set DATABASE_URL in .env."}
+            {
+                "status": "error",
+                "error": "Database is not configured. Set DATABASE_URL in .env.",
+            }
         )
 
     try:
@@ -119,11 +122,30 @@ async def execute_query(query: str) -> str:
 
         rows = [dict(row) for row in fetched]
         logger.info("Query returned %d rows", len(rows))
-        return json.dumps({"row_count": len(rows), "rows": rows}, default=str)
+        if not rows:
+            return json.dumps(
+                {
+                    "status": "no_matches",
+                    "row_count": 0,
+                    "rows": [],
+                    "hint": (
+                        "No rows matched (not an error). Tell the user nothing matched "
+                        "and suggest broader dates, category, or search terms."
+                    ),
+                },
+                default=str,
+            )
+        return json.dumps(
+            {"status": "ok", "row_count": len(rows), "rows": rows},
+            default=str,
+        )
     except Exception as e:
         logger.error("execute_query failed: %s", e)
         return json.dumps(
-            {"error": "Query execution failed. Please check your query and try again."}
+            {
+                "status": "error",
+                "error": "Query execution failed. Please check your query and try again.",
+            }
         )
 
 
