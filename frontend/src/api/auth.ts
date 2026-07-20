@@ -22,3 +22,7 @@ export async function register(
     confirm_password: confirmPassword,
   });
 }
+
+export async function refreshSession(): Promise<TokenResponse> {
+  return postJson<TokenResponse>("/auth/refresh");
+}

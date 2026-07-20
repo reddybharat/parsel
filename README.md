@@ -56,7 +56,7 @@ Environment variables are loaded from `backend/.env` when the API starts (`pytho
 |---|---|---|
 | `DATABASE_URL` | Yes | PostgreSQL URL (`postgresql://…` or `postgresql+asyncpg://…`) |
 | `JWT_SECRET` | Yes | Secret key used to sign access tokens (use a long random string) |
-| `JWT_EXPIRE_DAYS` | No | Access token lifetime in days (default: `7`) |
+| `JWT_EXPIRE_MINUTES` | No | Access token lifetime in minutes (default: `10`) |
 | `ENV` | No | Set to `production` to disable `/docs`, `/redoc`, and `/openapi.json` |
 | `GROQ_API_KEY` | For chat | Groq API key for the chat assistant |
 | `GROQ_MODEL` | No | Groq model id (default: `llama-3.3-70b-versatile`) |
@@ -87,6 +87,7 @@ Allowed `category` and `payment_method` values are enforced by the API and match
 
 - `POST /auth/register` — `{ username, email, password }` (username 3–32: letters/numbers/`_`; password min 8); returns a JWT.
 - `POST /auth/login` — `{ login, password }` where `login` is username or email; returns a JWT.
+- `POST /auth/refresh` — requires a still-valid Bearer token; returns a fresh JWT (extends the session).
 - All tracker, dashboard, config, and chat routes require `Authorization: Bearer <token>`.
 - Each user only sees and mutates their own transactions.
 

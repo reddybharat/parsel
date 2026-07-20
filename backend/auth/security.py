@@ -11,7 +11,7 @@ import jwt
 from fastapi import HTTPException, status
 
 ALGORITHM = "HS256"
-DEFAULT_EXPIRE_DAYS = 7
+DEFAULT_EXPIRE_MINUTES = 10
 
 
 def unauthorized(detail: str) -> HTTPException:
@@ -29,15 +29,15 @@ def get_jwt_secret() -> str:
     return secret
 
 
-def get_jwt_expire_days() -> int:
-    raw = os.getenv("JWT_EXPIRE_DAYS", str(DEFAULT_EXPIRE_DAYS)).strip()
+def get_jwt_expire_minutes() -> int:
+    raw = os.getenv("JWT_EXPIRE_MINUTES", str(DEFAULT_EXPIRE_MINUTES)).strip()
     try:
-        days = int(raw)
+        minutes = int(raw)
     except ValueError as exc:
-        raise RuntimeError("JWT_EXPIRE_DAYS must be an integer.") from exc
-    if days < 1:
-        raise RuntimeError("JWT_EXPIRE_DAYS must be >= 1.")
-    return days
+        raise RuntimeError("JWT_EXPIRE_MINUTES must be an integer.") from exc
+    if minutes < 1:
+        raise RuntimeError("JWT_EXPIRE_MINUTES must be >= 1.")
+    return minutes
 
 
 def hash_password(password: str) -> str:
@@ -52,7 +52,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def create_access_token(*, user_id: uuid.UUID, email: str, username: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(days=get_jwt_expire_days())
+    expire = datetime.now(timezone.utc) + timedelta(minutes=get_jwt_expire_minutes())
     payload = {
         "sub": str(user_id),
         "email": email,

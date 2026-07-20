@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from auth.deps import get_current_user
 from auth.models import User
 from auth.schemas import LoginRequest, RegisterRequest, TokenResponse
 from auth.security import create_access_token, unauthorized
@@ -42,4 +43,10 @@ async def login(body: LoginRequest) -> TokenResponse:
         raise unauthorized(str(exc)) from exc
     except InvalidCredentialsError as exc:
         raise unauthorized(str(exc)) from exc
+    return _token_response(user)
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh(user: User = Depends(get_current_user)) -> TokenResponse:
+    """Issue a new access token while the current one is still valid."""
     return _token_response(user)
