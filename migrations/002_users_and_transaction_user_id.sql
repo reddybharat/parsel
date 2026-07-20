@@ -1,5 +1,5 @@
 -- 002_users_and_transaction_user_id.sql
--- Multi-user auth: users (uuid, username, email) + transactions.user_id.
+-- Multi-user auth: users (uuid, username, email, profile, preferences) + transactions.user_id.
 --
 -- Prerequisites: 001_initial_transactions.sql (or an existing transactions table).
 --
@@ -8,6 +8,7 @@
 --   2) Start the API and register via UI /register (or POST /auth/register).
 --   3) Note your users.id (UUID), then uncomment and run STEP B with that id.
 --      If transactions is empty, skip the UPDATE and still run SET NOT NULL + FK.
+--   4) Optional: uncomment STEP C to seed first_name / last_name / preferences for one user.
 
 -- =============================================================================
 -- STEP A — create users + add nullable user_id
@@ -18,6 +19,9 @@ CREATE TABLE IF NOT EXISTS public.users (
   username             text NOT NULL UNIQUE,
   email                text NOT NULL UNIQUE,
   password_hash        text NOT NULL,
+  first_name           text,
+  last_name            text,
+  preferences          jsonb NOT NULL DEFAULT '{"theme":"light"}'::jsonb,
   is_active            boolean NOT NULL DEFAULT true,
   created_at           timestamptz NOT NULL DEFAULT now(),
   updated_at           timestamptz NOT NULL DEFAULT now(),
@@ -25,6 +29,12 @@ CREATE TABLE IF NOT EXISTS public.users (
   last_login_at        timestamptz,
   version_no           integer NOT NULL DEFAULT 0
 );
+
+-- Upgrade path when users already exists from an earlier 002 without profile columns
+ALTER TABLE public.users
+  ADD COLUMN IF NOT EXISTS first_name text,
+  ADD COLUMN IF NOT EXISTS last_name text,
+  ADD COLUMN IF NOT EXISTS preferences jsonb NOT NULL DEFAULT '{"theme":"light"}'::jsonb;
 
 ALTER TABLE public.transactions
   ADD COLUMN IF NOT EXISTS user_id uuid;
@@ -59,3 +69,22 @@ CREATE INDEX IF NOT EXISTS idx_transactions_user_id
 -- ALTER TABLE public.transactions
 --   ADD CONSTRAINT transactions_user_id_fkey
 --   FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+-- =============================================================================
+-- STEP C — optional: backfill profile + preferences for one existing user
+--
+-- Replace YOUR_USERNAME and name/theme values, then uncomment and run.
+-- =============================================================================
+
+-- UPDATE public.users
+-- SET
+--   first_name = 'Bharat',
+--   last_name = 'Reddy',
+--   preferences = '{"theme":"dark"}'::jsonb,
+--   version_no = version_no + 1,
+--   updated_at = now()
+-- WHERE username = 'YOUR_USERNAME';
+
+-- SELECT id, username, email, first_name, last_name, preferences, version_no
+-- FROM public.users
+-- WHERE username = 'YOUR_USERNAME';

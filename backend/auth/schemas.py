@@ -1,4 +1,5 @@
 import re
+from typing import Literal
 
 from email_validator import EmailNotValidError, validate_email
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -8,6 +9,27 @@ _PASSWORD_UPPER_RE = re.compile(r"[A-Z]")
 _PASSWORD_LOWER_RE = re.compile(r"[a-z]")
 _PASSWORD_DIGIT_RE = re.compile(r"[0-9]")
 _PASSWORD_SYMBOL_RE = re.compile(r"[^A-Za-z0-9]")
+_NAME_MAX_LEN = 50
+
+
+def normalize_username(value: str) -> str:
+    normalized = value.strip().lower()
+    if not _USERNAME_RE.match(normalized):
+        raise ValueError(
+            "Username must be 3–32 characters: letters, numbers, and underscores only."
+        )
+    return normalized
+
+
+def normalize_optional_name(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    if len(stripped) > _NAME_MAX_LEN:
+        raise ValueError(f"Name must be at most {_NAME_MAX_LEN} characters.")
+    return stripped
 
 
 def validate_password_strength(password: str) -> str:
@@ -37,12 +59,7 @@ class RegisterRequest(BaseModel):
     @field_validator("username")
     @classmethod
     def username_format(cls, v: str) -> str:
-        normalized = v.strip().lower()
-        if not _USERNAME_RE.match(normalized):
-            raise ValueError(
-                "Username must be 3–32 characters: letters, numbers, and underscores only."
-            )
-        return normalized
+        return normalize_username(v)
 
     @field_validator("email")
     @classmethod
@@ -79,5 +96,45 @@ class LoginRequest(BaseModel):
 
 
 class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UserPreferences(BaseModel):
+    theme: Literal["light", "dark"] = "light"
+
+
+class MeResponse(BaseModel):
+    username: str
+    email: str
+    first_name: str | None = None
+    last_name: str | None = None
+    preferences: UserPreferences
+
+
+class UpdateMeRequest(BaseModel):
+    username: str | None = Field(default=None, min_length=3, max_length=32)
+    first_name: str | None = Field(default=None, max_length=_NAME_MAX_LEN)
+    last_name: str | None = Field(default=None, max_length=_NAME_MAX_LEN)
+    preferences: UserPreferences | None = None
+
+    @field_validator("username")
+    @classmethod
+    def username_format(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return normalize_username(v)
+
+    @field_validator("first_name", "last_name", mode="before")
+    @classmethod
+    def name_optional(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            raise ValueError("Name must be a string.")
+        return normalize_optional_name(v)
+
+
+class UpdateMeResponse(MeResponse):
     access_token: str
     token_type: str = "bearer"

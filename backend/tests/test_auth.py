@@ -42,12 +42,20 @@ def _user(
     user_id: uuid.UUID = ALICE_ID,
     username: str = "alice",
     email: str = "alice@example.com",
+    first_name: str | None = None,
+    last_name: str | None = None,
+    preferences: dict | None = None,
+    version_no: int = 0,
 ) -> User:
     return User(
         id=user_id,
         username=username,
         email=email,
         password_hash=hash_password(STRONG_PASSWORD),
+        first_name=first_name,
+        last_name=last_name,
+        preferences=preferences if preferences is not None else {"theme": "light"},
+        version_no=version_no,
     )
 
 
@@ -245,3 +253,124 @@ def test_user_isolation_update_other_users_transaction_404():
             headers={"Authorization": "Bearer unused"},
         )
     assert response.status_code == 404
+
+
+def test_get_me_returns_profile():
+    user = _user(first_name="Alice", preferences={"theme": "dark"})
+
+    async def override_current_user():
+        return user
+
+    app.dependency_overrides[get_current_user] = override_current_user
+    response = client.get("/auth/me", headers={"Authorization": "Bearer unused"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["username"] == "alice"
+    assert body["email"] == "alice@example.com"
+    assert body["first_name"] == "Alice"
+    assert body["last_name"] is None
+    assert body["preferences"] == {"theme": "dark"}
+    assert "access_token" not in body
+
+
+def test_patch_me_updates_names_and_theme():
+    user = _user(version_no=2)
+    updated = _user(
+        first_name="Ali",
+        last_name="Smith",
+        preferences={"theme": "dark"},
+        version_no=3,
+    )
+
+    async def override_current_user():
+        return user
+
+    app.dependency_overrides[get_current_user] = override_current_user
+    with patch("auth.router.update_me", new_callable=AsyncMock, return_value=updated) as mock_update:
+        response = client.patch(
+            "/auth/me",
+            json={
+                "first_name": "Ali",
+                "last_name": "Smith",
+                "preferences": {"theme": "dark"},
+            },
+            headers={"Authorization": "Bearer unused"},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["first_name"] == "Ali"
+    assert body["last_name"] == "Smith"
+    assert body["preferences"] == {"theme": "dark"}
+    assert isinstance(body["access_token"], str) and body["access_token"]
+    mock_update.assert_awaited_once()
+    kwargs = mock_update.await_args.kwargs
+    assert kwargs["first_name"] == "Ali"
+    assert kwargs["last_name"] == "Smith"
+    assert kwargs["preferences"] == {"theme": "dark"}
+
+
+def test_patch_me_username_taken_conflict():
+    user = _user()
+
+    async def override_current_user():
+        return user
+
+    app.dependency_overrides[get_current_user] = override_current_user
+    with patch(
+        "auth.router.update_me",
+        new_callable=AsyncMock,
+        side_effect=UsernameAlreadyTakenError("Username is already taken."),
+    ):
+        response = client.patch(
+            "/auth/me",
+            json={"username": "bob"},
+            headers={"Authorization": "Bearer unused"},
+        )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Username is already taken."
+
+
+def test_patch_me_rejects_invalid_username():
+    user = _user()
+
+    async def override_current_user():
+        return user
+
+    app.dependency_overrides[get_current_user] = override_current_user
+    response = client.patch(
+        "/auth/me",
+        json={"username": "bad name!"},
+        headers={"Authorization": "Bearer unused"},
+    )
+    assert response.status_code == 422
+
+
+def test_patch_me_rejects_invalid_theme():
+    user = _user()
+
+    async def override_current_user():
+        return user
+
+    app.dependency_overrides[get_current_user] = override_current_user
+    response = client.patch(
+        "/auth/me",
+        json={"preferences": {"theme": "neon"}},
+        headers={"Authorization": "Bearer unused"},
+    )
+    assert response.status_code == 422
+
+
+def test_refresh_after_username_change_uses_current_user():
+    user = _user(username="alice_new")
+
+    async def override_current_user():
+        return user
+
+    app.dependency_overrides[get_current_user] = override_current_user
+    response = client.post("/auth/refresh", headers={"Authorization": "Bearer unused"})
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+    from auth.security import decode_access_token
+
+    claims = decode_access_token(token)
+    assert claims["username"] == "alice_new"

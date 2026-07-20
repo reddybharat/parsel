@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 
+import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { useAuth } from "@/lib/auth";
 import { prefetchDashboardOverview } from "@/lib/dashboardQuery";
 import { ThemeToggle } from "./ThemeToggle";
@@ -64,7 +66,19 @@ function LogoutIcon() {
   );
 }
 
-function initialsFromUsername(username: string | null): string {
+function initialsFromProfile(
+  firstName: string | null,
+  lastName: string | null,
+  username: string | null,
+): string {
+  const first = firstName?.trim();
+  const last = lastName?.trim();
+  if (first && last) {
+    return `${first[0] ?? ""}${last[0] ?? ""}`.toUpperCase();
+  }
+  if (first) {
+    return first.slice(0, 2).toUpperCase();
+  }
   if (!username) return "?";
   const parts = username.split(/[._-]+/).filter(Boolean);
   if (parts.length >= 2) {
@@ -81,10 +95,12 @@ const NAV_ITEMS: ShellNavItem[] = [
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { username, email, logout } = useAuth();
+  const { username, email, firstName, lastName, logout } = useAuth();
   const navigate = useNavigate();
-  const displayName = username ?? email ?? "Signed in";
-  const initials = initialsFromUsername(username ?? email);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const primaryLabel = firstName?.trim() || username || email || "Signed in";
+  const secondaryLabel = username ?? email ?? "";
+  const initials = initialsFromProfile(firstName, lastName, username ?? email);
 
   function handleLogout() {
     logout();
@@ -120,30 +136,38 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </NavLink>
               ))}
             </nav>
-            <div className="mt-auto space-y-0">
-              <p className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-parsel-muted">
-                <SettingsIcon />
-                Settings
-              </p>
-              <div className="space-y-2 border-t border-parsel-border pt-3">
-                <div className="flex items-center gap-2.5 rounded-xl border border-parsel-border bg-parsel-soft p-2.5">
+            <div className="mt-auto border-t border-parsel-border pt-3">
+              <div className="rounded-xl border border-parsel-border bg-parsel-soft p-2.5">
+                <div className="flex items-center gap-2.5 px-0.5 py-0.5">
                   <span
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-parsel-avatar-bg text-xs font-semibold text-parsel-secondary"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-parsel-avatar-bg text-xs font-semibold text-parsel-secondary"
                     aria-hidden
                   >
                     {initials}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium" title={displayName}>
-                      {displayName}
+                    <p className="truncate text-sm font-medium leading-tight" title={primaryLabel}>
+                      {primaryLabel}
                     </p>
-                    <p className="text-xs text-parsel-muted">Signed in</p>
+                    {secondaryLabel ? (
+                      <p className="truncate text-xs leading-tight text-parsel-muted" title={secondaryLabel}>
+                        {secondaryLabel}
+                      </p>
+                    ) : null}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setSettingsOpen(true)}
+                    className="shrink-0 rounded-md p-1 text-parsel-muted transition hover:bg-parsel-surface hover:text-parsel-text"
+                    aria-label="Settings"
+                  >
+                    <SettingsIcon />
+                  </button>
                 </div>
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-parsel-border bg-parsel-surface px-2.5 py-2 text-sm font-medium text-parsel-muted transition hover:border-parsel-danger/40 hover:bg-parsel-danger-bg hover:text-parsel-danger-text"
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-parsel-border bg-parsel-surface px-2.5 py-2 text-sm font-medium text-parsel-muted transition hover:border-parsel-danger/40 hover:bg-parsel-danger-bg hover:text-parsel-danger-text"
                 >
                   <LogoutIcon />
                   <span>Log out</span>
@@ -156,6 +180,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex h-full w-full min-h-0 flex-col overflow-hidden px-4 py-3">{children}</div>
         </main>
       </div>
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   );
 }
