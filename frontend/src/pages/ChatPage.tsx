@@ -145,8 +145,8 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <section className="mx-auto flex h-full min-h-0 w-full max-w-content flex-col rounded-xl border border-parsel-border bg-parsel-surface">
+    <div className="flex h-full min-h-0 flex-col gap-1.5">
+      <section className="mx-auto flex h-full min-h-0 w-full max-w-content flex-col rounded-none border border-parsel-border bg-parsel-surface shadow-none">
         <header className="flex shrink-0 justify-end border-b border-parsel-border px-6 py-3 md:px-8">
           <button
             className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary hover:text-parsel-primary"
@@ -164,13 +164,13 @@ export function ChatPage() {
               <MessageScrollerContent>
                 {messages.length === 0 && !processing && (
                   <div className="space-y-4">
-                    <div className="space-y-2 rounded-lg border border-parsel-border bg-parsel-soft p-3">
+                    <div className="space-y-2 rounded-none border border-parsel-border bg-parsel-soft p-3">
                       <p className="text-sm text-parsel-muted">Try one of these prompts:</p>
                       <div className="grid gap-2 md:grid-cols-2">
                         {SUGGESTIONS.map((item) => (
                           <button
                             key={item}
-                            className="rounded-lg border border-parsel-border px-3 py-2 text-left text-sm hover:bg-parsel-soft"
+                            className="rounded-none border border-parsel-border px-3 py-2 text-left text-sm hover:bg-parsel-soft"
                             onClick={() => void send(item)}
                             disabled={processing}
                           >
@@ -211,7 +211,7 @@ export function ChatPage() {
             void send(draft);
           }}
         >
-          <div className="flex items-center gap-2 rounded-xl border border-parsel-border bg-parsel-soft px-3 py-1">
+          <div className="flex items-center gap-2 rounded-none border border-parsel-border bg-parsel-soft px-3 py-1">
             <button className="text-parsel-muted opacity-50" type="button" disabled aria-label="Attach file (coming soon)">
               📎
             </button>
@@ -223,7 +223,7 @@ export function ChatPage() {
               disabled={processing}
             />
             <button
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-parsel-primary text-sm text-white disabled:opacity-50"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-none bg-parsel-primary text-sm text-primary-foreground disabled:opacity-50"
               type="submit"
               disabled={processing || !draft.trim()}
               aria-label="Send message"

@@ -33,8 +33,8 @@ function CashFlowTile({
 
 export function CashFlowTiles({ inflow, outflow, investments, tileClassName }: CashFlowTilesProps) {
   return (
-    <div className="grid gap-3">
-      <div className="grid grid-cols-2 gap-3">
+    <div className="grid gap-1.5">
+      <div className="grid grid-cols-2 gap-1.5">
         <CashFlowTile label="Inflow" amount={inflow} amountClassName="text-parsel-inflow" tileClassName={tileClassName} />
         <CashFlowTile label="Outflow" amount={outflow} amountClassName="text-parsel-outflow" tileClassName={tileClassName} />
       </div>

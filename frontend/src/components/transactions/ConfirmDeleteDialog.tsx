@@ -23,7 +23,7 @@ export function ConfirmDeleteDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onCancel()}>
-      <DialogContent className="max-w-md sm:rounded-xl">
+      <DialogContent className="max-w-md sm:rounded-none">
         <DialogHeader>
           <DialogTitle className="text-2xl font-semibold tracking-tight text-parsel-neutral">Delete Transaction?</DialogTitle>
           <DialogDescription>

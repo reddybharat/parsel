@@ -104,14 +104,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   function handleLogout() {
     logout();
-    navigate("/login", { replace: true });
+    navigate("/", { replace: true });
   }
 
   return (
     <div className="flex h-dvh w-full flex-col bg-parsel-bg text-parsel-text">
       <header className="flex w-full shrink-0 items-center justify-between border-b border-parsel-border px-4 py-2">
         <div>
-          <h1 className="text-[28px] font-semibold tracking-tight text-parsel-primary">Parsel</h1>
+          <h1 className="text-[28px] font-semibold tracking-[0.08em] uppercase text-parsel-primary">Parsel</h1>
           <p className="text-xs text-parsel-muted">Your personal finance tracker</p>
         </div>
         <ThemeToggle />
@@ -126,7 +126,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   to={item.to}
                   onMouseEnter={item.to === "/overview" ? () => void prefetchDashboardOverview() : undefined}
                   className={({ isActive }) =>
-                    `flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition ${
+                    `flex items-center gap-2.5 rounded-none px-2.5 py-2 text-sm font-medium transition ${
                       isActive ? "bg-parsel-nav-active-bg text-parsel-nav-active-text" : "text-parsel-muted hover:bg-parsel-soft hover:text-parsel-text"
                     }`
                   }
@@ -137,10 +137,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               ))}
             </nav>
             <div className="mt-auto border-t border-parsel-border pt-3">
-              <div className="rounded-xl border border-parsel-border bg-parsel-soft p-2.5">
+              <div className="rounded-none border border-parsel-border bg-parsel-soft p-2.5">
                 <div className="flex items-center gap-2.5 px-0.5 py-0.5">
                   <span
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-parsel-avatar-bg text-xs font-semibold text-parsel-secondary"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-none bg-parsel-avatar-bg text-xs font-semibold text-parsel-secondary"
                     aria-hidden
                   >
                     {initials}
@@ -167,7 +167,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-parsel-border bg-parsel-surface px-2.5 py-2 text-sm font-medium text-parsel-muted transition hover:border-parsel-danger/40 hover:bg-parsel-danger-bg hover:text-parsel-danger-text"
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-none border border-parsel-border bg-parsel-surface px-2.5 py-2 text-sm font-medium text-parsel-muted transition hover:border-parsel-danger/40 hover:bg-parsel-danger-bg hover:text-parsel-danger-text"
                 >
                   <LogoutIcon />
                   <span>Log out</span>

@@ -9,6 +9,7 @@ import { ThemeProvider } from "./lib/theme";
 import { AddPage } from "./pages/AddPage";
 import { AuthPage } from "./pages/AuthPage";
 import { ChatPage } from "./pages/ChatPage";
+import { LandingPage } from "./pages/LandingPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { SearchPage } from "./pages/SearchPage";
 
@@ -28,18 +29,18 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <Routes>
+            <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<AuthPage mode="login" />} />
             <Route path="/register" element={<AuthPage mode="register" />} />
             <Route element={<RequireAuth />}>
               <Route element={<AuthenticatedShell />}>
-                <Route path="/" element={<Navigate to="/overview" replace />} />
                 <Route path="/overview" element={<OverviewPage />} />
                 <Route path="/ledger/search" element={<SearchPage />} />
                 <Route path="/ledger/add" element={<AddPage />} />
                 <Route path="/chat" element={<ChatPage />} />
               </Route>
             </Route>
-            <Route path="*" element={<Navigate to="/overview" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AuthProvider>
       </QueryClientProvider>

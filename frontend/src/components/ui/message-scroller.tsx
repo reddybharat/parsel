@@ -73,7 +73,7 @@ function MessageScrollerButton({
           variant="outline"
           size="icon"
           className={cn(
-            "absolute bottom-4 end-4 z-10 size-8 rounded-full shadow-md",
+            "absolute bottom-4 end-4 z-10 size-8 rounded-none shadow-none",
             "opacity-0 transition-opacity group-data-[scrollable=end]/message-scroller:opacity-100",
             "data-[active=false]:pointer-events-none data-[active=false]:opacity-0",
             className

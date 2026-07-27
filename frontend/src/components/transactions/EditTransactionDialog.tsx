@@ -38,7 +38,7 @@ export function EditTransactionDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onCancel()}>
-      <DialogContent className="max-w-xl sm:rounded-xl">
+      <DialogContent className="max-w-xl sm:rounded-none">
         <DialogHeader>
           <DialogTitle className="text-2xl font-semibold tracking-tight text-parsel-neutral">Edit Transaction</DialogTitle>
         </DialogHeader>

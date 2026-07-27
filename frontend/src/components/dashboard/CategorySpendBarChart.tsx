@@ -192,7 +192,7 @@ export function CategorySpendBarChart({
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg sm:max-w-2xl sm:rounded-xl">
+        <DialogContent className="max-w-lg sm:max-w-2xl sm:rounded-none">
           <DialogHeader>
             <DialogTitle>Category Spend</DialogTitle>
             <DialogDescription>

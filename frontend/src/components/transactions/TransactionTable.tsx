@@ -51,7 +51,7 @@ export function TransactionTable({
   }
 
   return (
-    <div className="min-h-0 overflow-auto rounded-2xl border border-parsel-border bg-parsel-surface shadow-sm">
+    <div className="min-h-0 overflow-auto rounded-none border border-parsel-border bg-parsel-surface shadow-none">
       <Table>
         <TableHeader>
           <TableRow className="sticky top-0 z-10 border-parsel-border bg-parsel-soft hover:bg-parsel-soft">

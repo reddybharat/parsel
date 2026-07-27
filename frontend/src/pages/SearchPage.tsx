@@ -249,7 +249,7 @@ export function SearchPage() {
   const canExport = Boolean(result && result.total > 0);
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-content min-h-0 flex-col gap-3 overflow-hidden">
+    <div className="mx-auto flex h-full w-full max-w-content min-h-0 flex-col gap-1.5 overflow-hidden">
       {feedback ? <StatusAlert {...feedback} onDismiss={() => setFeedback(null)} /> : null}
       {error ? (
         <StatusAlert
@@ -267,7 +267,7 @@ export function SearchPage() {
         />
       ) : null}
 
-      <form className="space-y-4 rounded-2xl border border-parsel-border bg-parsel-soft p-4 shadow-sm" onSubmit={onSearchSubmit}>
+      <form className="space-y-4 rounded-none border border-parsel-border bg-parsel-soft p-4 shadow-none" onSubmit={onSearchSubmit}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-2">
             <Button
@@ -356,7 +356,7 @@ export function SearchPage() {
       {result && !loading ? (
         <div className="flex min-h-0 flex-1 flex-col gap-2">
           {result.items.length === 0 ? (
-            <div className="rounded-xl border border-parsel-border bg-parsel-surface py-20">
+            <div className="rounded-none border border-parsel-border bg-parsel-surface py-20">
               <EmptyState title="No transactions found" detail="Try adjusting your filters." />
               <div className="mt-4 flex justify-center gap-3">
                 <Button type="button" variant="outline" onClick={clearFilters}>
@@ -383,7 +383,7 @@ export function SearchPage() {
             />
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-parsel-border bg-parsel-soft px-4 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-none border border-parsel-border bg-parsel-soft px-4 py-2.5">
             <p className="text-sm text-parsel-muted">
               Showing {rangeStart}-{rangeEnd} of {result.total} transactions
             </p>

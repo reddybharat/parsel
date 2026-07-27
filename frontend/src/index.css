@@ -2,115 +2,115 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Hybrid: Mono Signal layout + Precision cyan accents + JetBrains Mono */
 :root {
   --parsel-bg: #ffffff;
   --parsel-surface: #ffffff;
-  --parsel-soft: #f5f7fb;
-  --parsel-canvas: #f6f8fb;
-  --parsel-text: #1f2937;
-  --parsel-muted: #6b7280;
-  --parsel-primary: #2563eb;
-  --parsel-secondary: #546e7a;
-  --parsel-tertiary: #c28000;
-  --parsel-neutral: #333333;
-  --parsel-border: #d7dee8;
-  --parsel-emerald: #0f8f62;
-  --parsel-danger: #be123c;
-  --parsel-nav-active-bg: #e8eef8;
-  --parsel-nav-active-text: #2563eb;
-  --parsel-inflow: #2563eb;
-  --parsel-outflow: #dc2626;
+  --parsel-soft: #ebebeb;
+  --parsel-canvas: #f3f3f3;
+  --parsel-text: #0a0a0a;
+  --parsel-muted: #6b6b6b;
+  --parsel-primary: #00a3c4;
+  --parsel-secondary: #444444;
+  --parsel-tertiary: #00a3c4;
+  --parsel-neutral: #0a0a0a;
+  --parsel-border: #d4d4d4;
+  --parsel-emerald: #15803d;
+  --parsel-danger: #b91c1c;
+  --parsel-nav-active-bg: #0a0a0a;
+  --parsel-nav-active-text: #ffffff;
+  --parsel-inflow: #15803d;
+  --parsel-outflow: #b91c1c;
   --parsel-success-bg: #dcfce7;
   --parsel-success-text: #15803d;
   --parsel-danger-bg: #fee2e2;
   --parsel-danger-text: #b91c1c;
-  --parsel-avatar-bg: #dbe4f0;
-  --parsel-icon-bg: #eef2f7;
+  --parsel-avatar-bg: #ebebeb;
+  --parsel-icon-bg: #ebebeb;
 
   --background: 0 0% 100%;
-  --foreground: 220 13% 18%;
+  --foreground: 0 0% 4%;
   --card: 0 0% 100%;
-  --card-foreground: 220 13% 18%;
+  --card-foreground: 0 0% 4%;
   --popover: 0 0% 100%;
-  --popover-foreground: 220 13% 18%;
-  --primary: 221 83% 53%;
+  --popover-foreground: 0 0% 4%;
+  --primary: 190 100% 38%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 220 27% 98%;
-  --secondary-foreground: 220 13% 18%;
-  --muted: 220 27% 98%;
-  --muted-foreground: 220 9% 46%;
-  --accent: 220 27% 98%;
-  --accent-foreground: 220 13% 18%;
-  --destructive: 347 77% 42%;
+  --secondary: 0 0% 96%;
+  --secondary-foreground: 0 0% 4%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 42%;
+  --accent: 0 0% 96%;
+  --accent-foreground: 0 0% 4%;
+  --destructive: 0 72% 42%;
   --destructive-foreground: 0 0% 100%;
-  --border: 214 24% 88%;
-  --input: 214 24% 88%;
-  --ring: 221 83% 53%;
-  --radius: 0.5rem;
-  /* Blue shade ramp from Parsel primary (#2563eb); chart-1 is brand for single-series charts */
-  --chart-1: 221 83% 53%;
-  --chart-2: 221 83% 68%;
-  --chart-3: 221 78% 44%;
-  --chart-4: 221 72% 36%;
-  --chart-5: 221 65% 28%;
-  --chart-6: 221 83% 78%;
-  --chart-7: 214 45% 58%;
-  --chart-8: 214 35% 48%;
+  --border: 0 0% 83%;
+  --input: 0 0% 83%;
+  --ring: 190 100% 38%;
+  --radius: 0rem;
+  /* Cyan chart ramp (Precision accent) */
+  --chart-1: 190 100% 38%;
+  --chart-2: 190 90% 48%;
+  --chart-3: 190 85% 32%;
+  --chart-4: 190 80% 26%;
+  --chart-5: 190 75% 20%;
+  --chart-6: 190 70% 62%;
+  --chart-7: 195 45% 50%;
+  --chart-8: 195 35% 42%;
 }
 
 .dark {
-  --parsel-bg: #0f1419;
-  --parsel-surface: #1a2230;
-  --parsel-soft: #243044;
-  --parsel-canvas: #121820;
-  --parsel-text: #e8edf4;
-  --parsel-muted: #94a3b8;
-  --parsel-primary: #60a5fa;
-  --parsel-secondary: #8b9cb3;
-  --parsel-tertiary: #f59e0b;
-  --parsel-neutral: #e2e8f0;
-  --parsel-border: #2d3a4d;
-  --parsel-emerald: #34d399;
-  --parsel-danger: #fb7185;
-  --parsel-nav-active-bg: #1e3a5f;
-  --parsel-nav-active-text: #60a5fa;
-  --parsel-inflow: #60a5fa;
+  --parsel-bg: #000000;
+  --parsel-surface: #111111;
+  --parsel-soft: #1a1a1a;
+  --parsel-canvas: #0a0a0a;
+  --parsel-text: #f5f5f5;
+  --parsel-muted: #a3a3a3;
+  --parsel-primary: #35d0ef;
+  --parsel-secondary: #d4d4d4;
+  --parsel-tertiary: #35d0ef;
+  --parsel-neutral: #f5f5f5;
+  --parsel-border: #2a2a2a;
+  --parsel-emerald: #4ade80;
+  --parsel-danger: #f87171;
+  --parsel-nav-active-bg: #f5f5f5;
+  --parsel-nav-active-text: #000000;
+  --parsel-inflow: #4ade80;
   --parsel-outflow: #f87171;
-  --parsel-success-bg: #14532d;
-  --parsel-success-text: #86efac;
+  --parsel-success-bg: #052e16;
+  --parsel-success-text: #4ade80;
   --parsel-danger-bg: #450a0a;
-  --parsel-danger-text: #fca5a5;
-  --parsel-avatar-bg: #2d3a4d;
-  --parsel-icon-bg: #243044;
+  --parsel-danger-text: #f87171;
+  --parsel-avatar-bg: #1a1a1a;
+  --parsel-icon-bg: #1a1a1a;
 
-  --background: 220 20% 8%;
-  --foreground: 210 20% 92%;
-  --card: 220 18% 13%;
-  --card-foreground: 210 20% 92%;
-  --popover: 220 18% 13%;
-  --popover-foreground: 210 20% 92%;
-  --primary: 217 91% 68%;
-  --primary-foreground: 220 20% 8%;
-  --secondary: 220 16% 18%;
-  --secondary-foreground: 210 20% 92%;
-  --muted: 220 16% 18%;
-  --muted-foreground: 215 14% 65%;
-  --accent: 220 16% 18%;
-  --accent-foreground: 210 20% 92%;
-  --destructive: 347 77% 65%;
-  --destructive-foreground: 220 20% 8%;
-  --border: 220 16% 24%;
-  --input: 220 16% 24%;
-  --ring: 217 91% 68%;
-  /* Blue shade ramp for dark surfaces; chart-1 is brand for single-series charts */
-  --chart-1: 217 91% 68%;
-  --chart-2: 217 91% 78%;
-  --chart-3: 217 80% 58%;
-  --chart-4: 217 72% 48%;
-  --chart-5: 217 65% 40%;
-  --chart-6: 217 91% 86%;
-  --chart-7: 214 40% 62%;
-  --chart-8: 214 30% 52%;
+  --background: 0 0% 0%;
+  --foreground: 0 0% 96%;
+  --card: 0 0% 7%;
+  --card-foreground: 0 0% 96%;
+  --popover: 0 0% 7%;
+  --popover-foreground: 0 0% 96%;
+  --primary: 191 85% 57%;
+  --primary-foreground: 0 0% 2%;
+  --secondary: 0 0% 10%;
+  --secondary-foreground: 0 0% 96%;
+  --muted: 0 0% 10%;
+  --muted-foreground: 0 0% 64%;
+  --accent: 0 0% 10%;
+  --accent-foreground: 0 0% 96%;
+  --destructive: 0 72% 71%;
+  --destructive-foreground: 0 0% 2%;
+  --border: 0 0% 16%;
+  --input: 0 0% 16%;
+  --ring: 191 85% 57%;
+  --chart-1: 191 85% 57%;
+  --chart-2: 191 80% 68%;
+  --chart-3: 191 75% 48%;
+  --chart-4: 191 70% 40%;
+  --chart-5: 191 65% 34%;
+  --chart-6: 191 70% 76%;
+  --chart-7: 195 40% 58%;
+  --chart-8: 195 30% 48%;
 }
 
 @layer base {
@@ -180,19 +180,17 @@ body,
 }
 
 .chat-markdown code {
-  border-radius: 0.25rem;
+  border-radius: 0;
   background: var(--parsel-soft);
   padding: 0.1em 0.35em;
   font-size: 0.875em;
 }
 
 .chat-markdown pre {
-  margin: 0.5em 0;
-  overflow-x: auto;
-  border-radius: 0.5rem;
-  border: 1px solid var(--parsel-border);
+  border-radius: 0;
   background: var(--parsel-soft);
-  padding: 0.75rem;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
 }
 
 .chat-markdown pre code {
@@ -200,8 +198,12 @@ body,
   background: transparent;
 }
 
+.chat-markdown a {
+  color: var(--parsel-primary);
+  text-decoration: underline;
+}
+
 .chat-markdown table {
-  margin: 0.5em 0;
   width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
@@ -263,5 +265,43 @@ body,
       -webkit-background-clip: border-box;
       background-clip: border-box;
     }
+  }
+}
+
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.landing-hero {
+  animation: landing-rise 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.landing-band {
+  animation: landing-rise 560ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.landing-band:nth-of-type(2) {
+  animation-delay: 40ms;
+}
+
+.landing-band:nth-of-type(3) {
+  animation-delay: 80ms;
+}
+
+.landing-band:nth-of-type(4) {
+  animation-delay: 120ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-hero,
+  .landing-band {
+    animation: none;
   }
 }

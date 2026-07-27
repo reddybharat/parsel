@@ -151,7 +151,7 @@ export function AddPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
+    <div className="flex h-full min-h-0 flex-col gap-1.5 overflow-y-auto">
       <Link
         to="/ledger/search"
         className="inline-flex w-fit items-center gap-1 text-xs font-semibold uppercase tracking-wide text-parsel-secondary hover:text-parsel-primary"
@@ -169,7 +169,7 @@ export function AddPage() {
       ) : null}
 
       {!loadingConfig && categories.length > 0 ? (
-        <div className="mx-auto w-full max-w-content rounded-xl border border-parsel-border bg-parsel-surface">
+        <div className="mx-auto w-full max-w-content rounded-none border border-parsel-border bg-parsel-surface shadow-none">
           <Tabs value={tab} onValueChange={(value) => setTab(value as "manual" | "bulk")}>
             <TabsList className="grid h-auto w-full grid-cols-2 rounded-none border-b border-parsel-border bg-transparent p-0">
               <TabsTrigger
@@ -208,7 +208,7 @@ export function AddPage() {
                     <FieldLabel htmlFor="add-amount" className={fieldLabelClass}>
                       Amount
                     </FieldLabel>
-                    <div className="flex overflow-hidden rounded-md border border-input">
+                    <div className="flex overflow-hidden rounded-none border border-input">
                       <span className="flex items-center bg-parsel-soft px-3 text-sm text-parsel-muted">₹</span>
                       <Input
                         id="add-amount"

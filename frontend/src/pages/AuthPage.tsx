@@ -2,6 +2,7 @@ import { FormEvent, useState, type ComponentProps } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -102,123 +103,142 @@ export function AuthPage({ mode }: { mode: Mode }) {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-parsel-canvas px-4 py-10 text-parsel-text">
-      <div className="w-full max-w-md rounded-xl border border-parsel-border bg-parsel-surface p-6 shadow-sm">
-        <div className="mb-6">
-          <p className="text-[28px] font-semibold tracking-tight text-parsel-primary">Parsel</p>
-          <h1 className="mt-1 text-xl font-semibold">{title}</h1>
-          <p className="mt-1 text-sm text-parsel-muted">
-            {isRegister
-              ? "Pick a username, email, and password to create your account."
-              : "Sign in with your username or email, and password."}
-          </p>
-        </div>
+    <div className="relative flex min-h-dvh flex-col bg-parsel-canvas text-parsel-text">
+      <header className="flex items-center justify-between px-4 py-3 sm:px-6">
+        <Link
+          to="/"
+          className="text-sm font-semibold uppercase tracking-[0.08em] text-parsel-primary hover:underline"
+        >
+          Parsel
+        </Link>
+        <ThemeToggle />
+      </header>
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          <FieldGroup>
-            {isRegister ? (
-              <>
+      <div className="flex flex-1 items-center justify-center px-4 py-10">
+        <div className="w-full max-w-md rounded-none border border-parsel-border bg-parsel-surface p-6 shadow-none">
+          <div className="mb-6">
+            <p className="text-[28px] font-semibold uppercase tracking-[0.08em] text-parsel-primary">
+              Parsel
+            </p>
+            <h1 className="mt-1 text-xl font-semibold">{title}</h1>
+            <p className="mt-1 text-sm text-parsel-muted">
+              {isRegister
+                ? "Pick a username, email, and password to create your account."
+                : "Sign in with your username or email, and password."}
+            </p>
+          </div>
+
+          <form onSubmit={onSubmit} className="space-y-4">
+            <FieldGroup>
+              {isRegister ? (
+                <>
+                  <Field>
+                    <FieldLabel htmlFor="username">Username</FieldLabel>
+                    <Input
+                      id="username"
+                      type="text"
+                      autoComplete="username"
+                      required
+                      minLength={3}
+                      maxLength={32}
+                      pattern="[A-Za-z0-9_]{3,32}"
+                      title="3–32 characters: letters, numbers, and underscores"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="email">Email</FieldLabel>
+                    <Input
+                      id="email"
+                      type="email"
+                      autoComplete="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </Field>
+                </>
+              ) : (
                 <Field>
-                  <FieldLabel htmlFor="username">Username</FieldLabel>
+                  <FieldLabel htmlFor="login">Username or email</FieldLabel>
                   <Input
-                    id="username"
+                    id="login"
                     type="text"
                     autoComplete="username"
                     required
-                    minLength={3}
-                    maxLength={32}
-                    pattern="[A-Za-z0-9_]{3,32}"
-                    title="3–32 characters: letters, numbers, and underscores"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    value={loginId}
+                    onChange={(e) => setLoginId(e.target.value)}
                   />
                 </Field>
+              )}
+              <Field>
+                <FieldLabel htmlFor="password">Password</FieldLabel>
+                <PasswordInput
+                  id="password"
+                  autoComplete={isRegister ? "new-password" : "current-password"}
+                  required
+                  minLength={isRegister ? 8 : 1}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  visible={showPassword}
+                  onToggleVisible={() => setShowPassword((v) => !v)}
+                />
+                {isRegister ? (
+                  <p className="mt-1.5 text-xs text-parsel-muted">{PASSWORD_HINT}</p>
+                ) : null}
+              </Field>
+              {isRegister ? (
                 <Field>
-                  <FieldLabel htmlFor="email">Email</FieldLabel>
-                  <Input
-                    id="email"
-                    type="email"
-                    autoComplete="email"
+                  <FieldLabel htmlFor="confirm-password">Confirm password</FieldLabel>
+                  <PasswordInput
+                    id="confirm-password"
+                    autoComplete="new-password"
                     required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    minLength={8}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    visible={showConfirmPassword}
+                    onToggleVisible={() => setShowConfirmPassword((v) => !v)}
                   />
                 </Field>
+              ) : null}
+            </FieldGroup>
+
+            {error ? (
+              <p className="rounded-none bg-parsel-danger-bg px-3 py-2 text-sm text-parsel-danger-text">
+                {error}
+              </p>
+            ) : null}
+
+            <Button type="submit" className="w-full" disabled={submitting}>
+              {submitting ? "Please wait…" : submitLabel}
+            </Button>
+          </form>
+
+          <p className="mt-4 text-center text-sm text-parsel-muted">
+            {isRegister ? (
+              <>
+                Already have an account?{" "}
+                <Link className="font-medium text-parsel-primary hover:underline" to="/login">
+                  Sign in
+                </Link>
               </>
             ) : (
-              <Field>
-                <FieldLabel htmlFor="login">Username or email</FieldLabel>
-                <Input
-                  id="login"
-                  type="text"
-                  autoComplete="username"
-                  required
-                  value={loginId}
-                  onChange={(e) => setLoginId(e.target.value)}
-                />
-              </Field>
+              <>
+                Need an account?{" "}
+                <Link className="font-medium text-parsel-primary hover:underline" to="/register">
+                  Register
+                </Link>
+              </>
             )}
-            <Field>
-              <FieldLabel htmlFor="password">Password</FieldLabel>
-              <PasswordInput
-                id="password"
-                autoComplete={isRegister ? "new-password" : "current-password"}
-                required
-                minLength={isRegister ? 8 : 1}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                visible={showPassword}
-                onToggleVisible={() => setShowPassword((v) => !v)}
-              />
-              {isRegister ? (
-                <p className="mt-1.5 text-xs text-parsel-muted">{PASSWORD_HINT}</p>
-              ) : null}
-            </Field>
-            {isRegister ? (
-              <Field>
-                <FieldLabel htmlFor="confirm-password">Confirm password</FieldLabel>
-                <PasswordInput
-                  id="confirm-password"
-                  autoComplete="new-password"
-                  required
-                  minLength={8}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  visible={showConfirmPassword}
-                  onToggleVisible={() => setShowConfirmPassword((v) => !v)}
-                />
-              </Field>
-            ) : null}
-          </FieldGroup>
-
-          {error ? (
-            <p className="rounded-md bg-parsel-danger-bg px-3 py-2 text-sm text-parsel-danger-text">
-              {error}
-            </p>
-          ) : null}
-
-          <Button type="submit" className="w-full" disabled={submitting}>
-            {submitting ? "Please wait…" : submitLabel}
-          </Button>
-        </form>
-
-        <p className="mt-4 text-center text-sm text-parsel-muted">
-          {isRegister ? (
-            <>
-              Already have an account?{" "}
-              <Link className="font-medium text-parsel-primary hover:underline" to="/login">
-                Sign in
-              </Link>
-            </>
-          ) : (
-            <>
-              Need an account?{" "}
-              <Link className="font-medium text-parsel-primary hover:underline" to="/register">
-                Register
-              </Link>
-            </>
-          )}
-        </p>
+          </p>
+          <p className="mt-3 text-center text-sm text-parsel-muted">
+            <Link className="font-medium text-parsel-primary hover:underline" to="/">
+              ← Back to home
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -41,7 +41,7 @@ export function SessionExpiryDialog({
   return (
     <Dialog open={open}>
       <DialogContent
-        className="max-w-sm sm:rounded-xl"
+        className="max-w-sm sm:rounded-none"
         showCloseButton={false}
         onInteractOutside={(event) => event.preventDefault()}
         onEscapeKeyDown={(event) => event.preventDefault()}
