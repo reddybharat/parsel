@@ -3,13 +3,14 @@ from typing import Optional
 from uuid import UUID
 import time
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from sqlalchemy import case, delete, func, insert, select, update
 
 from auth.deps import get_current_user
 from auth.models import User
 from common.database import get_connection
 from common.logger import get_logger
+from tracker.category_service import resolve_category_name
 from tracker.models import Transaction
 from tracker.schemas import (
     TransactionCreate,
@@ -20,6 +21,7 @@ from tracker.schemas import (
 from tracker.services import (
     export_transactions_csv,
     import_transactions_from_csv,
+    preview_transactions_import,
     transactions_csv_template,
 )
 
@@ -167,22 +169,52 @@ async def export_transactions(
     )
 
 
+@router.post("/import/preview")
+async def import_transactions_preview(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    del current_user
+    t0 = time.perf_counter()
+    content = await file.read()
+    result = await preview_transactions_import(content)
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    logger.info(
+        "import_transactions_preview completed in %.1f ms (valid=%d, new_categories=%d, errors=%d)",
+        elapsed_ms,
+        result["valid_row_count"],
+        len(result["new_categories"]),
+        len(result["errors"]),
+    )
+    return result
+
+
 @router.post("/import")
 async def import_transactions(
     file: UploadFile = File(...),
+    create_missing_categories: bool = Form(False),
     current_user: User = Depends(get_current_user),
 ) -> dict:
     t0 = time.perf_counter()
     content = await file.read()
-    inserted, errors = await import_transactions_from_csv(content, user_id=current_user.id)
+    inserted, errors, created_categories = await import_transactions_from_csv(
+        content,
+        user_id=current_user.id,
+        create_missing_categories=create_missing_categories,
+    )
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
-        "import_transactions completed in %.1f ms (inserted=%d, errors=%d)",
+        "import_transactions completed in %.1f ms (inserted=%d, errors=%d, created_categories=%d)",
         elapsed_ms,
         inserted,
         len(errors),
+        len(created_categories),
     )
-    return {"inserted": inserted, "errors": errors}
+    return {
+        "inserted": inserted,
+        "errors": errors,
+        "created_categories": created_categories,
+    }
 
 
 @router.get("/import-template")
@@ -204,13 +236,21 @@ async def create_transaction(
     current_user: User = Depends(get_current_user),
 ) -> TransactionResponse:
     t0 = time.perf_counter()
+    try:
+        canonical_category = await resolve_category_name(
+            payload.category,
+            allow_new=True,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     stmt = (
         insert(Transaction)
         .values(
             user_id=current_user.id,
             amount=float(payload.amount),
             is_debit=bool(payload.is_debit),
-            category=payload.category.strip(),
+            category=canonical_category,
             payment_method=payload.payment_method.strip() if payload.payment_method else None,
             transaction_date=payload.transaction_date,
             description=payload.description,
@@ -240,7 +280,13 @@ async def update_transaction(
     if "amount" in payload_dict:
         payload_dict["amount"] = float(payload_dict["amount"])
     if "category" in payload_dict and payload_dict["category"] is not None:
-        payload_dict["category"] = payload_dict["category"].strip()
+        try:
+            payload_dict["category"] = await resolve_category_name(
+                payload_dict["category"],
+                allow_new=True,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     if "payment_method" in payload_dict and payload_dict["payment_method"] is not None:
         payload_dict["payment_method"] = payload_dict["payment_method"].strip()
 

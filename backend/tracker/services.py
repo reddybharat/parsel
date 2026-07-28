@@ -14,6 +14,10 @@ import uuid
 from common.database import get_connection
 from sqlalchemy import select, text
 
+from tracker.category_service import (
+    list_missing_category_names,
+    resolve_category_name,
+)
 from tracker.constants import INVESTMENTS_CATEGORY
 from tracker.models import Transaction
 from tracker.schemas import TransactionCreate
@@ -215,37 +219,38 @@ def transactions_csv_template() -> str:
     return output.getvalue()
 
 
-async def import_transactions_from_csv(
+async def _parse_csv_transaction_rows(
     content: bytes,
-    *,
-    user_id: uuid.UUID,
-) -> tuple[int, list[str]]:
+) -> tuple[list[dict], list[str], list[str]]:
     """
-    Parse CSV content and insert valid rows into the transactions table.
+    Parse CSV into validated row dicts (without DB category resolution).
 
-    Expected columns (case-insensitive):
-    transaction_date (YYYY-MM-DD), category, amount, is_debit (optional but recommended),
-    description (optional), payment_method (optional; omitted or empty leaves it unset).
-    Returns (inserted_count, list of error messages for failed rows).
+    Returns (parsed_rows, errors, category_names_seen).
+    parsed_rows use TransactionCreate-validated fields but category may not exist yet.
     """
-    text = content.decode("utf-8-sig")
-    reader = csv.DictReader(io.StringIO(text))
+    text_data = content.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text_data))
 
     if reader.fieldnames is None:
-        return 0, ["CSV file has no header row."]
+        return [], ["CSV file has no header row."], []
 
     header_map = {name.lower(): name for name in reader.fieldnames}
     required_cols = ["transaction_date", "category", "amount"]
     missing = [c for c in required_cols if c not in header_map]
     if missing:
-        return 0, [
-            "Missing required column(s): "
-            + ", ".join(missing)
-            + ". Expected at least: transaction_date, category, amount."
-        ]
+        return (
+            [],
+            [
+                "Missing required column(s): "
+                + ", ".join(missing)
+                + ". Expected at least: transaction_date, category, amount."
+            ],
+            [],
+        )
 
     errors: list[str] = []
-    rows_to_insert: list[dict] = []
+    rows: list[dict] = []
+    category_names: list[str] = []
 
     for idx, row in enumerate(reader, start=2):
         try:
@@ -283,7 +288,6 @@ async def import_transactions_from_csv(
             if "is_debit" in header_map:
                 parsed_is_debit = _parse_is_debit(raw_is_debit)
             else:
-                # Backward compatible default for older CSVs.
                 parsed_is_debit = True
 
             pm = raw_payment_method if raw_payment_method else None
@@ -296,13 +300,15 @@ async def import_transactions_from_csv(
                 description=raw_description,
                 is_debit=parsed_is_debit,
             )
-            rows_to_insert.append(
+            category_names.append(tx.category)
+            rows.append(
                 {
-                    "user_id": user_id,
                     "amount": float(tx.amount),
                     "is_debit": bool(tx.is_debit),
-                    "category": tx.category.strip(),
-                    "payment_method": tx.payment_method.strip() if tx.payment_method else None,
+                    "category": tx.category,
+                    "payment_method": tx.payment_method.strip()
+                    if tx.payment_method
+                    else None,
                     "transaction_date": tx.transaction_date,
                     "description": tx.description,
                 }
@@ -310,13 +316,75 @@ async def import_transactions_from_csv(
         except Exception as e:
             errors.append(f"Row {idx}: {e}")
 
+    return rows, errors, category_names
+
+
+async def preview_transactions_import(content: bytes) -> dict:
+    """
+    Parse CSV without inserting. Report new categories that would be created.
+    """
+    rows, errors, category_names = await _parse_csv_transaction_rows(content)
+    new_categories = await list_missing_category_names(category_names)
+    return {
+        "valid_row_count": len(rows),
+        "new_categories": new_categories,
+        "errors": errors,
+    }
+
+
+async def import_transactions_from_csv(
+    content: bytes,
+    *,
+    user_id: uuid.UUID,
+    create_missing_categories: bool = False,
+) -> tuple[int, list[str], list[str]]:
+    """
+    Parse CSV content and insert valid rows into the transactions table.
+
+    Expected columns (case-insensitive):
+    transaction_date (YYYY-MM-DD), category, amount, is_debit (optional but recommended),
+    description (optional), payment_method (optional; omitted or empty leaves it unset).
+    Returns (inserted_count, errors, created_categories).
+    """
+    rows, errors, category_names = await _parse_csv_transaction_rows(content)
+    if not rows and errors:
+        return 0, errors, []
+
+    created_categories: list[str] = []
+    if create_missing_categories:
+        created_categories = await list_missing_category_names(category_names)
+
+    rows_to_insert: list[dict] = []
+    for idx, row in enumerate(rows):
+        try:
+            canonical = await resolve_category_name(
+                row["category"],
+                allow_new=create_missing_categories,
+            )
+            rows_to_insert.append(
+                {
+                    "user_id": user_id,
+                    "amount": row["amount"],
+                    "is_debit": row["is_debit"],
+                    "category": canonical,
+                    "payment_method": row["payment_method"],
+                    "transaction_date": row["transaction_date"],
+                    "description": row["description"],
+                }
+            )
+        except Exception as e:
+            errors.append(f"Row (parsed #{idx + 1}): {e}")
+
     inserted_count = 0
     if rows_to_insert:
         async with get_connection() as session:
             await session.execute(Transaction.__table__.insert(), rows_to_insert)
         inserted_count = len(rows_to_insert)
 
-    return inserted_count, errors
+    if not create_missing_categories:
+        created_categories = []
+
+    return inserted_count, errors, created_categories
 
 
 def _add_months(month_start: date, delta_months: int) -> date:

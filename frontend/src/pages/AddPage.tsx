@@ -1,9 +1,11 @@
 import { FormEvent, useEffect, useState } from "react";
+import { CheckCircle2, FileSearch, FolderPlus, Loader2 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { EmptyState } from "../components/feedback/EmptyState";
 import { LoadingState } from "../components/feedback/LoadingState";
 import { StatusAlert, type FeedbackMessage } from "../components/feedback/StatusAlert";
+import { CategorySelect } from "../components/transactions/CategorySelect";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
@@ -13,15 +15,26 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { invalidateDashboardOverview } from "@/lib/dashboardQuery";
-import { createTransaction, downloadImportTemplate, fetchTrackerConfig, importTransactions } from "../api/tracker";
+import { normalizeCategories } from "@/lib/categories";
+import {
+  createTransaction,
+  downloadImportTemplate,
+  fetchTrackerConfig,
+  importTransactions,
+  previewImportTransactions,
+} from "../api/tracker";
+import type { Category } from "../lib/types";
 
 const fieldLabelClass = "text-xs font-semibold uppercase tracking-wide text-parsel-secondary";
+
+type BulkStep = "idle" | "reading" | "preview" | "creating" | "importing" | "done";
 
 function localDateIso(): string {
   const d = new Date();
@@ -34,7 +47,7 @@ function localDateIso(): string {
 export function AddPage() {
   const [searchParams] = useSearchParams();
   const initialTab = searchParams.get("tab") === "bulk" ? "bulk" : "manual";
-  const [categories, setCategories] = useState<string[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   const [feedback, setFeedback] = useState<FeedbackMessage | null>(null);
   const [manualFeedback, setManualFeedback] = useState<FeedbackMessage | null>(null);
@@ -42,6 +55,10 @@ export function AddPage() {
   const [importErrors, setImportErrors] = useState<string | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [file, setFile] = useState<File | null>(null);
+  const [bulkStep, setBulkStep] = useState<BulkStep>("idle");
+  const [previewValidRows, setPreviewValidRows] = useState(0);
+  const [previewNewCategories, setPreviewNewCategories] = useState<string[]>([]);
+  const [previewErrors, setPreviewErrors] = useState<string[]>([]);
 
   const [amount, setAmount] = useState(0);
   const [isDebit, setIsDebit] = useState(true);
@@ -55,7 +72,7 @@ export function AddPage() {
     void (async () => {
       try {
         const config = await fetchTrackerConfig();
-        setCategories(config.categories);
+        setCategories(normalizeCategories(config.categories));
         setPaymentMethods(config.payment_methods);
       } catch (err) {
         setFeedback({
@@ -80,6 +97,13 @@ export function AddPage() {
     setManualFeedback(null);
     setBulkFeedback(null);
     setImportErrors(null);
+  }
+
+  function resetBulkPreview() {
+    setBulkStep("idle");
+    setPreviewValidRows(0);
+    setPreviewNewCategories([]);
+    setPreviewErrors([]);
   }
 
   async function onSubmit(event: FormEvent) {
@@ -125,23 +149,74 @@ export function AddPage() {
     }
   }
 
-  async function onImport() {
+  async function onPreviewImport() {
     if (!file) return;
     setBulkFeedback(null);
     setImportErrors(null);
+    setBulkStep("reading");
     try {
-      const result = await importTransactions(file);
+      const result = await previewImportTransactions(file);
+      setPreviewValidRows(result.valid_row_count);
+      setPreviewNewCategories(result.new_categories);
+      setPreviewErrors(result.errors);
+      setBulkStep("preview");
+      if (result.valid_row_count === 0 && result.errors.length) {
+        setBulkFeedback({
+          variant: "error",
+          title: "Nothing to import",
+          description: "Fix the row errors below, then try again.",
+        });
+        setImportErrors(result.errors.slice(0, 8).join("\n"));
+      }
+    } catch (err) {
+      resetBulkPreview();
+      setBulkFeedback({
+        variant: "error",
+        title: "Could not read file",
+        description: err instanceof Error ? err.message : "CSV preview failed.",
+      });
+    }
+  }
+
+  async function onConfirmImport() {
+    if (!file) return;
+    setBulkFeedback(null);
+    setImportErrors(null);
+    const needsCreate = previewNewCategories.length > 0;
+    setBulkStep(needsCreate ? "creating" : "importing");
+    try {
+      if (needsCreate) {
+        // Brief status beat before the network call for the Marker trail.
+        await new Promise((r) => window.setTimeout(r, 250));
+        setBulkStep("importing");
+      }
+      const result = await importTransactions(file, { createMissingCategories: true });
       void invalidateDashboardOverview();
+      if (result.created_categories.length) {
+        const config = await fetchTrackerConfig();
+        setCategories(normalizeCategories(config.categories));
+      }
+      setBulkStep("done");
       const errorCount = result.errors.length;
+      const createdNote = result.created_categories.length
+        ? ` Created ${result.created_categories.length} categor${result.created_categories.length === 1 ? "y" : "ies"}.`
+        : "";
       setBulkFeedback({
         variant: errorCount ? "info" : "success",
         title: "Import complete",
-        description: `Imported ${result.inserted} transaction(s).${errorCount ? ` ${errorCount} row(s) failed.` : ""}`,
+        description: `Imported ${result.inserted} transaction(s).${createdNote}${
+          errorCount ? ` ${errorCount} row(s) failed.` : ""
+        }`,
       });
       if (errorCount) {
-        setImportErrors(result.errors.slice(0, 5).join("\n"));
+        setImportErrors(result.errors.slice(0, 8).join("\n"));
       }
+      if (result.created_categories.length) {
+        setPreviewNewCategories(result.created_categories);
+      }
+      setFile(null);
     } catch (err) {
+      setBulkStep("preview");
       setBulkFeedback({
         variant: "error",
         title: "Import failed",
@@ -149,6 +224,8 @@ export function AddPage() {
       });
     }
   }
+
+  const busyBulk = bulkStep === "reading" || bulkStep === "creating" || bulkStep === "importing";
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5 overflow-y-auto">
@@ -225,19 +302,14 @@ export function AddPage() {
                     <FieldLabel htmlFor="add-category" className={fieldLabelClass}>
                       Category
                     </FieldLabel>
-                    <NativeSelect
+                    <CategorySelect
                       id="add-category"
                       value={category}
-                      onChange={(e) => setCategory(e.target.value)}
+                      categories={categories}
+                      onChange={setCategory}
+                      onCategoriesChange={setCategories}
                       required
-                    >
-                      <NativeSelectOption value="">Select Category</NativeSelectOption>
-                      {categories.map((item) => (
-                        <NativeSelectOption key={item} value={item}>
-                          {item}
-                        </NativeSelectOption>
-                      ))}
-                    </NativeSelect>
+                    />
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="add-date" className={fieldLabelClass}>
@@ -305,7 +377,7 @@ export function AddPage() {
                       CSV File
                     </FieldLabel>
                     <FieldDescription>
-                      Use the template to ensure valid columns and date format.
+                      Use the template for columns and date format. New categories are previewed before import.
                     </FieldDescription>
                     <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
                       <div className="flex flex-wrap items-center gap-2">
@@ -314,17 +386,129 @@ export function AddPage() {
                           className="max-w-xs"
                           type="file"
                           accept=".csv"
-                          onChange={(e) => setFile(e.target.files?.[0] || null)}
+                          disabled={busyBulk}
+                          onChange={(e) => {
+                            setFile(e.target.files?.[0] || null);
+                            resetBulkPreview();
+                            setBulkFeedback(null);
+                            setImportErrors(null);
+                          }}
                         />
-                        <Button type="button" onClick={() => void onImport()} disabled={!file}>
-                          Import
+                        <Button
+                          type="button"
+                          onClick={() => void onPreviewImport()}
+                          disabled={!file || busyBulk}
+                        >
+                          {bulkStep === "reading" ? "Reading…" : "Review import"}
                         </Button>
                       </div>
-                      <Button type="button" variant="outline" onClick={() => void onDownloadTemplate()}>
+                      <Button type="button" variant="outline" onClick={() => void onDownloadTemplate()} disabled={busyBulk}>
                         Download template
                       </Button>
                     </div>
                   </Field>
+
+                  {bulkStep !== "idle" ? (
+                    <div className="flex flex-col gap-2 border border-parsel-border bg-parsel-soft/40 p-4">
+                      <Marker role="status" aria-live="polite">
+                        <MarkerIcon>
+                          {bulkStep === "reading" ? (
+                            <Loader2 className="size-4 animate-spin text-parsel-primary" />
+                          ) : (
+                            <FileSearch className="size-4 text-parsel-primary" />
+                          )}
+                        </MarkerIcon>
+                        <MarkerContent>
+                          {bulkStep === "reading"
+                            ? "Reading file…"
+                            : `Read file — ${previewValidRows} valid row${previewValidRows === 1 ? "" : "s"}`}
+                        </MarkerContent>
+                      </Marker>
+                      {(bulkStep === "preview" ||
+                        bulkStep === "creating" ||
+                        bulkStep === "importing" ||
+                        bulkStep === "done") && (
+                        <Marker role="status" aria-live="polite">
+                          <MarkerIcon>
+                            {bulkStep === "creating" ? (
+                              <Loader2 className="size-4 animate-spin text-parsel-primary" />
+                            ) : (
+                              <FolderPlus className="size-4 text-parsel-primary" />
+                            )}
+                          </MarkerIcon>
+                          <MarkerContent>
+                            {bulkStep === "creating"
+                              ? `Creating ${previewNewCategories.length} categor${previewNewCategories.length === 1 ? "y" : "ies"}…`
+                              : previewNewCategories.length
+                                ? `${previewNewCategories.length} new categor${previewNewCategories.length === 1 ? "y" : "ies"} to add`
+                                : "All categories already exist"}
+                          </MarkerContent>
+                        </Marker>
+                      )}
+                      {(bulkStep === "importing" || bulkStep === "done") && (
+                        <Marker role="status" aria-live="polite">
+                          <MarkerIcon>
+                            {bulkStep === "importing" ? (
+                              <Loader2 className="size-4 animate-spin text-parsel-primary" />
+                            ) : (
+                              <CheckCircle2 className="size-4 text-parsel-inflow" />
+                            )}
+                          </MarkerIcon>
+                          <MarkerContent>
+                            {bulkStep === "importing" ? "Importing transactions…" : "Import finished"}
+                          </MarkerContent>
+                        </Marker>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {bulkStep === "preview" && previewValidRows > 0 ? (
+                    <div className="flex flex-col gap-3 border border-parsel-border p-4">
+                      <div>
+                        <p className="text-sm font-semibold text-parsel-neutral">Ready to import</p>
+                        <p className="mt-1 text-sm text-parsel-muted">
+                          {previewValidRows} valid row{previewValidRows === 1 ? "" : "s"}
+                          {previewErrors.length
+                            ? ` · ${previewErrors.length} row${previewErrors.length === 1 ? "" : "s"} will be skipped`
+                            : ""}
+                          .
+                        </p>
+                      </div>
+                      {previewNewCategories.length > 0 ? (
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">
+                            New categories
+                          </p>
+                          <p className="mt-1 text-sm text-parsel-muted">
+                            These are not in your list yet and will be added if you continue:
+                          </p>
+                          <ul className="mt-2 list-disc pl-5 text-sm text-parsel-neutral">
+                            {previewNewCategories.map((name) => (
+                              <li key={name}>{name}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-parsel-muted">All categories in this file already exist.</p>
+                      )}
+                      {previewErrors.length > 0 ? (
+                        <StatusAlert
+                          variant="error"
+                          title="Some rows have errors"
+                          description={previewErrors.slice(0, 8).join("\n")}
+                        />
+                      ) : null}
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="ghost" onClick={resetBulkPreview}>
+                          Cancel
+                        </Button>
+                        <Button type="button" onClick={() => void onConfirmImport()}>
+                          Continue import
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+
                   {bulkFeedback ? <StatusAlert {...bulkFeedback} onDismiss={() => setBulkFeedback(null)} /> : null}
                   {importErrors ? (
                     <StatusAlert

@@ -29,7 +29,8 @@ import {
   updateTransaction,
 } from "../api/tracker";
 import { formatInrSigned, signedAmount } from "../lib/format";
-import type { SearchResult, Transaction } from "../lib/types";
+import { normalizeCategories } from "../lib/categories";
+import type { Category, SearchResult, Transaction } from "../lib/types";
 
 const fieldLabelClass = "text-xs font-semibold uppercase tracking-wide text-parsel-secondary";
 
@@ -76,8 +77,9 @@ function pageNumbers(current: number, total: number): number[] {
 }
 
 export function SearchPage() {
-  const [categories, setCategories] = useState<string[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
+  const [loadingConfig, setLoadingConfig] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorTitle, setErrorTitle] = useState("Something went wrong");
@@ -114,15 +116,24 @@ export function SearchPage() {
   }
 
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
+      setLoadingConfig(true);
       try {
         const config = await fetchTrackerConfig();
-        setCategories(config.categories);
+        if (cancelled) return;
+        setCategories(normalizeCategories(config.categories));
         setPaymentMethods(config.payment_methods);
       } catch (err) {
+        if (cancelled) return;
         showError("Failed to load configuration", err instanceof Error ? err.message : "Failed to load tracker config.");
+      } finally {
+        if (!cancelled) setLoadingConfig(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function applyPreset(preset: DatePreset) {
@@ -215,6 +226,12 @@ export function SearchPage() {
     try {
       await updateTransaction(editing.id, editing);
       void invalidateDashboardOverview();
+      try {
+        const config = await fetchTrackerConfig();
+        setCategories(normalizeCategories(config.categories));
+      } catch {
+        // keep local category list if refresh fails
+      }
       setEditing(null);
       setFeedback({ variant: "success", title: "Transaction updated" });
       await runSearch(page);
@@ -328,11 +345,17 @@ export function SearchPage() {
             <FieldLabel htmlFor="search-category" className={fieldLabelClass}>
               Category
             </FieldLabel>
-            <NativeSelect id="search-category" value={category} onChange={(e) => setCategory(e.target.value)}>
+            <NativeSelect
+              id="search-category"
+              key={`search-category-${categories.length}-${categories.map((c) => c.name).join("|")}`}
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              disabled={loadingConfig}
+            >
               <NativeSelectOption value="All">All Categories</NativeSelectOption>
               {categories.map((item) => (
-                <NativeSelectOption key={item} value={item}>
-                  {item}
+                <NativeSelectOption key={item.name} value={item.name}>
+                  {item.name}
                 </NativeSelectOption>
               ))}
             </NativeSelect>
@@ -442,6 +465,7 @@ export function SearchPage() {
         paymentMethods={paymentMethods}
         loading={submitting}
         onChange={setEditing}
+        onCategoriesChange={setCategories}
         onSave={() => void onEditSave()}
         onCancel={() => setEditing(null)}
       />

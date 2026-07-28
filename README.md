@@ -81,7 +81,7 @@ Schema SQL lives in [`migrations/`](migrations/). There is no migration runner; 
 
 See [`migrations/README.md`](migrations/README.md) for the exact order, backfill steps, and verification queries.
 
-Allowed `category` and `payment_method` values are enforced by the API and match `backend/tracker/constants.py`.
+Allowed `payment_method` values are enforced by the API and match `backend/tracker/constants.py`. Categories are system defaults from that file plus any custom labels already used on transactions (no categories table).
 
 ## Auth
 

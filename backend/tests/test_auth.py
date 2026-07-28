@@ -20,6 +20,7 @@ from auth.service import (
     UsernameAlreadyTakenError,
 )
 from main import app
+from tracker.category_service import CategoryInfo
 
 client = TestClient(app)
 
@@ -219,14 +220,25 @@ def test_protected_route_accepts_bearer_token():
         return user
 
     app.dependency_overrides[get_current_user] = override_current_user
-    response = client.get(
-        "/config/tracker",
-        headers={"Authorization": f"Bearer {token}"},
-    )
+    fake_categories = [
+        CategoryInfo(name="Grocery", is_system=True),
+        CategoryInfo(name="Dining", is_system=True),
+    ]
+    with patch(
+        "tracker.router.config.list_categories",
+        new=AsyncMock(return_value=fake_categories),
+    ):
+        response = client.get(
+            "/config/tracker",
+            headers={"Authorization": f"Bearer {token}"},
+        )
     assert response.status_code == 200
     body = response.json()
     assert "categories" in body
     assert "payment_methods" in body
+    assert body["categories"][0]["name"] == "Grocery"
+    assert body["categories"][0]["is_system"] is True
+    assert "id" not in body["categories"][0]
 
 
 def test_user_isolation_update_other_users_transaction_404():

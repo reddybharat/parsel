@@ -48,8 +48,13 @@ export type SearchResult = {
   items: Transaction[];
 };
 
+export type Category = {
+  name: string;
+  is_system: boolean;
+};
+
 export type TrackerConfig = {
-  categories: string[];
+  categories: Category[];
   payment_methods: string[];
 };
 
