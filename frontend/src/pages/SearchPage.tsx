@@ -4,12 +4,11 @@ import {
   getCoreRowModel,
   useReactTable,
   type PaginationState,
-  type RowSelectionState,
   type SortingState,
   type VisibilityState,
 } from "@tanstack/react-table";
 import { Link } from "react-router-dom";
-import { Search, Trash2 } from "lucide-react";
+import { Search } from "lucide-react";
 
 import { DataTable } from "@/components/data-table/data-table";
 import { DataTablePagination } from "@/components/data-table/data-table-pagination";
@@ -29,7 +28,6 @@ import {
   transactionSearchQueryOptions,
 } from "@/lib/transactionSearchQuery";
 import {
-  bulkDeleteTransactions,
   deleteTransaction,
   exportTransactions,
   updateTransaction,
@@ -61,11 +59,9 @@ export function SearchPage() {
   const [sorting, setSorting] = useState<SortingState>([{ id: "transaction_date", desc: true }]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 15 });
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [deleting, setDeleting] = useState<Transaction | null>(null);
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackMessage | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -121,23 +117,22 @@ export function SearchPage() {
   const hasNarrowingFilters =
     filters.query !== "" || filters.category !== "" || filters.paymentMethod !== "" || filters.direction !== "";
 
-  const resetView = useCallback(() => {
+  const resetPage = useCallback(() => {
     setPagination((current) => (current.pageIndex === 0 ? current : { ...current, pageIndex: 0 }));
-    setRowSelection({});
   }, []);
 
   const onFiltersChange = useCallback(
     (next: Partial<LedgerFilters>) => {
       setFilters((current) => ({ ...current, ...next }));
-      resetView();
+      resetPage();
     },
-    [resetView],
+    [resetPage],
   );
 
   const onReset = useCallback(() => {
     setFilters(defaultFilters());
-    resetView();
-  }, [resetView]);
+    resetPage();
+  }, [resetPage]);
 
   const columns = useMemo(
     () => createLedgerColumns({ onEdit: setEditing, onDelete: setDeleting }),
@@ -154,20 +149,14 @@ export function SearchPage() {
     pageCount: total > 0 ? Math.ceil(total / pagination.pageSize) : 0,
     rowCount: total,
     enableSortingRemoval: false,
-    state: { sorting, pagination, columnVisibility, rowSelection },
+    state: { sorting, pagination, columnVisibility },
     onSortingChange: (updater) => {
       setSorting(updater);
-      resetView();
+      resetPage();
     },
-    onPaginationChange: (updater) => {
-      setPagination(updater);
-      setRowSelection({});
-    },
+    onPaginationChange: setPagination,
     onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
   });
-
-  const selectedIds = Object.keys(rowSelection).filter((id) => rowSelection[id]);
 
   function runSearch() {
     if (invalidRange) return;
@@ -208,23 +197,8 @@ export function SearchPage() {
     await withMutation(async () => {
       await deleteTransaction(target.id);
       setDeleting(null);
-      setRowSelection({});
       setFeedback({ variant: "success", title: "Transaction deleted" });
     }, "Delete failed");
-  }
-
-  async function onBulkDeleteConfirm() {
-    if (selectedIds.length === 0) return;
-    const count = selectedIds.length;
-    await withMutation(async () => {
-      await bulkDeleteTransactions(selectedIds);
-      setBulkDeleteOpen(false);
-      setRowSelection({});
-      setFeedback({
-        variant: "success",
-        title: `${count} transaction${count === 1 ? "" : "s"} deleted`,
-      });
-    }, "Bulk delete failed");
   }
 
   async function onExport() {
@@ -319,32 +293,7 @@ export function SearchPage() {
               </div>
             }
           />
-          <DataTablePagination table={table}>
-            {selectedIds.length > 0 ? (
-              <>
-                <span className="tabular-nums text-parsel-text">
-                  {selectedIds.length} selected
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setBulkDeleteOpen(true)}
-                  className="h-7 gap-1.5 px-2 text-xs font-normal text-parsel-danger hover:bg-parsel-danger-bg hover:text-parsel-danger"
-                >
-                  <Trash2 className="size-3.5" />
-                  Delete
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setRowSelection({})}
-                  className="h-7 px-2 text-xs font-normal text-parsel-muted hover:text-parsel-text"
-                >
-                  Clear
-                </Button>
-              </>
-            ) : undefined}
-          </DataTablePagination>
+          <DataTablePagination table={table} />
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 border border-parsel-border bg-parsel-surface px-6 text-center">
@@ -383,17 +332,6 @@ export function SearchPage() {
         }
         onConfirm={() => void onDeleteConfirm()}
         onCancel={() => setDeleting(null)}
-      />
-      <ConfirmDeleteDialog
-        open={bulkDeleteOpen}
-        loading={submitting}
-        title={selectedIds.length === 1 ? "Delete 1 transaction?" : `Delete ${selectedIds.length} transactions?`}
-        description={`This permanently removes ${
-          selectedIds.length === 1 ? "the selected transaction" : `all ${selectedIds.length} selected transactions`
-        }. This action cannot be undone.`}
-        confirmLabel={selectedIds.length === 1 ? "Delete 1 entry" : `Delete ${selectedIds.length} entries`}
-        onConfirm={() => void onBulkDeleteConfirm()}
-        onCancel={() => setBulkDeleteOpen(false)}
       />
     </div>
   );

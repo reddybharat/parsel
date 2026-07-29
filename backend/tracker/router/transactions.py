@@ -13,8 +13,6 @@ from common.logger import get_logger
 from tracker.category_service import resolve_category_name
 from tracker.models import Transaction
 from tracker.schemas import (
-    TransactionBulkDelete,
-    TransactionBulkDeleteResult,
     TransactionCreate,
     TransactionResponse,
     TransactionsSearchResult,
@@ -328,29 +326,6 @@ async def update_transaction(
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info("update_transaction completed in %.1f ms (id=%s)", elapsed_ms, result.id)
     return result
-
-
-@router.post("/bulk-delete", response_model=TransactionBulkDeleteResult)
-async def bulk_delete_transactions(
-    payload: TransactionBulkDelete,
-    current_user: User = Depends(get_current_user),
-) -> TransactionBulkDeleteResult:
-    t0 = time.perf_counter()
-    stmt = delete(Transaction).where(
-        Transaction.id.in_(payload.ids),
-        Transaction.user_id == current_user.id,
-    )
-    async with get_connection() as session:
-        result = await session.execute(stmt)
-        deleted = result.rowcount or 0
-    elapsed_ms = (time.perf_counter() - t0) * 1000
-    logger.info(
-        "bulk_delete_transactions completed in %.1f ms (requested=%d, deleted=%d)",
-        elapsed_ms,
-        len(payload.ids),
-        deleted,
-    )
-    return TransactionBulkDeleteResult(deleted=deleted)
 
 
 @router.delete("/{transaction_id}", status_code=204)

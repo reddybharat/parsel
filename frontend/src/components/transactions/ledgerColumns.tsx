@@ -3,7 +3,6 @@ import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,6 +21,21 @@ function formatLedgerDate(iso: string): string {
   return `${String(day).padStart(2, "0")} ${monthLabel} ${year}`;
 }
 
+function formatLedgerTimestamp(iso?: string): string {
+  if (!iso) return "—";
+
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function createLedgerColumns({
   onEdit,
   onDelete,
@@ -30,31 +44,6 @@ export function createLedgerColumns({
   onDelete: (row: Transaction) => void;
 }): ColumnDef<Transaction>[] {
   return [
-    {
-      id: "select",
-      enableSorting: false,
-      enableHiding: false,
-      meta: { width: "2.25rem", skeletonWidth: "1rem" },
-      header: ({ table }) => (
-        <Checkbox
-          checked={
-            table.getIsAllPageRowsSelected() ||
-            (table.getIsSomePageRowsSelected() && "indeterminate")
-          }
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(Boolean(value))}
-          aria-label="Select all rows on this page"
-          className="translate-y-[1px]"
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(value) => row.toggleSelected(Boolean(value))}
-          aria-label="Select row"
-          className="translate-y-[1px]"
-        />
-      ),
-    },
     {
       accessorKey: "transaction_date",
       sortDescFirst: true,
@@ -118,6 +107,34 @@ export function createLedgerColumns({
           {row.original.payment_method || "—"}
         </span>
       ),
+    },
+    {
+      accessorKey: "created_at",
+      enableSorting: false,
+      meta: { label: "Created at", width: "11.5rem", skeletonWidth: "8rem" },
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Created at" />,
+      cell: ({ row }) => {
+        const value = formatLedgerTimestamp(row.original.created_at);
+        return (
+          <span className="whitespace-nowrap tabular-nums text-parsel-muted" title={value}>
+            {value}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: "updated_at",
+      enableSorting: false,
+      meta: { label: "Updated at", width: "11.5rem", skeletonWidth: "8rem" },
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Updated at" />,
+      cell: ({ row }) => {
+        const value = formatLedgerTimestamp(row.original.updated_at);
+        return (
+          <span className="whitespace-nowrap tabular-nums text-parsel-muted" title={value}>
+            {value}
+          </span>
+        );
+      },
     },
     {
       id: "actions",

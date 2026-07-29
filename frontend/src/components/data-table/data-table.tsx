@@ -98,8 +98,7 @@ export function DataTable<TData>({
             rows.map((row) => (
               <TableRow
                 key={row.id}
-                data-state={row.getIsSelected() ? "selected" : undefined}
-                className="group border-0 transition-colors hover:bg-parsel-soft/60 data-[state=selected]:bg-parsel-soft"
+                className="group border-0 transition-colors hover:bg-parsel-soft/60"
               >
                 {row.getVisibleCells().map((cell) => (
                   <TableCell

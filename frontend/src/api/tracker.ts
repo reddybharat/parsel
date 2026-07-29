@@ -57,10 +57,6 @@ export function deleteTransaction(id: string) {
   return deleteJson(`/transactions/${id}`);
 }
 
-export function bulkDeleteTransactions(ids: string[]) {
-  return postJson<{ deleted: number }>("/transactions/bulk-delete", { ids });
-}
-
 export function exportTransactions(params: {
   start_date: string;
   end_date: string;

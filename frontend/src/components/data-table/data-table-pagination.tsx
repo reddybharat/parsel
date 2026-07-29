@@ -1,19 +1,12 @@
 import type { Table } from "@tanstack/react-table";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
-import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
 const PAGE_SIZES = [15, 25, 50];
 
-export function DataTablePagination<TData>({
-  table,
-  children,
-}: {
-  table: Table<TData>;
-  children?: ReactNode;
-}) {
+export function DataTablePagination<TData>({ table }: { table: Table<TData> }) {
   const { pageIndex, pageSize } = table.getState().pagination;
   const total = table.getRowCount();
   const pageCount = table.getPageCount();
@@ -23,11 +16,9 @@ export function DataTablePagination<TData>({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border border-t-0 border-parsel-border bg-parsel-soft px-3 py-2">
       <div className="flex min-w-0 items-center gap-3 text-xs text-parsel-muted">
-        {children ?? (
-          <span className="tabular-nums">
-            {total === 0 ? "No transactions" : `${rangeStart}–${rangeEnd} of ${total}`}
-          </span>
-        )}
+        <span className="tabular-nums">
+          {total === 0 ? "No transactions" : `${rangeStart}–${rangeEnd} of ${total}`}
+        </span>
       </div>
 
       <div className="flex items-center gap-3">
