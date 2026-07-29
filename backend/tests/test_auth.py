@@ -386,3 +386,78 @@ def test_refresh_after_username_change_uses_current_user():
 
     claims = decode_access_token(token)
     assert claims["username"] == "alice_new"
+
+
+def test_change_password_success():
+    user = _user()
+
+    async def override_current_user():
+        return user
+
+    app.dependency_overrides[get_current_user] = override_current_user
+    updated = _user(version_no=1)
+    with patch(
+        "auth.router.change_password",
+        new_callable=AsyncMock,
+        return_value=updated,
+    ) as mock_change:
+        response = client.post(
+            "/auth/change-password",
+            json={
+                "current_password": STRONG_PASSWORD,
+                "new_password": "Password2!",
+                "confirm_password": "Password2!",
+            },
+            headers={"Authorization": "Bearer unused"},
+        )
+    assert response.status_code == 200
+    assert isinstance(response.json()["access_token"], str)
+    mock_change.assert_awaited_once_with(
+        user.id,
+        current_password=STRONG_PASSWORD,
+        new_password="Password2!",
+    )
+
+
+def test_change_password_rejects_wrong_current():
+    user = _user()
+
+    async def override_current_user():
+        return user
+
+    app.dependency_overrides[get_current_user] = override_current_user
+    with patch(
+        "auth.router.change_password",
+        new_callable=AsyncMock,
+        side_effect=InvalidCredentialsError("Current password is incorrect."),
+    ):
+        response = client.post(
+            "/auth/change-password",
+            json={
+                "current_password": "WrongPass1!",
+                "new_password": "Password2!",
+                "confirm_password": "Password2!",
+            },
+            headers={"Authorization": "Bearer unused"},
+        )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Current password is incorrect."
+
+
+def test_change_password_rejects_mismatch():
+    user = _user()
+
+    async def override_current_user():
+        return user
+
+    app.dependency_overrides[get_current_user] = override_current_user
+    response = client.post(
+        "/auth/change-password",
+        json={
+            "current_password": STRONG_PASSWORD,
+            "new_password": "Password2!",
+            "confirm_password": "Password3!",
+        },
+        headers={"Authorization": "Bearer unused"},
+    )
+    assert response.status_code == 422

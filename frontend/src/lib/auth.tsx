@@ -11,6 +11,7 @@ import {
 
 import { SessionExpiryDialog } from "@/components/auth/SessionExpiryDialog";
 import {
+  changePassword as apiChangePassword,
   getMe as apiGetMe,
   login as apiLogin,
   refreshSession as apiRefresh,
@@ -47,6 +48,11 @@ type AuthContextValue = {
   register: (username: string, email: string, password: string, confirmPassword: string) => Promise<void>;
   logout: () => void;
   updateProfile: (payload: UpdateMePayload) => Promise<MeResponse>;
+  changePassword: (payload: {
+    current_password: string;
+    new_password: string;
+    confirm_password: string;
+  }) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -150,6 +156,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [setSessionToken, applyProfile],
   );
 
+  const changePassword = useCallback(
+    async (payload: {
+      current_password: string;
+      new_password: string;
+      confirm_password: string;
+    }) => {
+      const result = await apiChangePassword(payload);
+      setSessionToken(result.access_token);
+    },
+    [setSessionToken],
+  );
+
   const extendSession = useCallback(async () => {
     setExtending(true);
     try {
@@ -226,8 +244,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       register,
       logout,
       updateProfile,
+      changePassword,
     };
-  }, [token, valid, firstName, lastName, preferences, login, register, logout, updateProfile]);
+  }, [token, valid, firstName, lastName, preferences, login, register, logout, updateProfile, changePassword]);
 
   return createElement(
     AuthContext.Provider,

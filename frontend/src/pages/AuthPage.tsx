@@ -8,20 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
+import { PASSWORD_HINT, passwordStrengthError } from "@/lib/password";
 
 type Mode = "login" | "register";
-
-const PASSWORD_HINT =
-  "At least 8 characters, with uppercase, lowercase, a number, and a symbol.";
-
-function passwordStrengthError(password: string): string | null {
-  if (password.length < 8) return "Password must be at least 8 characters.";
-  if (!/[A-Z]/.test(password)) return "Password must include an uppercase letter.";
-  if (!/[a-z]/.test(password)) return "Password must include a lowercase letter.";
-  if (!/[0-9]/.test(password)) return "Password must include a number.";
-  if (!/[^A-Za-z0-9]/.test(password)) return "Password must include a symbol.";
-  return null;
-}
 
 function PasswordInput({
   id,

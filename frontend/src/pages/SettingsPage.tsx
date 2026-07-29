@@ -17,6 +17,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/lib/auth";
+import { PASSWORD_HINT, passwordStrengthError } from "@/lib/password";
 import {
   setTrackerConfigCategories,
   trackerConfigQueryOptions,
@@ -67,6 +68,7 @@ export function SettingsPage() {
     lastName,
     preferences,
     updateProfile,
+    changePassword,
     logout,
   } = useAuth();
   const { theme, setTheme } = useTheme();
@@ -75,6 +77,14 @@ export function SettingsPage() {
   const [profileForm, setProfileForm] = useState({ firstName: "", lastName: "", username: "" });
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileFeedback, setProfileFeedback] = useState<FeedbackMessage | null>(null);
+
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordFeedback, setPasswordFeedback] = useState<FeedbackMessage | null>(null);
 
   const [defaultTheme, setDefaultTheme] = useState<Theme>("light");
   const [themeSaving, setThemeSaving] = useState(false);
@@ -152,6 +162,44 @@ export function SettingsPage() {
     }
   }
 
+  async function handleChangePassword() {
+    setPasswordFeedback(null);
+    const strengthError = passwordStrengthError(passwordForm.newPassword);
+    if (strengthError) {
+      setPasswordFeedback({ variant: "error", title: strengthError });
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordFeedback({ variant: "error", title: "Passwords do not match." });
+      return;
+    }
+    if (passwordForm.currentPassword === passwordForm.newPassword) {
+      setPasswordFeedback({
+        variant: "error",
+        title: "New password must be different from the current password.",
+      });
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      await changePassword({
+        current_password: passwordForm.currentPassword,
+        new_password: passwordForm.newPassword,
+        confirm_password: passwordForm.confirmPassword,
+      });
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setPasswordFeedback({ variant: "success", title: "Password updated." });
+    } catch (err) {
+      setPasswordFeedback({
+        variant: "error",
+        title: err instanceof Error ? err.message : "Could not change password.",
+      });
+    } finally {
+      setPasswordSaving(false);
+    }
+  }
+
   async function handleRename() {
     if (!renaming) return;
     const name = renameDraft.trim().replace(/\s+/g, " ");
@@ -212,9 +260,9 @@ export function SettingsPage() {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto border border-parsel-border lg:grid lg:grid-cols-3 lg:grid-rows-[auto_minmax(0,1fr)] lg:overflow-hidden">
+      <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto border border-parsel-border lg:grid lg:grid-cols-6 lg:grid-rows-[auto_minmax(0,1fr)] lg:overflow-hidden">
         <SettingsSection
-          className="border-b border-parsel-border lg:col-span-2 lg:border-r"
+          className="border-b border-parsel-border lg:col-span-4 lg:border-r"
           title="Profile"
           description="Your name and sign-in details."
           footer={
@@ -290,7 +338,7 @@ export function SettingsPage() {
         </SettingsSection>
 
         <SettingsSection
-          className="border-b border-parsel-border"
+          className="border-b border-parsel-border lg:col-span-2"
           title="Appearance"
           description="The theme applied when you sign in on a new device."
           footer={
@@ -326,9 +374,8 @@ export function SettingsPage() {
           </Field>
         </SettingsSection>
 
-
         <SettingsSection
-          className="lg:col-span-3"
+          className="border-b border-parsel-border lg:col-span-3 lg:border-b-0 lg:border-r"
           title="Custom categories"
           description={`Saved to your account. Up to ${MAX_CUSTOM_CATEGORIES} custom categories.`}
         >
@@ -366,8 +413,10 @@ export function SettingsPage() {
             <ul className="divide-y divide-parsel-border border border-parsel-border">
               {customCategories.map((item) => (
                 <li key={item.name} className="flex items-center justify-between gap-2 px-3 py-2">
-                  <span className="truncate text-sm text-parsel-neutral">{item.name}</span>
-                  <div className="flex items-center gap-1">
+                  <span className="min-w-0 truncate text-sm text-parsel-neutral" title={item.name}>
+                    {item.name}
+                  </span>
+                  <div className="flex shrink-0 items-center gap-1">
                     <Button
                       type="button"
                       variant="ghost"
@@ -403,6 +452,78 @@ export function SettingsPage() {
               ))}
             </ul>
           )}
+        </SettingsSection>
+
+        <SettingsSection
+          className="lg:col-span-3"
+          title="Password"
+          description="Change the password used to sign in."
+          footer={
+            <Button
+              type="button"
+              onClick={() => void handleChangePassword()}
+              disabled={
+                passwordSaving ||
+                !passwordForm.currentPassword ||
+                !passwordForm.newPassword ||
+                !passwordForm.confirmPassword
+              }
+            >
+              {passwordSaving ? "Updating…" : "Update password"}
+            </Button>
+          }
+        >
+          {passwordFeedback ? (
+            <div className="mb-4">
+              <StatusAlert
+                variant={passwordFeedback.variant}
+                title={passwordFeedback.title}
+                onDismiss={() => setPasswordFeedback(null)}
+              />
+            </div>
+          ) : null}
+          <FieldGroup className="grid gap-4 sm:grid-cols-2">
+            <Field className="sm:col-span-2 sm:max-w-[calc(50%-0.5rem)]">
+              <FieldLabel htmlFor="settings-current-password">Current password</FieldLabel>
+              <Input
+                id="settings-current-password"
+                type="password"
+                value={passwordForm.currentPassword}
+                onChange={(e) =>
+                  setPasswordForm((prev) => ({ ...prev, currentPassword: e.target.value }))
+                }
+                disabled={passwordSaving}
+                autoComplete="current-password"
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="settings-new-password">New password</FieldLabel>
+              <Input
+                id="settings-new-password"
+                type="password"
+                value={passwordForm.newPassword}
+                onChange={(e) =>
+                  setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))
+                }
+                disabled={passwordSaving}
+                autoComplete="new-password"
+              />
+              <FieldDescription>{PASSWORD_HINT}</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="settings-confirm-password">Confirm new password</FieldLabel>
+              <Input
+                id="settings-confirm-password"
+                type="password"
+                value={passwordForm.confirmPassword}
+                onChange={(e) =>
+                  setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))
+                }
+                disabled={passwordSaving}
+                autoComplete="new-password"
+              />
+            </Field>
+          </FieldGroup>
         </SettingsSection>
       </div>
 
