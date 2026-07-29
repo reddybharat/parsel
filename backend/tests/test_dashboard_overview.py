@@ -2,6 +2,7 @@
 
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
+import uuid
 
 import pytest
 
@@ -50,7 +51,11 @@ async def test_get_dashboard_aggregates_parses_category_spend_sorted():
     mock_cm.__aexit__.return_value = None
 
     with patch("tracker.services.get_connection", return_value=mock_cm):
-        result = await _get_dashboard_aggregates(bounds, months=12)
+        result = await _get_dashboard_aggregates(
+            bounds,
+            months=12,
+            user_id=uuid.UUID("55555555-5555-5555-5555-555555555555"),
+        )
 
     items = result["category_spend"]["items"]
     assert len(items) == 2
@@ -90,6 +95,10 @@ async def test_get_dashboard_overview_includes_category_spend():
             return_value=[],
         ),
     ):
-        result = await get_dashboard_overview(months=12, recent_limit=12)
+        result = await get_dashboard_overview(
+            months=12,
+            recent_limit=12,
+            user_id=uuid.UUID("55555555-5555-5555-5555-555555555555"),
+        )
 
     assert result["category_spend"]["items"] == [{"category": "Grocery", "spend": 42.0}]

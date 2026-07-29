@@ -1,5 +1,5 @@
 import { deleteJson, getBlob, getJson, patchJson, postJson, postMultipart } from "./client";
-import type { SearchResult, TrackerConfig, Transaction } from "../lib/types";
+import type { Category, SearchResult, TrackerConfig, Transaction } from "../lib/types";
 
 export type SearchParams = {
   start_date: string;
@@ -11,8 +11,28 @@ export type SearchParams = {
   page_size: number;
 };
 
+export type ImportPreviewResult = {
+  valid_row_count: number;
+  new_categories: string[];
+  errors: string[];
+};
+
+export type ImportResult = {
+  inserted: number;
+  errors: string[];
+  created_categories: string[];
+};
+
 export function fetchTrackerConfig() {
   return getJson<TrackerConfig>("/config/tracker");
+}
+
+export function createCategory(name: string) {
+  return postJson<Category>("/categories", { name });
+}
+
+export function renameCategory(oldName: string, newName: string) {
+  return patchJson<Category>("/categories", { old_name: oldName, new_name: newName });
 }
 
 export function searchTransactions(params: SearchParams) {
@@ -40,10 +60,17 @@ export function exportTransactions(params: {
   return getBlob("/transactions/export", params);
 }
 
-export function importTransactions(file: File) {
+export function previewImportTransactions(file: File) {
   const formData = new FormData();
   formData.append("file", file);
-  return postMultipart<{ inserted: number; errors: string[] }>("/transactions/import", formData);
+  return postMultipart<ImportPreviewResult>("/transactions/import/preview", formData);
+}
+
+export function importTransactions(file: File, options?: { createMissingCategories?: boolean }) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("create_missing_categories", options?.createMissingCategories ? "true" : "false");
+  return postMultipart<ImportResult>("/transactions/import", formData);
 }
 
 export function downloadImportTemplate() {

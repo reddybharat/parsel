@@ -1,7 +1,9 @@
 import time
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
+from auth.deps import get_current_user
+from auth.models import User
 from common.logger import get_logger
 from tracker.schemas import (
     DashboardOverviewResponse,
@@ -18,10 +20,15 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 async def dashboard_overview(
     months: int = Query(12, ge=1, le=24),
     recent_limit: int = Query(5, ge=1, le=20),
+    current_user: User = Depends(get_current_user),
 ) -> DashboardOverviewResponse:
     t0 = time.perf_counter()
     result = DashboardOverviewResponse(
-        **await get_dashboard_overview(months=months, recent_limit=recent_limit)
+        **await get_dashboard_overview(
+            months=months,
+            recent_limit=recent_limit,
+            user_id=current_user.id,
+        )
     )
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(

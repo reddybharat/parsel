@@ -18,7 +18,7 @@ function NativeSelect({ className, size = "default", ...props }: NativeSelectPro
         data-slot="native-select"
         data-size={size}
         className={cn(
-          "flex h-10 w-full min-w-0 appearance-none rounded-md border border-input bg-background px-3 py-2 pr-8 text-sm shadow-sm transition-colors",
+          "flex h-10 w-full min-w-0 appearance-none rounded-none border border-input bg-background px-3 py-2 pr-8 text-sm shadow-none transition-colors",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           "disabled:cursor-not-allowed disabled:opacity-50",
           "aria-invalid:border-destructive aria-invalid:ring-destructive/20",

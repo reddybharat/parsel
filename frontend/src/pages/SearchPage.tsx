@@ -1,8 +1,9 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { EmptyState } from "../components/feedback/EmptyState";
-import { LoadingState } from "../components/feedback/LoadingState";
+import { InlineProgress } from "../components/feedback/InlineProgress";
 import { StatusAlert, type FeedbackMessage } from "../components/feedback/StatusAlert";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -21,10 +22,10 @@ import { ConfirmDeleteDialog } from "../components/transactions/ConfirmDeleteDia
 import { EditTransactionDialog } from "../components/transactions/EditTransactionDialog";
 import { TransactionTable } from "../components/transactions/TransactionTable";
 import { invalidateDashboardOverview } from "@/lib/dashboardQuery";
+import { trackerConfigQueryOptions } from "@/lib/trackerConfigQuery";
 import {
   deleteTransaction,
   exportTransactions,
-  fetchTrackerConfig,
   searchTransactions,
   updateTransaction,
 } from "../api/tracker";
@@ -76,8 +77,9 @@ function pageNumbers(current: number, total: number): number[] {
 }
 
 export function SearchPage() {
-  const [categories, setCategories] = useState<string[]>([]);
-  const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
+  const { data: trackerConfig, isPending: loadingConfig } = useQuery(trackerConfigQueryOptions());
+  const categories = trackerConfig?.categories ?? [];
+  const paymentMethods = trackerConfig?.payment_methods ?? [];
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorTitle, setErrorTitle] = useState("Something went wrong");
@@ -112,18 +114,6 @@ export function SearchPage() {
     setErrorTitle("Something went wrong");
     setErrorRetry(null);
   }
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const config = await fetchTrackerConfig();
-        setCategories(config.categories);
-        setPaymentMethods(config.payment_methods);
-      } catch (err) {
-        showError("Failed to load configuration", err instanceof Error ? err.message : "Failed to load tracker config.");
-      }
-    })();
-  }, []);
 
   function applyPreset(preset: DatePreset) {
     const today = localDateIso();
@@ -249,7 +239,7 @@ export function SearchPage() {
   const canExport = Boolean(result && result.total > 0);
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-content min-h-0 flex-col gap-3 overflow-hidden">
+    <div className="mx-auto flex h-full w-full max-w-content min-h-0 flex-col gap-1.5 overflow-hidden">
       {feedback ? <StatusAlert {...feedback} onDismiss={() => setFeedback(null)} /> : null}
       {error ? (
         <StatusAlert
@@ -267,7 +257,7 @@ export function SearchPage() {
         />
       ) : null}
 
-      <form className="space-y-4 rounded-2xl border border-parsel-border bg-parsel-soft p-4 shadow-sm" onSubmit={onSearchSubmit}>
+      <form className="space-y-4 rounded-none border border-parsel-border bg-parsel-soft p-4 shadow-none" onSubmit={onSearchSubmit}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-2">
             <Button
@@ -328,11 +318,21 @@ export function SearchPage() {
             <FieldLabel htmlFor="search-category" className={fieldLabelClass}>
               Category
             </FieldLabel>
-            <NativeSelect id="search-category" value={category} onChange={(e) => setCategory(e.target.value)}>
+            <NativeSelect
+              id="search-category"
+              key={`search-category-${categories.length}-${categories.map((c) => c.name).join("|")}`}
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            >
               <NativeSelectOption value="All">All Categories</NativeSelectOption>
+              {loadingConfig && categories.length === 0 ? (
+                <NativeSelectOption value="__loading" disabled>
+                  Loading categories…
+                </NativeSelectOption>
+              ) : null}
               {categories.map((item) => (
-                <NativeSelectOption key={item} value={item}>
-                  {item}
+                <NativeSelectOption key={item.name} value={item.name}>
+                  {item.name}
                 </NativeSelectOption>
               ))}
             </NativeSelect>
@@ -350,13 +350,13 @@ export function SearchPage() {
             </Button>
           ) : null}
         </div>
+        {loading ? <InlineProgress label="Searching ledger…" /> : null}
       </form>
 
-      {loading ? <LoadingState label="Searching ledger..." /> : null}
       {result && !loading ? (
         <div className="flex min-h-0 flex-1 flex-col gap-2">
           {result.items.length === 0 ? (
-            <div className="rounded-xl border border-parsel-border bg-parsel-surface py-20">
+            <div className="rounded-none border border-parsel-border bg-parsel-surface py-20">
               <EmptyState title="No transactions found" detail="Try adjusting your filters." />
               <div className="mt-4 flex justify-center gap-3">
                 <Button type="button" variant="outline" onClick={clearFilters}>
@@ -383,7 +383,7 @@ export function SearchPage() {
             />
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-parsel-border bg-parsel-soft px-4 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-none border border-parsel-border bg-parsel-soft px-4 py-2.5">
             <p className="text-sm text-parsel-muted">
               Showing {rangeStart}-{rangeEnd} of {result.total} transactions
             </p>

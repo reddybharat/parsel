@@ -1,3 +1,4 @@
+import { CategorySelect } from "@/components/transactions/CategorySelect";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
@@ -13,7 +14,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { Transaction } from "@/lib/types";
+import type { Category, Transaction } from "@/lib/types";
 
 export function EditTransactionDialog({
   open,
@@ -22,15 +23,17 @@ export function EditTransactionDialog({
   paymentMethods,
   loading,
   onChange,
+  onCategoriesChange,
   onSave,
   onCancel,
 }: {
   open: boolean;
   transaction: Transaction | null;
-  categories: string[];
+  categories: Category[];
   paymentMethods: string[];
   loading: boolean;
   onChange: (next: Transaction) => void;
+  onCategoriesChange?: (next: Category[]) => void;
   onSave: () => void;
   onCancel: () => void;
 }) {
@@ -38,7 +41,7 @@ export function EditTransactionDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onCancel()}>
-      <DialogContent className="max-w-xl sm:rounded-xl">
+      <DialogContent className="max-w-xl sm:rounded-none">
         <DialogHeader>
           <DialogTitle className="text-2xl font-semibold tracking-tight text-parsel-neutral">Edit Transaction</DialogTitle>
         </DialogHeader>
@@ -84,17 +87,14 @@ export function EditTransactionDialog({
           </Field>
           <Field>
             <FieldLabel htmlFor="edit-category">Category</FieldLabel>
-            <NativeSelect
+            <CategorySelect
               id="edit-category"
               value={transaction.category}
-              onChange={(e) => onChange({ ...transaction, category: e.target.value })}
-            >
-              {categories.map((item) => (
-                <NativeSelectOption key={item} value={item}>
-                  {item}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
+              categories={categories}
+              onChange={(name) => onChange({ ...transaction, category: name })}
+              onCategoriesChange={onCategoriesChange}
+              allowEmpty={false}
+            />
           </Field>
           <Field>
             <FieldLabel htmlFor="edit-date">Date</FieldLabel>

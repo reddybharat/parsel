@@ -9,10 +9,15 @@ import io
 import json
 from datetime import date, datetime
 from typing import Any, Optional
+import uuid
 
 from common.database import get_connection
 from sqlalchemy import select, text
 
+from tracker.category_service import (
+    list_missing_category_names,
+    resolve_category_name,
+)
 from tracker.constants import INVESTMENTS_CATEGORY
 from tracker.models import Transaction
 from tracker.schemas import TransactionCreate
@@ -136,6 +141,8 @@ async def export_transactions_csv(
     end_date: date,
     category: Optional[str],
     payment_method: Optional[str] = None,
+    *,
+    user_id: uuid.UUID,
 ) -> str:
     """Return CSV string for all transactions matching the given filters."""
     stmt = (
@@ -147,6 +154,7 @@ async def export_transactions_csv(
             Transaction.description,
             Transaction.payment_method,
         )
+        .where(Transaction.user_id == user_id)
         .where(Transaction.transaction_date >= start_date)
         .where(Transaction.transaction_date <= end_date)
         .order_by(Transaction.transaction_date.asc())
@@ -211,33 +219,38 @@ def transactions_csv_template() -> str:
     return output.getvalue()
 
 
-async def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
+async def _parse_csv_transaction_rows(
+    content: bytes,
+) -> tuple[list[dict], list[str], list[str]]:
     """
-    Parse CSV content and insert valid rows into the transactions table.
+    Parse CSV into validated row dicts (without DB category resolution).
 
-    Expected columns (case-insensitive):
-    transaction_date (YYYY-MM-DD), category, amount, is_debit (optional but recommended),
-    description (optional), payment_method (optional; omitted or empty leaves it unset).
-    Returns (inserted_count, list of error messages for failed rows).
+    Returns (parsed_rows, errors, category_names_seen).
+    parsed_rows use TransactionCreate-validated fields but category may not exist yet.
     """
-    text = content.decode("utf-8-sig")
-    reader = csv.DictReader(io.StringIO(text))
+    text_data = content.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text_data))
 
     if reader.fieldnames is None:
-        return 0, ["CSV file has no header row."]
+        return [], ["CSV file has no header row."], []
 
     header_map = {name.lower(): name for name in reader.fieldnames}
     required_cols = ["transaction_date", "category", "amount"]
     missing = [c for c in required_cols if c not in header_map]
     if missing:
-        return 0, [
-            "Missing required column(s): "
-            + ", ".join(missing)
-            + ". Expected at least: transaction_date, category, amount."
-        ]
+        return (
+            [],
+            [
+                "Missing required column(s): "
+                + ", ".join(missing)
+                + ". Expected at least: transaction_date, category, amount."
+            ],
+            [],
+        )
 
     errors: list[str] = []
-    rows_to_insert: list[dict] = []
+    rows: list[dict] = []
+    category_names: list[str] = []
 
     for idx, row in enumerate(reader, start=2):
         try:
@@ -275,7 +288,6 @@ async def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
             if "is_debit" in header_map:
                 parsed_is_debit = _parse_is_debit(raw_is_debit)
             else:
-                # Backward compatible default for older CSVs.
                 parsed_is_debit = True
 
             pm = raw_payment_method if raw_payment_method else None
@@ -288,12 +300,15 @@ async def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
                 description=raw_description,
                 is_debit=parsed_is_debit,
             )
-            rows_to_insert.append(
+            category_names.append(tx.category)
+            rows.append(
                 {
                     "amount": float(tx.amount),
                     "is_debit": bool(tx.is_debit),
-                    "category": tx.category.strip(),
-                    "payment_method": tx.payment_method.strip() if tx.payment_method else None,
+                    "category": tx.category,
+                    "payment_method": tx.payment_method.strip()
+                    if tx.payment_method
+                    else None,
                     "transaction_date": tx.transaction_date,
                     "description": tx.description,
                 }
@@ -301,13 +316,75 @@ async def import_transactions_from_csv(content: bytes) -> tuple[int, list[str]]:
         except Exception as e:
             errors.append(f"Row {idx}: {e}")
 
+    return rows, errors, category_names
+
+
+async def preview_transactions_import(content: bytes) -> dict:
+    """
+    Parse CSV without inserting. Report new categories that would be created.
+    """
+    rows, errors, category_names = await _parse_csv_transaction_rows(content)
+    new_categories = await list_missing_category_names(category_names)
+    return {
+        "valid_row_count": len(rows),
+        "new_categories": new_categories,
+        "errors": errors,
+    }
+
+
+async def import_transactions_from_csv(
+    content: bytes,
+    *,
+    user_id: uuid.UUID,
+    create_missing_categories: bool = False,
+) -> tuple[int, list[str], list[str]]:
+    """
+    Parse CSV content and insert valid rows into the transactions table.
+
+    Expected columns (case-insensitive):
+    transaction_date (YYYY-MM-DD), category, amount, is_debit (optional but recommended),
+    description (optional), payment_method (optional; omitted or empty leaves it unset).
+    Returns (inserted_count, errors, created_categories).
+    """
+    rows, errors, category_names = await _parse_csv_transaction_rows(content)
+    if not rows and errors:
+        return 0, errors, []
+
+    created_categories: list[str] = []
+    if create_missing_categories:
+        created_categories = await list_missing_category_names(category_names)
+
+    rows_to_insert: list[dict] = []
+    for idx, row in enumerate(rows):
+        try:
+            canonical = await resolve_category_name(
+                row["category"],
+                allow_new=create_missing_categories,
+            )
+            rows_to_insert.append(
+                {
+                    "user_id": user_id,
+                    "amount": row["amount"],
+                    "is_debit": row["is_debit"],
+                    "category": canonical,
+                    "payment_method": row["payment_method"],
+                    "transaction_date": row["transaction_date"],
+                    "description": row["description"],
+                }
+            )
+        except Exception as e:
+            errors.append(f"Row (parsed #{idx + 1}): {e}")
+
     inserted_count = 0
     if rows_to_insert:
         async with get_connection() as session:
             await session.execute(Transaction.__table__.insert(), rows_to_insert)
         inserted_count = len(rows_to_insert)
 
-    return inserted_count, errors
+    if not create_missing_categories:
+        created_categories = []
+
+    return inserted_count, errors, created_categories
 
 
 def _add_months(month_start: date, delta_months: int) -> date:
@@ -333,9 +410,10 @@ def _dashboard_bounds(months: int) -> dict[str, date]:
     }
 
 
-def _dashboard_params(bounds: dict[str, date]) -> dict[str, Any]:
+def _dashboard_params(bounds: dict[str, date], user_id: uuid.UUID) -> dict[str, Any]:
     return {
         **bounds,
+        "user_id": user_id,
         "investments_category": INVESTMENTS_CATEGORY,
     }
 
@@ -395,7 +473,8 @@ _DASHBOARD_AGGREGATES_SQL = """
 WITH current_month AS (
   SELECT t.*
   FROM transactions t
-  WHERE t.transaction_date >= :month_now_start
+  WHERE t.user_id = :user_id
+    AND t.transaction_date >= :month_now_start
     AND t.transaction_date < :month_next_start
 ),
 spend_txns AS (
@@ -420,13 +499,15 @@ summary AS (
        AND t.transaction_date < :month_now_start
       THEN t.amount ELSE 0 END), 0)::float8 AS previous_month_spend
   FROM transactions t
+  WHERE t.user_id = :user_id
 ),
 trend_rows AS (
   SELECT
     date_trunc('month', t.transaction_date)::date AS month_start,
     COALESCE(SUM(t.amount), 0)::float8 AS spend
   FROM transactions t
-  WHERE t.is_debit = TRUE
+  WHERE t.user_id = :user_id
+    AND t.is_debit = TRUE
     AND t.category <> :investments_category
     AND t.transaction_date >= :trend_start
     AND t.transaction_date < :month_next_start
@@ -511,12 +592,17 @@ CROSS JOIN highlights h
 """
 
 
-async def _get_dashboard_aggregates(bounds: dict[str, date], months: int) -> dict:
+async def _get_dashboard_aggregates(
+    bounds: dict[str, date],
+    months: int,
+    *,
+    user_id: uuid.UUID,
+) -> dict:
     """Single-query dashboard aggregates (summary, trend, highlights, daily spend)."""
     async with get_connection() as session:
         result = await session.execute(
             text(_DASHBOARD_AGGREGATES_SQL),
-            _dashboard_params(bounds),
+            _dashboard_params(bounds, user_id),
         )
         row = result.mappings().first() or {}
 
@@ -573,7 +659,7 @@ async def _get_dashboard_aggregates(bounds: dict[str, date], months: int) -> dic
     }
 
 
-async def _get_dashboard_recent(recent_limit: int) -> list:
+async def _get_dashboard_recent(recent_limit: int, *, user_id: uuid.UUID) -> list:
     sql = """
         SELECT
           id::text,
@@ -584,11 +670,15 @@ async def _get_dashboard_recent(recent_limit: int) -> list:
           is_debit,
           description
         FROM transactions
+        WHERE user_id = :user_id
         ORDER BY transaction_date DESC, created_at DESC
         LIMIT :recent_limit
     """
     async with get_connection() as session:
-        result = await session.execute(text(sql), {"recent_limit": recent_limit})
+        result = await session.execute(
+            text(sql),
+            {"recent_limit": recent_limit, "user_id": user_id},
+        )
         rows = result.mappings().all()
 
     return [
@@ -605,15 +695,20 @@ async def _get_dashboard_recent(recent_limit: int) -> list:
     ]
 
 
-async def get_dashboard_overview(months: int = 12, recent_limit: int = 5) -> dict:
+async def get_dashboard_overview(
+    months: int = 12,
+    recent_limit: int = 5,
+    *,
+    user_id: uuid.UUID,
+) -> dict:
     """Return dashboard data via one aggregate query and one recent-transactions query."""
     months = max(1, min(int(months), 24))
     recent_limit = max(1, min(int(recent_limit), 20))
     bounds = _dashboard_bounds(months)
 
     aggregates, recent_items = await asyncio.gather(
-        _get_dashboard_aggregates(bounds, months),
-        _get_dashboard_recent(recent_limit),
+        _get_dashboard_aggregates(bounds, months, user_id=user_id),
+        _get_dashboard_recent(recent_limit, user_id=user_id),
     )
 
     return {

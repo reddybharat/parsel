@@ -4,13 +4,11 @@ from datetime import date, datetime
 from decimal import Decimal
 import uuid
 
-from sqlalchemy import Boolean, Date, DateTime, Integer, Numeric, Text, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, Text, func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column
 
-
-class Base(DeclarativeBase):
-    pass
+from common.base import Base
 
 
 class Transaction(Base):
@@ -19,6 +17,12 @@ class Transaction(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
     )
     amount: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     is_debit: Mapped[bool] = mapped_column(Boolean, nullable=False)

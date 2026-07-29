@@ -5,7 +5,7 @@ The agent calls list_tables and get_table_schema to discover tables and columns.
 Keep this file in sync with your database when you add or change tables.
 """
 
-from tracker.constants import CATEGORIES, PAYMENT_METHODS
+from tracker.constants import PAYMENT_METHODS, SYSTEM_CATEGORIES
 
 # Dialect label for query_checker (see QUERY_CHECKER_PROMPT_TEMPLATE in prompt.py)
 SQL_DIALECT = "postgresql"
@@ -19,10 +19,11 @@ SQL_TABLES_SCHEMA_DICT: dict[str, str] = {
 Table: public.transactions
 
 Columns:
-- id                  uuid PRIMARY KEY (default gen_random_uuid())
-- amount              numeric NOT NULL  — transaction amount in INR (always > 0)
-- is_debit            boolean NOT NULL  — True for Debit (spend), False for Credit (income)
-- category            text NOT NULL     — one of: {", ".join(CATEGORIES)}
+- id                  uuid PRIMARY KEY
+- user_id             uuid NOT NULL  — filter only (see system prompt CURRENT USER)
+- amount              numeric NOT NULL  — INR, always > 0
+- is_debit            boolean NOT NULL  — true = outflow (show as (₹…)), false = inflow (show as ₹…); never show the boolean
+- category            text NOT NULL     — free text; system defaults include: {", ".join(SYSTEM_CATEGORIES)}; custom labels appear when used; match case-insensitively when helpful
 - payment_method      text NULL        — one of: {", ".join(PAYMENT_METHODS)} when set
 - transaction_date    date NOT NULL
 - description         text NULL
@@ -31,7 +32,7 @@ Columns:
 - version_no          integer NOT NULL
 
 Notes:
-- Amounts are in Indian Rupees (INR).
-- For spending vs investments: treat "Investments" category as investments, not ordinary spending unless the user asks for investments specifically.
+- Amounts are INR. Investments category is 'Investments'.
+- There is no separate categories table; category is stored as text on each row.
 """.strip(),
 }

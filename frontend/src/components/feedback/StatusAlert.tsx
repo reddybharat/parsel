@@ -45,7 +45,8 @@ export function StatusAlert({
   const { icon: Icon, alertVariant, className } = variantConfig[variant];
 
   useEffect(() => {
-    if (!onDismiss) return;
+    // Success can auto-dismiss; errors/info stay until the user clears them.
+    if (!onDismiss || variant !== "success") return;
     const timer = window.setTimeout(onDismiss, dismissMs);
     return () => window.clearTimeout(timer);
   }, [onDismiss, dismissMs, title, description, variant]);

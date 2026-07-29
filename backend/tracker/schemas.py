@@ -8,7 +8,22 @@ from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 from pydantic.config import ConfigDict
 
-from tracker.constants import CATEGORIES, PAYMENT_METHODS
+from tracker.constants import CATEGORY_NAME_MAX_LENGTH, PAYMENT_METHODS
+from tracker.category_service import normalize_category_name
+
+
+class CategoryCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=CATEGORY_NAME_MAX_LENGTH)
+
+
+class CategoryRename(BaseModel):
+    old_name: str = Field(..., min_length=1, max_length=CATEGORY_NAME_MAX_LENGTH)
+    new_name: str = Field(..., min_length=1, max_length=CATEGORY_NAME_MAX_LENGTH)
+
+
+class CategoryResponse(BaseModel):
+    name: str
+    is_system: bool
 
 
 class TransactionCreate(BaseModel):
@@ -24,13 +39,15 @@ class TransactionCreate(BaseModel):
 
     @field_validator("category", mode="before")
     @classmethod
-    def category_required_and_allowed(cls, v: object) -> str:
+    def category_required(cls, v: object) -> str:
         if v is None or (isinstance(v, str) and not str(v).strip()):
             raise ValueError("Please select a category.")
-        s = str(v).strip()
-        if s not in CATEGORIES:
+        s = normalize_category_name(str(v))
+        if not s:
+            raise ValueError("Please select a category.")
+        if len(s) > CATEGORY_NAME_MAX_LENGTH:
             raise ValueError(
-                f"Invalid category. Must be one of: {', '.join(CATEGORIES)}"
+                f"Category name must be at most {CATEGORY_NAME_MAX_LENGTH} characters."
             )
         return s
 
@@ -71,17 +88,21 @@ class TransactionUpdate(BaseModel):
     description: Optional[str] = None
     is_debit: Optional[bool] = None
 
-    @field_validator("category")
+    @field_validator("category", mode="before")
     @classmethod
-    def category_must_be_allowed_if_present(cls, v: Optional[str]) -> Optional[str]:
-        if v is None or (isinstance(v, str) and not v.strip()):
-            return v
-        v = v.strip()
-        if v not in CATEGORIES:
+    def category_normalized_if_present(cls, v: object) -> Optional[str]:
+        if v is None:
+            return None
+        if isinstance(v, str) and not v.strip():
+            return None
+        s = normalize_category_name(str(v))
+        if not s:
+            return None
+        if len(s) > CATEGORY_NAME_MAX_LENGTH:
             raise ValueError(
-                f"Invalid category. Must be one of: {', '.join(CATEGORIES)}"
+                f"Category name must be at most {CATEGORY_NAME_MAX_LENGTH} characters."
             )
-        return v
+        return s
 
     @field_validator("payment_method")
     @classmethod
