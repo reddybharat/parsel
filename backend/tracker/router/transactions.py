@@ -13,6 +13,9 @@ from common.logger import get_logger
 from tracker.category_service import resolve_category_name
 from tracker.models import Transaction
 from tracker.schemas import (
+    ImportPreviewResponse,
+    ReviewedImportRequest,
+    ReviewedImportResponse,
     TransactionCreate,
     TransactionResponse,
     TransactionsSearchResult,
@@ -20,6 +23,7 @@ from tracker.schemas import (
 )
 from tracker.services import (
     export_transactions_csv,
+    import_reviewed_transactions,
     import_transactions_from_csv,
     preview_transactions_import,
     transaction_text_search,
@@ -188,22 +192,41 @@ async def export_transactions(
     )
 
 
-@router.post("/import/preview")
+@router.post("/import/preview", response_model=ImportPreviewResponse)
 async def import_transactions_preview(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
-) -> dict:
+) -> ImportPreviewResponse:
     del current_user
     t0 = time.perf_counter()
     content = await file.read()
     result = await preview_transactions_import(content)
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
-        "import_transactions_preview completed in %.1f ms (valid=%d, new_categories=%d, errors=%d)",
+        "import_transactions_preview completed in %.1f ms (rows=%d, ready=%d, new_categories=%d, errors=%d)",
         elapsed_ms,
-        result["valid_row_count"],
-        len(result["new_categories"]),
-        len(result["errors"]),
+        len(result.rows),
+        result.valid_row_count,
+        len(result.new_categories),
+        len(result.errors),
+    )
+    return result
+
+
+@router.post("/import/reviewed", response_model=ReviewedImportResponse)
+async def import_reviewed_transactions_endpoint(
+    payload: ReviewedImportRequest,
+    current_user: User = Depends(get_current_user),
+) -> ReviewedImportResponse:
+    t0 = time.perf_counter()
+    result = await import_reviewed_transactions(payload, user_id=current_user.id)
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    logger.info(
+        "import_reviewed_transactions completed in %.1f ms (inserted=%d, errors=%d, created_categories=%d)",
+        elapsed_ms,
+        result.inserted,
+        len(result.errors),
+        len(result.created_categories),
     )
     return result
 

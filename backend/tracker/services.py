@@ -15,12 +15,23 @@ from common.database import get_connection, get_readonly_connection
 from sqlalchemy import or_, select, text
 
 from tracker.category_service import (
+    category_key,
+    known_category_map,
     list_missing_category_names,
+    normalize_category_name,
     resolve_category_name,
 )
-from tracker.constants import INVESTMENTS_CATEGORY
+from tracker.constants import INVESTMENTS_CATEGORY, PAYMENT_METHODS
 from tracker.models import Transaction
-from tracker.schemas import TransactionCreate
+from tracker.schemas import (
+    ImportFieldIssue,
+    ImportPreviewResponse,
+    ImportPreviewRow,
+    ReviewedImportRequest,
+    ReviewedImportResponse,
+    ReviewedImportRow,
+    TransactionCreate,
+)
 
 # CSV column names (used for export, template, and import)
 CSV_FIELDS = [
@@ -237,6 +248,245 @@ def transactions_csv_template() -> str:
     return output.getvalue()
 
 
+async def _parse_csv_rows_for_preview(
+    content: bytes,
+) -> tuple[list[ImportPreviewRow], list[str], list[str]]:
+    """
+    Parse CSV into preview rows with per-field issues.
+
+    Returns (preview_rows, file_errors, category_names_seen).
+    """
+    text_data = content.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text_data))
+
+    if reader.fieldnames is None:
+        return [], ["CSV file has no header row."], []
+
+    header_map = {name.lower(): name for name in reader.fieldnames}
+    required_cols = ["transaction_date", "category", "amount"]
+    missing = [c for c in required_cols if c not in header_map]
+    if missing:
+        return (
+            [],
+            [
+                "Missing required column(s): "
+                + ", ".join(missing)
+                + ". Expected at least: transaction_date, category, amount."
+            ],
+            [],
+        )
+
+    known = await known_category_map()
+    preview_rows: list[ImportPreviewRow] = []
+    category_names: list[str] = []
+
+    for idx, row in enumerate(reader, start=2):
+        raw_date = (row.get(header_map["transaction_date"]) or "").strip()
+        raw_category = (row.get(header_map["category"]) or "").strip()
+        raw_amount = (row.get(header_map["amount"]) or "").strip()
+        raw_description = (
+            (row.get(header_map.get("description", "")) or "").strip()
+            if "description" in header_map
+            else ""
+        )
+        raw_is_debit = (
+            (row.get(header_map["is_debit"]) or "").strip()
+            if "is_debit" in header_map
+            else "true"
+        )
+        raw_payment_method = (
+            (row.get(header_map["payment_method"]) or "").strip()
+            if "payment_method" in header_map
+            else ""
+        )
+
+        issues: list[ImportFieldIssue] = []
+        parsed_date: date | None = None
+        parsed_amount: float | None = None
+        parsed_is_debit = True
+        parsed_payment_method: str | None = None
+        normalized_category = ""
+
+        if not raw_date:
+            issues.append(
+                ImportFieldIssue(
+                    field="transaction_date",
+                    code="required",
+                    message="Transaction date is required.",
+                )
+            )
+        else:
+            try:
+                parsed_date = _parse_transaction_date(raw_date)
+                if parsed_date > date.today():
+                    issues.append(
+                        ImportFieldIssue(
+                            field="transaction_date",
+                            code="invalid_value",
+                            message="Transaction date cannot be in the future.",
+                        )
+                    )
+            except ValueError as exc:
+                issues.append(
+                    ImportFieldIssue(
+                        field="transaction_date",
+                        code="invalid_format",
+                        message=str(exc),
+                    )
+                )
+
+        if not raw_category:
+            issues.append(
+                ImportFieldIssue(
+                    field="category",
+                    code="required",
+                    message="Category is required.",
+                )
+            )
+        else:
+            try:
+                normalized_category = normalize_category_name(raw_category)
+                if not normalized_category:
+                    issues.append(
+                        ImportFieldIssue(
+                            field="category",
+                            code="required",
+                            message="Category is required.",
+                        )
+                    )
+                elif len(normalized_category) > 40:
+                    issues.append(
+                        ImportFieldIssue(
+                            field="category",
+                            code="invalid_value",
+                            message="Category name must be at most 40 characters.",
+                        )
+                    )
+            except ValueError as exc:
+                issues.append(
+                    ImportFieldIssue(
+                        field="category",
+                        code="invalid_value",
+                        message=str(exc),
+                    )
+                )
+
+        if not raw_amount:
+            issues.append(
+                ImportFieldIssue(
+                    field="amount",
+                    code="required",
+                    message="Amount is required.",
+                )
+            )
+        else:
+            try:
+                parsed_amount = _parse_amount(raw_amount)
+                if parsed_amount <= 0:
+                    issues.append(
+                        ImportFieldIssue(
+                            field="amount",
+                            code="invalid_value",
+                            message="Amount must be greater than 0.",
+                        )
+                    )
+            except ValueError:
+                issues.append(
+                    ImportFieldIssue(
+                        field="amount",
+                        code="invalid_format",
+                        message=f"Invalid amount '{raw_amount}'. Must be a number.",
+                    )
+                )
+
+        if "is_debit" in header_map:
+            try:
+                parsed_is_debit = _parse_is_debit(raw_is_debit)
+            except ValueError as exc:
+                issues.append(
+                    ImportFieldIssue(
+                        field="is_debit",
+                        code="invalid_format",
+                        message=str(exc),
+                    )
+                )
+
+        if raw_payment_method:
+            if raw_payment_method not in PAYMENT_METHODS:
+                issues.append(
+                    ImportFieldIssue(
+                        field="payment_method",
+                        code="invalid_value",
+                        message=(
+                            "Invalid payment method. Must be one of: "
+                            + ", ".join(PAYMENT_METHODS)
+                        ),
+                    )
+                )
+            else:
+                parsed_payment_method = raw_payment_method
+
+        category_is_new = False
+        if normalized_category and not any(
+            issue.field == "category" for issue in issues
+        ):
+            category_is_new = category_key(normalized_category) not in known
+            if category_is_new:
+                issues.append(
+                    ImportFieldIssue(
+                        field="category",
+                        code="unknown_category",
+                        message=(
+                            f'Category "{normalized_category}" is not in your list. '
+                            "Map to an existing category or approve it as new."
+                        ),
+                    )
+                )
+            category_names.append(normalized_category)
+
+        blocking_codes = {"required", "invalid_format", "invalid_value"}
+        has_blocking = any(issue.code in blocking_codes for issue in issues)
+        is_ready = not has_blocking and not category_is_new
+
+        if is_ready and parsed_date and parsed_amount is not None:
+            try:
+                TransactionCreate(
+                    amount=parsed_amount,
+                    category=normalized_category,
+                    payment_method=parsed_payment_method,
+                    transaction_date=parsed_date,
+                    description=raw_description or None,
+                    is_debit=parsed_is_debit,
+                )
+            except Exception as exc:
+                is_ready = False
+                if not any(issue.message == str(exc) for issue in issues):
+                    issues.append(
+                        ImportFieldIssue(
+                            field="row",
+                            code="invalid_value",
+                            message=str(exc),
+                        )
+                    )
+
+        preview_rows.append(
+            ImportPreviewRow(
+                source_row=idx,
+                transaction_date=raw_date,
+                category=raw_category,
+                amount=raw_amount,
+                is_debit=raw_is_debit if "is_debit" in header_map else "true",
+                description=raw_description or None,
+                payment_method=raw_payment_method or None,
+                issues=issues,
+                is_ready=is_ready,
+                category_is_new=category_is_new,
+            )
+        )
+
+    return preview_rows, [], category_names
+
+
 async def _parse_csv_transaction_rows(
     content: bytes,
 ) -> tuple[list[dict], list[str], list[str]]:
@@ -337,17 +587,98 @@ async def _parse_csv_transaction_rows(
     return rows, errors, category_names
 
 
-async def preview_transactions_import(content: bytes) -> dict:
+async def preview_transactions_import(content: bytes) -> ImportPreviewResponse:
     """
-    Parse CSV without inserting. Report new categories that would be created.
+    Parse CSV without inserting. Return every row with field-level issues.
     """
-    rows, errors, category_names = await _parse_csv_transaction_rows(content)
+    preview_rows, file_errors, category_names = await _parse_csv_rows_for_preview(content)
+    if file_errors:
+        return ImportPreviewResponse(
+            rows=[],
+            file_errors=file_errors,
+            new_categories=[],
+            valid_row_count=0,
+            errors=file_errors,
+        )
+
     new_categories = await list_missing_category_names(category_names)
-    return {
-        "valid_row_count": len(rows),
-        "new_categories": new_categories,
-        "errors": errors,
+    valid_row_count = sum(1 for row in preview_rows if row.is_ready)
+    row_errors = [
+        f"Row {row.source_row}: {issue.message}"
+        for row in preview_rows
+        for issue in row.issues
+        if issue.code != "unknown_category"
+    ]
+
+    return ImportPreviewResponse(
+        rows=preview_rows,
+        file_errors=[],
+        new_categories=new_categories,
+        valid_row_count=valid_row_count,
+        errors=row_errors,
+    )
+
+
+async def import_reviewed_transactions(
+    payload: ReviewedImportRequest,
+    *,
+    user_id: uuid.UUID,
+) -> ReviewedImportResponse:
+    """
+    Insert only the user-reviewed rows atomically.
+    """
+    approved_keys = {
+        category_key(name)
+        for name in payload.approved_new_categories
     }
+    rows_to_insert: list[dict] = []
+    created_categories: list[str] = []
+    errors: list[str] = []
+
+    for row in payload.rows:
+        try:
+            canonical = await resolve_category_name(
+                row.category,
+                allow_new=category_key(row.category) in approved_keys,
+            )
+        except ValueError as exc:
+            errors.append(f"Row {row.source_row}: {exc}")
+            continue
+
+        if category_key(canonical) in approved_keys:
+            if canonical not in created_categories:
+                created_categories.append(canonical)
+
+        rows_to_insert.append(
+            {
+                "user_id": user_id,
+                "amount": float(row.amount),
+                "is_debit": bool(row.is_debit),
+                "category": canonical,
+                "payment_method": row.payment_method,
+                "transaction_date": row.transaction_date,
+                "description": row.description,
+            }
+        )
+
+    if errors:
+        return ReviewedImportResponse(
+            inserted=0,
+            created_categories=[],
+            errors=errors,
+        )
+
+    inserted_count = 0
+    if rows_to_insert:
+        async with get_connection() as session:
+            await session.execute(Transaction.__table__.insert(), rows_to_insert)
+        inserted_count = len(rows_to_insert)
+
+    return ReviewedImportResponse(
+        inserted=inserted_count,
+        created_categories=created_categories,
+        errors=[],
+    )
 
 
 async def import_transactions_from_csv(

@@ -17,10 +17,41 @@ export type SearchParams = {
   page_size: number;
 };
 
+export type ImportFieldIssue = {
+  field: string;
+  code: string;
+  message: string;
+};
+
+export type ImportPreviewRow = {
+  source_row: number;
+  transaction_date: string;
+  category: string;
+  amount: string;
+  is_debit: string;
+  description: string | null;
+  payment_method: string | null;
+  issues: ImportFieldIssue[];
+  is_ready: boolean;
+  category_is_new: boolean;
+};
+
 export type ImportPreviewResult = {
+  rows: ImportPreviewRow[];
+  file_errors: string[];
   valid_row_count: number;
   new_categories: string[];
   errors: string[];
+};
+
+export type ReviewedImportRow = {
+  source_row: number;
+  amount: number;
+  is_debit: boolean;
+  category: string;
+  payment_method: string | null;
+  transaction_date: string;
+  description: string | null;
 };
 
 export type ImportResult = {
@@ -72,6 +103,13 @@ export function previewImportTransactions(file: File) {
   const formData = new FormData();
   formData.append("file", file);
   return postMultipart<ImportPreviewResult>("/transactions/import/preview", formData);
+}
+
+export function importReviewedTransactions(payload: {
+  rows: ReviewedImportRow[];
+  approved_new_categories: string[];
+}) {
+  return postJson<ImportResult>("/transactions/import/reviewed", payload);
 }
 
 export function importTransactions(file: File, options?: { createMissingCategories?: boolean }) {

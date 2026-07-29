@@ -20,7 +20,7 @@ from tracker.category_service import (
     normalize_category_name,
     validate_category_name,
 )
-from tracker.schemas import TransactionCreate
+from tracker.schemas import ImportPreviewResponse, TransactionCreate
 
 client = TestClient(app)
 
@@ -125,11 +125,13 @@ def test_import_preview_reports_new_categories():
     with patch(
         "tracker.router.transactions.preview_transactions_import",
         new=AsyncMock(
-            return_value={
-                "valid_row_count": 2,
-                "new_categories": ["Pet Care"],
-                "errors": [],
-            }
+            return_value=ImportPreviewResponse(
+                rows=[],
+                file_errors=[],
+                valid_row_count=2,
+                new_categories=["Pet Care"],
+                errors=[],
+            )
         ),
     ):
         response = client.post(

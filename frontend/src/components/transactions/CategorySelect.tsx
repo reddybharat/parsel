@@ -26,6 +26,9 @@ export function CategorySelect({
   required,
   placeholder = "Select Category",
   allowEmpty = true,
+  size = "default",
+  invalid,
+  disabled,
 }: {
   id?: string;
   value: string;
@@ -35,6 +38,9 @@ export function CategorySelect({
   required?: boolean;
   placeholder?: string;
   allowEmpty?: boolean;
+  size?: "xs" | "sm" | "default";
+  invalid?: boolean;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -87,6 +93,9 @@ export function CategorySelect({
         value={value}
         onChange={(e) => handleSelectChange(e.target.value)}
         required={required}
+        size={size}
+        disabled={disabled}
+        aria-invalid={invalid}
       >
         {allowEmpty ? <NativeSelectOption value="">{placeholder}</NativeSelectOption> : null}
         {categories.map((item) => (
