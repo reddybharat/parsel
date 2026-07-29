@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowUp, Plus, Search } from "lucide-react";
+import { Search, Upload } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { ParselMark } from "@/components/brand/ParselMark";
@@ -83,14 +83,8 @@ function QuickActionsBlock() {
         <div className="flex min-h-0 flex-1 flex-col justify-center gap-2">
           <Button asChild className="w-full rounded-none shadow-none">
             <Link to="/ledger/add">
-              <Plus />
-              Add Transaction
-            </Link>
-          </Button>
-          <Button asChild variant="outline" className="w-full rounded-none shadow-none">
-            <Link to="/ledger/add?tab=bulk">
-              <ArrowUp />
-              Bulk Import
+              <Upload />
+              Import Data
             </Link>
           </Button>
           <Button asChild variant="outline" className="w-full rounded-none shadow-none">

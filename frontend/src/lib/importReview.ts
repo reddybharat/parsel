@@ -53,6 +53,38 @@ export function toEditableRow(row: ImportPreviewRow): EditableImportRow {
   return { ...row, approved_new_category: false, imported: false };
 }
 
+/**
+ * A blank, editable row for typing a transaction directly into the review table.
+ * Date defaults to today; other fields start empty so the user must fill them in.
+ * `sourceRow` doubles as the row's id and as the number shown in the Row column, so it
+ * must be unique among the rows currently on screen. Callers should pass the result
+ * through `recomputeRow` to populate validation issues.
+ */
+export function createManualRow(sourceRow: number, transactionDate = todayIso()): EditableImportRow {
+  return {
+    source_row: sourceRow,
+    transaction_date: transactionDate,
+    category: "",
+    amount: "",
+    is_debit: "",
+    description: null,
+    payment_method: null,
+    issues: [],
+    is_ready: false,
+    category_is_new: false,
+    approved_new_category: false,
+    imported: false,
+  };
+}
+
+function todayIso(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function isCategoryKnown(name: string, categories: Category[]): boolean {
   const key = categoryKey(name);
   return categories.some((item) => categoryKey(item.name) === key);
@@ -119,8 +151,9 @@ export function validateImportRow(
     }
   }
 
-  const isDebit = parseIsDebit(row.is_debit);
-  if (isDebit === null) {
+  if (!row.is_debit.trim()) {
+    issues.push({ field: "is_debit", code: "required", message: "Required" });
+  } else if (parseIsDebit(row.is_debit) === null) {
     issues.push({
       field: "is_debit",
       code: "invalid_format",
@@ -204,14 +237,20 @@ export function toReviewedPayload(row: EditableImportRow): {
   };
 }
 
-export function collectApprovedNewCategories(rows: EditableImportRow[], categories: Category[]): string[] {
+/**
+ * Names the user explicitly approved as new, so the server may create them on import.
+ *
+ * Deliberately trusts `approved_new_category` alone rather than re-checking the local
+ * category list: creating a category from the dropdown only adds it to the client cache
+ * optimistically (the server persists a name once a transaction uses it), so filtering
+ * against that list would drop the very name that still needs approving.
+ */
+export function collectApprovedNewCategories(rows: EditableImportRow[]): string[] {
   const approved = new Set<string>();
   for (const row of rows) {
     if (!row.approved_new_category) continue;
     const name = normalizeCategory(row.category);
-    if (name && !isCategoryKnown(name, categories)) {
-      approved.add(name);
-    }
+    if (name) approved.add(name);
   }
   return [...approved];
 }

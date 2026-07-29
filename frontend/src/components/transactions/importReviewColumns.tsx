@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { AlertCircle, Check, Plus } from "lucide-react";
+import { AlertCircle, Check, Plus, X } from "lucide-react";
 
 import type { ImportFieldIssue } from "@/api/tracker";
 import { CategorySelect } from "@/components/transactions/CategorySelect";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -110,11 +111,13 @@ export function createImportReviewColumns({
   paymentMethods,
   onRowChange,
   onApproveNewCategory,
+  onRemoveRow,
 }: {
   categories: Category[];
   paymentMethods: string[];
   onRowChange: (sourceRow: number, patch: Partial<EditableImportRow>) => void;
   onApproveNewCategory: (sourceRow: number) => void;
+  onRemoveRow?: (sourceRow: number) => void;
 }): ColumnDef<EditableImportRow>[] {
   return [
     {
@@ -167,20 +170,24 @@ export function createImportReviewColumns({
     },
     {
       accessorKey: "transaction_date",
-      meta: { label: "Date", width: "7.5rem", skeletonWidth: "5rem" },
+      meta: { label: "Date", width: "8.5rem", skeletonWidth: "5rem" },
       header: () => <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">Date</span>,
       cell: ({ row }) => {
         const issue = fieldIssue(row.original, "transaction_date");
         return (
           <FieldShell issue={issue}>
-            <Input
+            <DatePicker
               value={row.original.transaction_date}
-              onChange={(e) =>
-                onRowChange(row.original.source_row, { transaction_date: e.target.value })
+              onChange={(value) =>
+                onRowChange(row.original.source_row, { transaction_date: value })
               }
               disabled={row.original.imported}
-              className={fieldInputClass(issue)}
-              aria-invalid={Boolean(issue)}
+              placeholder="Date"
+              className={cn(
+                "h-7 rounded-none px-2 text-xs shadow-none",
+                "[&_svg]:size-3.5",
+                issue && "border-parsel-outflow ring-1 ring-parsel-outflow/30",
+              )}
             />
           </FieldShell>
         );
@@ -192,22 +199,31 @@ export function createImportReviewColumns({
       header: () => <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">Type</span>,
       cell: ({ row }) => {
         const issue = fieldIssue(row.original, "is_debit");
-        const isDebit = !["false", "f", "0", "no", "n"].includes(
-          row.original.is_debit.trim().toLowerCase(),
-        );
+        const raw = row.original.is_debit.trim().toLowerCase();
+        const typeValue = !raw
+          ? ""
+          : ["false", "f", "0", "no", "n"].includes(raw)
+            ? "credit"
+            : "debit";
         return (
           <FieldShell issue={issue}>
             <NativeSelect
               size="xs"
-              value={isDebit ? "debit" : "credit"}
+              value={typeValue}
               onChange={(e) =>
                 onRowChange(row.original.source_row, {
-                  is_debit: e.target.value === "debit" ? "true" : "false",
+                  is_debit:
+                    e.target.value === "debit"
+                      ? "true"
+                      : e.target.value === "credit"
+                        ? "false"
+                        : "",
                 })
               }
               disabled={row.original.imported}
               aria-invalid={Boolean(issue)}
             >
+              <NativeSelectOption value="">Type</NativeSelectOption>
               <NativeSelectOption value="debit">Debit</NativeSelectOption>
               <NativeSelectOption value="credit">Credit</NativeSelectOption>
             </NativeSelect>
@@ -246,7 +262,7 @@ export function createImportReviewColumns({
                   approved_new_category: !isCategoryKnown(next, categories),
                 })
               }
-              allowEmpty={false}
+              allowEmpty
               placeholder="Category"
               size="xs"
               invalid={Boolean(issue) && !unknown}
@@ -377,5 +393,32 @@ export function createImportReviewColumns({
         return <RowIssuesHint issues={row.original.issues} />;
       },
     },
+    ...(onRemoveRow
+      ? [
+          {
+            id: "actions",
+            enableSorting: false,
+            enableHiding: false,
+            meta: { width: "2.25rem" },
+            header: () => <span className="sr-only">Remove</span>,
+            cell: ({ row }) =>
+              row.original.imported ? (
+                <span className={staticCellClass} />
+              ) : (
+                <span className={staticCellClass}>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveRow(row.original.source_row)}
+                    className="flex size-6 items-center justify-center rounded-none text-parsel-muted transition hover:bg-parsel-soft hover:text-parsel-outflow"
+                    aria-label={`Remove row ${row.original.source_row}`}
+                    title="Remove row"
+                  >
+                    <X className="size-3.5" aria-hidden />
+                  </button>
+                </span>
+              ),
+          } as ColumnDef<EditableImportRow>,
+        ]
+      : []),
   ];
 }

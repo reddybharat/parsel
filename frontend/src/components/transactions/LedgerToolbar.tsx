@@ -1,6 +1,5 @@
 import type { Table } from "@tanstack/react-table";
 import { Download, Plus, RotateCcw, Search, X } from "lucide-react";
-import { Link } from "react-router-dom";
 
 import { DataTableFilterSelect } from "@/components/data-table/data-table-filter-select";
 import { DataTableViewOptions } from "@/components/data-table/data-table-view-options";
@@ -36,6 +35,7 @@ export function LedgerToolbar({
   onExport,
   canExport,
   onSubmit,
+  onAdd,
 }: {
   filters: LedgerFilters;
   onFiltersChange: (next: Partial<LedgerFilters>) => void;
@@ -48,6 +48,7 @@ export function LedgerToolbar({
   onExport: () => void;
   canExport: boolean;
   onSubmit: () => void;
+  onAdd: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -142,11 +143,9 @@ export function LedgerToolbar({
           <Download />
           <span className="hidden sm:inline">Export</span>
         </Button>
-        <Button asChild size="sm" className="h-8 gap-1.5">
-          <Link to="/ledger/add">
-            <Plus />
-            Add
-          </Link>
+        <Button type="button" size="sm" className="h-8 gap-1.5" onClick={onAdd}>
+          <Plus />
+          Add
         </Button>
       </div>
     </div>

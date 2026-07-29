@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getCoreRowModel,
   useReactTable,
@@ -17,12 +17,17 @@ import {
 import type { Category } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+function eligibleKeys(source: EditableImportRow[]): Set<string> {
+  return new Set(source.filter(isRowSelectable).map((row) => String(row.source_row)));
+}
+
 export function ImportReviewTable({
   rows,
   categories,
   paymentMethods,
   onRowsChange,
   onImport,
+  onRemoveRow,
   importing,
 }: {
   rows: EditableImportRow[];
@@ -30,46 +35,64 @@ export function ImportReviewTable({
   paymentMethods: string[];
   onRowsChange: (rows: EditableImportRow[]) => void;
   onImport: (selected: EditableImportRow[]) => void;
+  onRemoveRow?: (sourceRow: number) => void;
   importing?: boolean;
 }) {
+  // Column defs must stay referentially stable: flexRender treats each `cell` as a
+  // component type, so rebuilding them per keystroke would remount (and unfocus) the inputs.
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+
   const [rowSelection, setRowSelection] = useState<RowSelectionState>(() => {
     const initial: RowSelectionState = {};
-    for (const row of rows) {
-      if (isRowSelectable(row)) {
-        initial[String(row.source_row)] = true;
-      }
-    }
+    for (const key of eligibleKeys(rows)) initial[key] = true;
     return initial;
   });
 
-  // Rows that became ineligible (edited into an error, or just imported) drop out of the selection.
+  // Tracks which rows were eligible last render so rows that *become* ready
+  // (a freshly-typed row, or a CSV row fixed inline) auto-select themselves.
+  const prevEligibleRef = useRef<Set<string>>(eligibleKeys(rows));
+
   useEffect(() => {
+    const eligible = eligibleKeys(rows);
+    // Snapshot before scheduling: the updater below runs during a later render pass,
+    // by which point the ref would already hold the new set.
+    const previous = prevEligibleRef.current;
+    prevEligibleRef.current = eligible;
+
     setRowSelection((current) => {
-      const eligible = new Set(rows.filter(isRowSelectable).map((row) => String(row.source_row)));
       const next: RowSelectionState = {};
-      let changed = false;
+      // Keep prior selections that are still eligible.
       for (const [key, selected] of Object.entries(current)) {
-        if (selected && eligible.has(key)) {
-          next[key] = true;
-        } else {
-          changed = true;
-        }
+        if (selected && eligible.has(key)) next[key] = true;
       }
-      return changed ? next : current;
+      // Auto-select rows that just became eligible.
+      for (const key of eligible) {
+        if (!previous.has(key)) next[key] = true;
+      }
+      const currentKeys = Object.keys(current).filter((key) => current[key]);
+      const nextKeys = Object.keys(next);
+      const unchanged =
+        currentKeys.length === nextKeys.length && nextKeys.every((key) => current[key]);
+      return unchanged ? current : next;
     });
   }, [rows]);
 
-  function patchRow(sourceRow: number, patch: Partial<EditableImportRow>) {
-    const next = rows.map((row) => {
-      if (row.source_row !== sourceRow) return row;
-      return recomputeRow({ ...row, ...patch }, categories);
-    });
-    onRowsChange(next);
-  }
+  const patchRow = useCallback(
+    (sourceRow: number, patch: Partial<EditableImportRow>) => {
+      const next = rowsRef.current.map((row) => {
+        if (row.source_row !== sourceRow) return row;
+        return recomputeRow({ ...row, ...patch }, categories);
+      });
+      onRowsChange(next);
+    },
+    [categories, onRowsChange],
+  );
 
-  function approveNewCategory(sourceRow: number) {
-    patchRow(sourceRow, { approved_new_category: true });
-  }
+  const approveNewCategory = useCallback(
+    (sourceRow: number) => patchRow(sourceRow, { approved_new_category: true }),
+    [patchRow],
+  );
 
   const columns = useMemo(
     () =>
@@ -78,8 +101,9 @@ export function ImportReviewTable({
         paymentMethods,
         onRowChange: patchRow,
         onApproveNewCategory: approveNewCategory,
+        onRemoveRow,
       }),
-    [categories, paymentMethods, rows],
+    [categories, paymentMethods, patchRow, approveNewCategory, onRemoveRow],
   );
 
   const table = useReactTable({
@@ -101,7 +125,7 @@ export function ImportReviewTable({
   const pending = rows.filter((row) => !row.imported);
   const readyCount = pending.filter((row) => row.is_ready).length;
   const attentionCount = pending.length - readyCount;
-  const approvedCategories = collectApprovedNewCategories(selectedRows, categories);
+  const approvedCategories = collectApprovedNewCategories(selectedRows);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">

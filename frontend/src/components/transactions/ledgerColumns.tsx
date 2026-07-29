@@ -143,7 +143,9 @@ export function createLedgerColumns({
       meta: { width: "2.5rem", skeletonWidth: "1rem" },
       header: () => <span className="sr-only">Actions</span>,
       cell: ({ row }) => (
-        <DropdownMenu>
+        // Non-modal: these items open a modal Dialog, and a modal menu's own
+        // `pointer-events: none` body lock can outlive the handoff, leaving the page dead.
+        <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"

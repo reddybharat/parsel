@@ -7,12 +7,12 @@ import {
   type SortingState,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { Link } from "react-router-dom";
 import { Search } from "lucide-react";
 
 import { DataTable } from "@/components/data-table/data-table";
 import { DataTablePagination } from "@/components/data-table/data-table-pagination";
 import { StatusAlert, type FeedbackMessage } from "@/components/feedback/StatusAlert";
+import { AddTransactionDrawer } from "@/components/transactions/AddTransactionDrawer";
 import { ConfirmDeleteDialog } from "@/components/transactions/ConfirmDeleteDialog";
 import { EditTransactionDialog } from "@/components/transactions/EditTransactionDialog";
 import { createLedgerColumns } from "@/components/transactions/ledgerColumns";
@@ -60,6 +60,7 @@ export function SearchPage() {
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 15 });
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
 
+  const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [deleting, setDeleting] = useState<Transaction | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -261,6 +262,18 @@ export function SearchPage() {
         onExport={() => void onExport()}
         canExport={total > 0}
         onSubmit={runSearch}
+        onAdd={() => setAddOpen(true)}
+      />
+
+      <AddTransactionDrawer
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        categories={categories}
+        paymentMethods={paymentMethods}
+        onSaved={() => {
+          void invalidateTransactionSearch();
+          setFeedback({ variant: "success", title: "Transaction saved" });
+        }}
       />
 
       {showTable ? (
@@ -286,8 +299,12 @@ export function SearchPage() {
                       Reset filters
                     </Button>
                   ) : null}
-                  <Button asChild size="sm" variant={isDirty ? "ghost" : "default"}>
-                    <Link to="/ledger/add">Add transaction</Link>
+                  <Button
+                    size="sm"
+                    variant={isDirty ? "ghost" : "default"}
+                    onClick={() => setAddOpen(true)}
+                  >
+                    Add transaction
                   </Button>
                 </div>
               </div>
