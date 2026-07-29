@@ -11,8 +11,8 @@ from datetime import date, datetime
 from typing import Any, Optional
 import uuid
 
-from common.database import get_connection
-from sqlalchemy import select, text
+from common.database import get_connection, get_readonly_connection
+from sqlalchemy import or_, select, text
 
 from tracker.category_service import (
     list_missing_category_names,
@@ -31,6 +31,17 @@ CSV_FIELDS = [
     "description",
     "payment_method",
 ]
+
+
+def transaction_text_search(term: str):
+    """ILIKE contains-match over description, category, and payment_method."""
+    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{escaped}%"
+    return or_(
+        Transaction.description.ilike(pattern),
+        Transaction.category.ilike(pattern),
+        Transaction.payment_method.ilike(pattern),
+    )
 
 
 def _parse_is_debit(raw: Optional[str]) -> bool:
@@ -143,6 +154,8 @@ async def export_transactions_csv(
     payment_method: Optional[str] = None,
     *,
     user_id: uuid.UUID,
+    q: Optional[str] = None,
+    is_debit: Optional[bool] = None,
 ) -> str:
     """Return CSV string for all transactions matching the given filters."""
     stmt = (
@@ -163,7 +176,12 @@ async def export_transactions_csv(
         stmt = stmt.where(Transaction.category == category)
     if payment_method and payment_method != "All":
         stmt = stmt.where(Transaction.payment_method == payment_method)
-    async with get_connection() as session:
+    if is_debit is not None:
+        stmt = stmt.where(Transaction.is_debit == bool(is_debit))
+    term = (q or "").strip()
+    if term:
+        stmt = stmt.where(transaction_text_search(term))
+    async with get_readonly_connection() as session:
         rows = (await session.execute(stmt)).mappings().all()
 
     output = io.StringIO()
@@ -599,7 +617,7 @@ async def _get_dashboard_aggregates(
     user_id: uuid.UUID,
 ) -> dict:
     """Single-query dashboard aggregates (summary, trend, highlights, daily spend)."""
-    async with get_connection() as session:
+    async with get_readonly_connection() as session:
         result = await session.execute(
             text(_DASHBOARD_AGGREGATES_SQL),
             _dashboard_params(bounds, user_id),
@@ -674,7 +692,7 @@ async def _get_dashboard_recent(recent_limit: int, *, user_id: uuid.UUID) -> lis
         ORDER BY transaction_date DESC, created_at DESC
         LIMIT :recent_limit
     """
-    async with get_connection() as session:
+    async with get_readonly_connection() as session:
         result = await session.execute(
             text(sql),
             {"recent_limit": recent_limit, "user_id": user_id},

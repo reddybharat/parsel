@@ -50,7 +50,7 @@ async def test_get_dashboard_aggregates_parses_category_spend_sorted():
     mock_cm.__aenter__.return_value = mock_session
     mock_cm.__aexit__.return_value = None
 
-    with patch("tracker.services.get_connection", return_value=mock_cm):
+    with patch("tracker.services.get_readonly_connection", return_value=mock_cm):
         result = await _get_dashboard_aggregates(
             bounds,
             months=12,

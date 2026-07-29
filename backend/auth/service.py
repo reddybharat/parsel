@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from auth.models import User
 from auth.security import hash_password, verify_password
-from common.database import get_connection
+from common.database import get_connection, get_readonly_connection
 
 _DEFAULT_PREFERENCES: dict[str, Any] = {"theme": "light"}
 _UNSET = object()
@@ -108,7 +108,7 @@ async def authenticate_user(login: str, password: str) -> User:
 
 
 async def get_user_by_id(user_id: uuid.UUID) -> User | None:
-    async with get_connection() as session:
+    async with get_readonly_connection() as session:
         result = await session.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
 

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from fastapi import HTTPException
 from sqlalchemy import func, select, update
 
-from common.database import get_connection
+from common.database import get_connection, get_readonly_connection
 from tracker.constants import CATEGORY_NAME_MAX_LENGTH, SYSTEM_CATEGORIES
 from tracker.models import Transaction
 
@@ -49,7 +49,7 @@ def _system_key_map() -> dict[str, str]:
 
 
 async def _distinct_transaction_categories() -> list[str]:
-    async with get_connection() as session:
+    async with get_readonly_connection() as session:
         rows = (
             await session.execute(
                 select(Transaction.category)

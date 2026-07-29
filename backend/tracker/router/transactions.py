@@ -8,11 +8,13 @@ from sqlalchemy import case, delete, func, insert, select, update
 
 from auth.deps import get_current_user
 from auth.models import User
-from common.database import get_connection
+from common.database import get_connection, get_readonly_connection
 from common.logger import get_logger
 from tracker.category_service import resolve_category_name
 from tracker.models import Transaction
 from tracker.schemas import (
+    TransactionBulkDelete,
+    TransactionBulkDeleteResult,
     TransactionCreate,
     TransactionResponse,
     TransactionsSearchResult,
@@ -22,6 +24,7 @@ from tracker.services import (
     export_transactions_csv,
     import_transactions_from_csv,
     preview_transactions_import,
+    transaction_text_search,
     transactions_csv_template,
 )
 
@@ -48,6 +51,7 @@ def _to_response(tx: Transaction) -> TransactionResponse:
 async def search_transactions(
     start_date: date = Query(...),
     end_date: date = Query(...),
+    q: Optional[str] = Query(None, max_length=200),
     category: Optional[str] = Query(None),
     payment_method: Optional[str] = Query(None),
     is_debit: Optional[bool] = Query(None),
@@ -82,6 +86,10 @@ async def search_transactions(
     if is_debit is not None:
         where_parts.append(Transaction.is_debit == bool(is_debit))
 
+    term = (q or "").strip()
+    if term:
+        where_parts.append(transaction_text_search(term))
+
     if sort_column == "amount":
         # Mixed debit+credit views should use signed values for correct net ordering.
         # Single-side filters (only debit or only credit) should sort by raw amount
@@ -101,34 +109,43 @@ async def search_transactions(
         order_by = func.lower(func.coalesce(Transaction.description, ""))
     else:
         order_by = Transaction.transaction_date
-    order_by = order_by.desc() if sort_desc else order_by.asc()
 
-    async with get_connection() as session:
-        total_count = int(
-            (
-                await session.execute(
-                    select(func.count()).select_from(Transaction).where(*where_parts)
-                )
-            ).scalar_one()
-        )
-        rows = (
-            await session.execute(
-                select(Transaction)
-                .where(*where_parts)
-                .order_by(order_by)
-                .offset(offset_start)
-                .limit(page_size)
+    # Tie-breakers keep paging stable; window count avoids a second round trip.
+    if sort_desc:
+        order_by_clauses = [order_by.desc(), Transaction.created_at.desc(), Transaction.id.desc()]
+    else:
+        order_by_clauses = [order_by.asc(), Transaction.created_at.asc(), Transaction.id.asc()]
+
+    page_stmt = (
+        select(Transaction, func.count().over().label("total_count"))
+        .where(*where_parts)
+        .order_by(*order_by_clauses)
+        .offset(offset_start)
+        .limit(page_size)
+    )
+
+    async with get_readonly_connection() as session:
+        result = (await session.execute(page_stmt)).all()
+        if result:
+            total_count = int(result[0][1])
+        else:
+            total_count = int(
+                (
+                    await session.execute(
+                        select(func.count()).select_from(Transaction).where(*where_parts)
+                    )
+                ).scalar_one()
             )
-        ).scalars().all()
 
-    items = [_to_response(r) for r in rows]
+    items = [_to_response(row[0]) for row in result]
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
-        "search_transactions completed in %.1f ms (total=%d, page=%d, page_size=%d, category=%s, sort=%s %s)",
+        "search_transactions completed in %.1f ms (total=%d, page=%d, page_size=%d, q=%s, category=%s, sort=%s %s)",
         elapsed_ms,
         total_count,
         page,
         page_size,
+        term or "-",
         category or "All",
         sort_column,
         "DESC" if sort_desc else "ASC",
@@ -140,8 +157,10 @@ async def search_transactions(
 async def export_transactions(
     start_date: date = Query(...),
     end_date: date = Query(...),
+    q: Optional[str] = Query(None, max_length=200),
     category: Optional[str] = Query(None),
     payment_method: Optional[str] = Query(None),
+    is_debit: Optional[bool] = Query(None),
     current_user: User = Depends(get_current_user),
 ) -> Response:
     t0 = time.perf_counter()
@@ -151,6 +170,8 @@ async def export_transactions(
         category,
         payment_method,
         user_id=current_user.id,
+        q=q,
+        is_debit=is_debit,
     )
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
@@ -307,6 +328,29 @@ async def update_transaction(
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info("update_transaction completed in %.1f ms (id=%s)", elapsed_ms, result.id)
     return result
+
+
+@router.post("/bulk-delete", response_model=TransactionBulkDeleteResult)
+async def bulk_delete_transactions(
+    payload: TransactionBulkDelete,
+    current_user: User = Depends(get_current_user),
+) -> TransactionBulkDeleteResult:
+    t0 = time.perf_counter()
+    stmt = delete(Transaction).where(
+        Transaction.id.in_(payload.ids),
+        Transaction.user_id == current_user.id,
+    )
+    async with get_connection() as session:
+        result = await session.execute(stmt)
+        deleted = result.rowcount or 0
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    logger.info(
+        "bulk_delete_transactions completed in %.1f ms (requested=%d, deleted=%d)",
+        elapsed_ms,
+        len(payload.ids),
+        deleted,
+    )
+    return TransactionBulkDeleteResult(deleted=deleted)
 
 
 @router.delete("/{transaction_id}", status_code=204)

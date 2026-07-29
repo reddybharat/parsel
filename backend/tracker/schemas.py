@@ -4,6 +4,7 @@ Pydantic models for the tracker. All monetary values in INR (₹).
 
 from datetime import date, datetime
 from typing import Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 from pydantic.config import ConfigDict
@@ -151,6 +152,14 @@ class TransactionsSearchResult(BaseModel):
     page: int
     page_size: int
     items: list[TransactionResponse]
+
+
+class TransactionBulkDelete(BaseModel):
+    ids: list[UUID] = Field(..., min_length=1, max_length=500)
+
+
+class TransactionBulkDeleteResult(BaseModel):
+    deleted: int
 
 
 class DashboardSummaryResponse(BaseModel):

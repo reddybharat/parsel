@@ -3,8 +3,23 @@ import { ChevronDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
+type NativeSelectSize = "xs" | "sm" | "default";
+
+/** `className` applies to the wrapper (chevron positioning); use `size` for control height. */
 type NativeSelectProps = Omit<React.ComponentProps<"select">, "size"> & {
-  size?: "sm" | "default";
+  size?: NativeSelectSize;
+};
+
+const selectSize: Record<NativeSelectSize, string> = {
+  default: "h-10 px-3 py-2 pr-8 text-sm",
+  sm: "h-9 px-3 py-1.5 pr-8 text-xs",
+  xs: "h-7 px-2 py-0 pr-6 text-xs",
+};
+
+const chevronSize: Record<NativeSelectSize, string> = {
+  default: "size-4 right-2.5",
+  sm: "size-4 right-2.5",
+  xs: "size-3.5 right-1.5",
 };
 
 function NativeSelect({ className, size = "default", ...props }: NativeSelectProps) {
@@ -18,16 +33,19 @@ function NativeSelect({ className, size = "default", ...props }: NativeSelectPro
         data-slot="native-select"
         data-size={size}
         className={cn(
-          "flex h-10 w-full min-w-0 appearance-none rounded-none border border-input bg-background px-3 py-2 pr-8 text-sm shadow-none transition-colors",
+          "flex w-full min-w-0 appearance-none rounded-none border border-input bg-background shadow-none transition-colors",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           "disabled:cursor-not-allowed disabled:opacity-50",
           "aria-invalid:border-destructive aria-invalid:ring-destructive/20",
-          size === "sm" && "h-9 py-1.5 text-xs",
+          selectSize[size],
         )}
         {...props}
       />
       <ChevronDown
-        className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+        className={cn(
+          "pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground",
+          chevronSize[size],
+        )}
         aria-hidden
       />
     </div>

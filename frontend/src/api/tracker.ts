@@ -1,11 +1,17 @@
 import { deleteJson, getBlob, getJson, patchJson, postJson, postMultipart } from "./client";
 import type { Category, SearchResult, TrackerConfig, Transaction } from "../lib/types";
 
+export type SortColumn = "transaction_date" | "amount" | "category" | "payment_method" | "description";
+
 export type SearchParams = {
   start_date: string;
   end_date: string;
+  /** Free-text contains-match over description, category and payment method. */
+  q?: string;
   category?: string;
-  sort_column: "transaction_date" | "amount" | "category" | "payment_method" | "description";
+  payment_method?: string;
+  is_debit?: boolean;
+  sort_column: SortColumn;
   sort_desc: boolean;
   page: number;
   page_size: number;
@@ -51,11 +57,17 @@ export function deleteTransaction(id: string) {
   return deleteJson(`/transactions/${id}`);
 }
 
+export function bulkDeleteTransactions(ids: string[]) {
+  return postJson<{ deleted: number }>("/transactions/bulk-delete", { ids });
+}
+
 export function exportTransactions(params: {
   start_date: string;
   end_date: string;
+  q?: string;
   category?: string;
   payment_method?: string;
+  is_debit?: boolean;
 }) {
   return getBlob("/transactions/export", params);
 }

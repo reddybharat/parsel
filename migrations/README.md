@@ -6,12 +6,14 @@ Hand-applied SQL scripts (no migration runner). Run them against the same databa
 |---|---|
 | [001_initial_transactions.sql](001_initial_transactions.sql) | Original baseline: `transactions` table + indexes (pre-auth) |
 | [002_users_and_transaction_user_id.sql](002_users_and_transaction_user_id.sql) | Multi-user: `users` (uuid, username, email, optional names, JSONB preferences) + `transactions.user_id` |
+| [003_search_indexes.sql](003_search_indexes.sql) | Ledger search: user-scoped composite indexes, `pg_trgm` trigram indexes for free-text `q` |
 
 ## Fresh database
 
 ```powershell
 psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/001_initial_transactions.sql
 psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/002_users_and_transaction_user_id.sql
+psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/003_search_indexes.sql
 ```
 
 Then:
@@ -28,6 +30,10 @@ psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/002_users_
 ```
 
 Register a user, then run the commented **STEP B** block in `002` with your `users.id`.
+
+## Search indexes (`003`)
+
+Apply anytime after `002` (indexes only; safe to re-run). `CREATE EXTENSION pg_trgm` needs superuser the first time; without it, free-text `q` still works via sequential scan. Commented `DROP`s at the end of `003` remove superseded pre-auth indexes — confirm with `EXPLAIN ANALYZE` first.
 
 Re-running `002` is safe: `CREATE TABLE IF NOT EXISTS` and `ADD COLUMN IF NOT EXISTS` add profile columns (`first_name`, `last_name`, `preferences`) when upgrading an older `users` table.
 

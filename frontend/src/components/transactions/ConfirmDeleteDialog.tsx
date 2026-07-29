@@ -14,25 +14,32 @@ export function ConfirmDeleteDialog({
   itemLabel,
   onConfirm,
   onCancel,
+  title = "Delete Transaction?",
+  description,
+  confirmLabel = "Delete Entry",
 }: {
   open: boolean;
   loading: boolean;
-  itemLabel: string;
+  itemLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
+  title?: string;
+  description?: string;
+  confirmLabel?: string;
 }) {
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onCancel()}>
       <DialogContent className="max-w-md sm:rounded-none">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-semibold tracking-tight text-parsel-neutral">Delete Transaction?</DialogTitle>
+          <DialogTitle className="text-2xl font-semibold tracking-tight text-parsel-neutral">{title}</DialogTitle>
           <DialogDescription>
-            Are you sure you want to delete this entry for {itemLabel}? This action cannot be undone.
+            {description ??
+              `Are you sure you want to delete this entry for ${itemLabel}? This action cannot be undone.`}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2 sm:gap-2">
           <Button className="flex-1" variant="destructive" type="button" onClick={onConfirm} disabled={loading}>
-            {loading ? "Deleting..." : "Delete Entry"}
+            {loading ? "Deleting..." : confirmLabel}
           </Button>
           <Button className="flex-1" variant="secondary" type="button" onClick={onCancel}>
             Cancel
