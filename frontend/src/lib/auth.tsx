@@ -21,6 +21,7 @@ import {
   type UserPreferences,
 } from "@/api/auth";
 import { queryClient } from "@/lib/queryClient";
+import { prefetchTrackerConfig } from "@/lib/trackerConfigQuery";
 import {
   clearAccessToken,
   decodeTokenClaims,
@@ -108,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await apiLogin(loginId, password);
       applyToken(result.access_token);
       await loadProfile();
+      void prefetchTrackerConfig();
     },
     [applyToken, loadProfile],
   );
@@ -117,6 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await apiRegister(username, email, password, confirmPassword);
       applyToken(result.access_token);
       await loadProfile();
+      void prefetchTrackerConfig();
     },
     [applyToken, loadProfile],
   );
@@ -171,6 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Keep local theme / JWT claims if /me fails; session expiry handles auth.
       }
     })();
+    void prefetchTrackerConfig();
     return () => {
       cancelled = true;
     };

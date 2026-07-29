@@ -1,9 +1,10 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, FileSearch, FolderPlus, Loader2 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { EmptyState } from "../components/feedback/EmptyState";
-import { LoadingState } from "../components/feedback/LoadingState";
+import { InlineProgress } from "../components/feedback/InlineProgress";
 import { StatusAlert, type FeedbackMessage } from "../components/feedback/StatusAlert";
 import { CategorySelect } from "../components/transactions/CategorySelect";
 import { Button } from "@/components/ui/button";
@@ -22,19 +23,28 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { invalidateDashboardOverview } from "@/lib/dashboardQuery";
-import { normalizeCategories } from "@/lib/categories";
+import {
+  invalidateTrackerConfig,
+  trackerConfigQueryOptions,
+} from "@/lib/trackerConfigQuery";
 import {
   createTransaction,
   downloadImportTemplate,
-  fetchTrackerConfig,
   importTransactions,
   previewImportTransactions,
 } from "../api/tracker";
-import type { Category } from "../lib/types";
 
 const fieldLabelClass = "text-xs font-semibold uppercase tracking-wide text-parsel-secondary";
 
 type BulkStep = "idle" | "reading" | "preview" | "creating" | "importing" | "done";
+
+const BULK_PROGRESS: Record<Exclude<BulkStep, "idle">, { value: number; label: string }> = {
+  reading: { value: 25, label: "Reading file…" },
+  preview: { value: 50, label: "Preview ready" },
+  creating: { value: 70, label: "Creating categories…" },
+  importing: { value: 85, label: "Importing transactions…" },
+  done: { value: 100, label: "Import finished" },
+};
 
 function localDateIso(): string {
   const d = new Date();
@@ -47,13 +57,19 @@ function localDateIso(): string {
 export function AddPage() {
   const [searchParams] = useSearchParams();
   const initialTab = searchParams.get("tab") === "bulk" ? "bulk" : "manual";
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
+  const {
+    data: trackerConfig,
+    isPending: loadingConfig,
+    isError: configError,
+    error: configErr,
+  } = useQuery(trackerConfigQueryOptions());
+  const categories = trackerConfig?.categories ?? [];
+  const paymentMethods = trackerConfig?.payment_methods ?? [];
   const [feedback, setFeedback] = useState<FeedbackMessage | null>(null);
   const [manualFeedback, setManualFeedback] = useState<FeedbackMessage | null>(null);
   const [bulkFeedback, setBulkFeedback] = useState<FeedbackMessage | null>(null);
   const [importErrors, setImportErrors] = useState<string | null>(null);
-  const [loadingConfig, setLoadingConfig] = useState(true);
+  const [savingManual, setSavingManual] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [bulkStep, setBulkStep] = useState<BulkStep>("idle");
   const [previewValidRows, setPreviewValidRows] = useState(0);
@@ -67,24 +83,6 @@ export function AddPage() {
   const [transactionDate, setTransactionDate] = useState(localDateIso());
   const [description, setDescription] = useState("");
   const [tab, setTab] = useState<"manual" | "bulk">(initialTab);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const config = await fetchTrackerConfig();
-        setCategories(normalizeCategories(config.categories));
-        setPaymentMethods(config.payment_methods);
-      } catch (err) {
-        setFeedback({
-          variant: "error",
-          title: "Failed to load configuration",
-          description: err instanceof Error ? err.message : "Failed to load tracker config.",
-        });
-      } finally {
-        setLoadingConfig(false);
-      }
-    })();
-  }, []);
 
   function resetManualForm() {
     setAmount(0);
@@ -109,6 +107,7 @@ export function AddPage() {
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setManualFeedback(null);
+    setSavingManual(true);
     try {
       await createTransaction({
         amount,
@@ -128,6 +127,8 @@ export function AddPage() {
         title: "Save failed",
         description: err instanceof Error ? err.message : "Failed to save transaction.",
       });
+    } finally {
+      setSavingManual(false);
     }
   }
 
@@ -193,8 +194,7 @@ export function AddPage() {
       const result = await importTransactions(file, { createMissingCategories: true });
       void invalidateDashboardOverview();
       if (result.created_categories.length) {
-        const config = await fetchTrackerConfig();
-        setCategories(normalizeCategories(config.categories));
+        void invalidateTrackerConfig();
       }
       setBulkStep("done");
       const errorCount = result.errors.length;
@@ -238,8 +238,19 @@ export function AddPage() {
       </Link>
 
       {feedback ? <StatusAlert {...feedback} onDismiss={() => setFeedback(null)} /> : null}
+      {configError ? (
+        <StatusAlert
+          variant="error"
+          title="Failed to load configuration"
+          description={configErr instanceof Error ? configErr.message : "Failed to load tracker config."}
+        />
+      ) : null}
 
-      {loadingConfig ? <LoadingState label="Loading tracker configuration..." /> : null}
+      {loadingConfig ? (
+        <div className="mx-auto w-full max-w-content rounded-none border border-parsel-border bg-parsel-soft p-4">
+          <InlineProgress label="Loading categories & payment methods…" />
+        </div>
+      ) : null}
 
       {!loadingConfig && categories.length === 0 ? (
         <EmptyState title="No categories available" detail="Configure tracker categories before adding transactions." />
@@ -307,7 +318,6 @@ export function AddPage() {
                       value={category}
                       categories={categories}
                       onChange={setCategory}
-                      onCategoriesChange={setCategories}
                       required
                     />
                   </Field>
@@ -363,9 +373,16 @@ export function AddPage() {
                           Cancel
                         </Link>
                       </Button>
-                      <Button type="submit">Save Transaction</Button>
+                      <Button type="submit" disabled={savingManual}>
+                        {savingManual ? "Saving…" : "Save Transaction"}
+                      </Button>
                     </div>
                   </div>
+                  {savingManual ? (
+                    <div className="md:col-span-2">
+                      <InlineProgress label="Saving transaction…" />
+                    </div>
+                  ) : null}
                 </FieldGroup>
               </form>
             </TabsContent>
@@ -409,56 +426,62 @@ export function AddPage() {
                   </Field>
 
                   {bulkStep !== "idle" ? (
-                    <div className="flex flex-col gap-2 border border-parsel-border bg-parsel-soft/40 p-4">
-                      <Marker role="status" aria-live="polite">
-                        <MarkerIcon>
-                          {bulkStep === "reading" ? (
-                            <Loader2 className="size-4 animate-spin text-parsel-primary" />
-                          ) : (
-                            <FileSearch className="size-4 text-parsel-primary" />
-                          )}
-                        </MarkerIcon>
-                        <MarkerContent>
-                          {bulkStep === "reading"
-                            ? "Reading file…"
-                            : `Read file — ${previewValidRows} valid row${previewValidRows === 1 ? "" : "s"}`}
-                        </MarkerContent>
-                      </Marker>
-                      {(bulkStep === "preview" ||
-                        bulkStep === "creating" ||
-                        bulkStep === "importing" ||
-                        bulkStep === "done") && (
+                    <div className="flex flex-col gap-3 border border-parsel-border bg-parsel-soft/40 p-4">
+                      <InlineProgress
+                        label={BULK_PROGRESS[bulkStep].label}
+                        value={BULK_PROGRESS[bulkStep].value}
+                      />
+                      <div className="flex flex-col gap-2">
                         <Marker role="status" aria-live="polite">
                           <MarkerIcon>
-                            {bulkStep === "creating" ? (
+                            {bulkStep === "reading" ? (
                               <Loader2 className="size-4 animate-spin text-parsel-primary" />
                             ) : (
-                              <FolderPlus className="size-4 text-parsel-primary" />
+                              <FileSearch className="size-4 text-parsel-primary" />
                             )}
                           </MarkerIcon>
                           <MarkerContent>
-                            {bulkStep === "creating"
-                              ? `Creating ${previewNewCategories.length} categor${previewNewCategories.length === 1 ? "y" : "ies"}…`
-                              : previewNewCategories.length
-                                ? `${previewNewCategories.length} new categor${previewNewCategories.length === 1 ? "y" : "ies"} to add`
-                                : "All categories already exist"}
+                            {bulkStep === "reading"
+                              ? "Reading file…"
+                              : `Read file — ${previewValidRows} valid row${previewValidRows === 1 ? "" : "s"}`}
                           </MarkerContent>
                         </Marker>
-                      )}
-                      {(bulkStep === "importing" || bulkStep === "done") && (
-                        <Marker role="status" aria-live="polite">
-                          <MarkerIcon>
-                            {bulkStep === "importing" ? (
-                              <Loader2 className="size-4 animate-spin text-parsel-primary" />
-                            ) : (
-                              <CheckCircle2 className="size-4 text-parsel-inflow" />
-                            )}
-                          </MarkerIcon>
-                          <MarkerContent>
-                            {bulkStep === "importing" ? "Importing transactions…" : "Import finished"}
-                          </MarkerContent>
-                        </Marker>
-                      )}
+                        {(bulkStep === "preview" ||
+                          bulkStep === "creating" ||
+                          bulkStep === "importing" ||
+                          bulkStep === "done") && (
+                          <Marker role="status" aria-live="polite">
+                            <MarkerIcon>
+                              {bulkStep === "creating" ? (
+                                <Loader2 className="size-4 animate-spin text-parsel-primary" />
+                              ) : (
+                                <FolderPlus className="size-4 text-parsel-primary" />
+                              )}
+                            </MarkerIcon>
+                            <MarkerContent>
+                              {bulkStep === "creating"
+                                ? `Creating ${previewNewCategories.length} categor${previewNewCategories.length === 1 ? "y" : "ies"}…`
+                                : previewNewCategories.length
+                                  ? `${previewNewCategories.length} new categor${previewNewCategories.length === 1 ? "y" : "ies"} to add`
+                                  : "All categories already exist"}
+                            </MarkerContent>
+                          </Marker>
+                        )}
+                        {(bulkStep === "importing" || bulkStep === "done") && (
+                          <Marker role="status" aria-live="polite">
+                            <MarkerIcon>
+                              {bulkStep === "importing" ? (
+                                <Loader2 className="size-4 animate-spin text-parsel-primary" />
+                              ) : (
+                                <CheckCircle2 className="size-4 text-parsel-inflow" />
+                              )}
+                            </MarkerIcon>
+                            <MarkerContent>
+                              {bulkStep === "importing" ? "Importing transactions…" : "Import finished"}
+                            </MarkerContent>
+                          </Marker>
+                        )}
+                      </div>
                     </div>
                   ) : null}
 

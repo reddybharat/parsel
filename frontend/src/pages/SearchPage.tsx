@@ -1,8 +1,9 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { EmptyState } from "../components/feedback/EmptyState";
-import { LoadingState } from "../components/feedback/LoadingState";
+import { InlineProgress } from "../components/feedback/InlineProgress";
 import { StatusAlert, type FeedbackMessage } from "../components/feedback/StatusAlert";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -21,16 +22,15 @@ import { ConfirmDeleteDialog } from "../components/transactions/ConfirmDeleteDia
 import { EditTransactionDialog } from "../components/transactions/EditTransactionDialog";
 import { TransactionTable } from "../components/transactions/TransactionTable";
 import { invalidateDashboardOverview } from "@/lib/dashboardQuery";
+import { trackerConfigQueryOptions } from "@/lib/trackerConfigQuery";
 import {
   deleteTransaction,
   exportTransactions,
-  fetchTrackerConfig,
   searchTransactions,
   updateTransaction,
 } from "../api/tracker";
 import { formatInrSigned, signedAmount } from "../lib/format";
-import { normalizeCategories } from "../lib/categories";
-import type { Category, SearchResult, Transaction } from "../lib/types";
+import type { SearchResult, Transaction } from "../lib/types";
 
 const fieldLabelClass = "text-xs font-semibold uppercase tracking-wide text-parsel-secondary";
 
@@ -77,9 +77,9 @@ function pageNumbers(current: number, total: number): number[] {
 }
 
 export function SearchPage() {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
-  const [loadingConfig, setLoadingConfig] = useState(true);
+  const { data: trackerConfig, isPending: loadingConfig } = useQuery(trackerConfigQueryOptions());
+  const categories = trackerConfig?.categories ?? [];
+  const paymentMethods = trackerConfig?.payment_methods ?? [];
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorTitle, setErrorTitle] = useState("Something went wrong");
@@ -114,27 +114,6 @@ export function SearchPage() {
     setErrorTitle("Something went wrong");
     setErrorRetry(null);
   }
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      setLoadingConfig(true);
-      try {
-        const config = await fetchTrackerConfig();
-        if (cancelled) return;
-        setCategories(normalizeCategories(config.categories));
-        setPaymentMethods(config.payment_methods);
-      } catch (err) {
-        if (cancelled) return;
-        showError("Failed to load configuration", err instanceof Error ? err.message : "Failed to load tracker config.");
-      } finally {
-        if (!cancelled) setLoadingConfig(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   function applyPreset(preset: DatePreset) {
     const today = localDateIso();
@@ -226,12 +205,6 @@ export function SearchPage() {
     try {
       await updateTransaction(editing.id, editing);
       void invalidateDashboardOverview();
-      try {
-        const config = await fetchTrackerConfig();
-        setCategories(normalizeCategories(config.categories));
-      } catch {
-        // keep local category list if refresh fails
-      }
       setEditing(null);
       setFeedback({ variant: "success", title: "Transaction updated" });
       await runSearch(page);
@@ -350,9 +323,13 @@ export function SearchPage() {
               key={`search-category-${categories.length}-${categories.map((c) => c.name).join("|")}`}
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              disabled={loadingConfig}
             >
               <NativeSelectOption value="All">All Categories</NativeSelectOption>
+              {loadingConfig && categories.length === 0 ? (
+                <NativeSelectOption value="__loading" disabled>
+                  Loading categories…
+                </NativeSelectOption>
+              ) : null}
               {categories.map((item) => (
                 <NativeSelectOption key={item.name} value={item.name}>
                   {item.name}
@@ -373,9 +350,9 @@ export function SearchPage() {
             </Button>
           ) : null}
         </div>
+        {loading ? <InlineProgress label="Searching ledger…" /> : null}
       </form>
 
-      {loading ? <LoadingState label="Searching ledger..." /> : null}
       {result && !loading ? (
         <div className="flex min-h-0 flex-1 flex-col gap-2">
           {result.items.length === 0 ? (
@@ -465,7 +442,6 @@ export function SearchPage() {
         paymentMethods={paymentMethods}
         loading={submitting}
         onChange={setEditing}
-        onCategoriesChange={setCategories}
         onSave={() => void onEditSave()}
         onCancel={() => setEditing(null)}
       />

@@ -33,7 +33,7 @@ export function EditTransactionDialog({
   paymentMethods: string[];
   loading: boolean;
   onChange: (next: Transaction) => void;
-  onCategoriesChange: (next: Category[]) => void;
+  onCategoriesChange?: (next: Category[]) => void;
   onSave: () => void;
   onCancel: () => void;
 }) {

@@ -12,6 +12,7 @@ import {
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { setTrackerConfigCategories } from "@/lib/trackerConfigQuery";
 import type { Category } from "@/lib/types";
 
 const CREATE_VALUE = "__create_category__";
@@ -30,7 +31,7 @@ export function CategorySelect({
   value: string;
   categories: Category[];
   onChange: (name: string) => void;
-  onCategoriesChange: (next: Category[]) => void;
+  onCategoriesChange?: (next: Category[]) => void;
   required?: boolean;
   placeholder?: string;
   allowEmpty?: boolean;
@@ -67,7 +68,9 @@ export function CategorySelect({
       const withoutDup = categories.filter(
         (item) => item.name.toLocaleLowerCase() !== created.name.toLocaleLowerCase(),
       );
-      onCategoriesChange([...withoutDup, created].sort((a, b) => a.name.localeCompare(b.name)));
+      const next = [...withoutDup, created].sort((a, b) => a.name.localeCompare(b.name));
+      setTrackerConfigCategories(next);
+      onCategoriesChange?.(next);
       onChange(created.name);
       setOpen(false);
     } catch (err) {
