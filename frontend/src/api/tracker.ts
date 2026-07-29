@@ -72,6 +72,11 @@ export function renameCategory(oldName: string, newName: string) {
   return patchJson<Category>("/categories", { old_name: oldName, new_name: newName });
 }
 
+export function deleteCategory(name: string) {
+  const query = new URLSearchParams({ name });
+  return deleteJson(`/categories?${query.toString()}`);
+}
+
 export function searchTransactions(params: SearchParams) {
   return getJson<SearchResult>("/transactions/search", params);
 }

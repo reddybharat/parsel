@@ -197,10 +197,9 @@ async def import_transactions_preview(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ) -> ImportPreviewResponse:
-    del current_user
     t0 = time.perf_counter()
     content = await file.read()
-    result = await preview_transactions_import(content)
+    result = await preview_transactions_import(content, user_id=current_user.id)
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
         "import_transactions_preview completed in %.1f ms (rows=%d, ready=%d, new_categories=%d, errors=%d)",
@@ -280,6 +279,7 @@ async def create_transaction(
     t0 = time.perf_counter()
     try:
         canonical_category = await resolve_category_name(
+            current_user.id,
             payload.category,
             allow_new=True,
         )
@@ -324,6 +324,7 @@ async def update_transaction(
     if "category" in payload_dict and payload_dict["category"] is not None:
         try:
             payload_dict["category"] = await resolve_category_name(
+                current_user.id,
                 payload_dict["category"],
                 allow_new=True,
             )

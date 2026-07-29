@@ -12,6 +12,7 @@ import { ChatPage } from "./pages/ChatPage";
 import { LandingPage } from "./pages/LandingPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { SearchPage } from "./pages/SearchPage";
+import { SettingsPage } from "./pages/SettingsPage";
 
 function AuthenticatedShell() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
                 <Route path="/ledger/search" element={<SearchPage />} />
                 <Route path="/ledger/add" element={<AddPage />} />
                 <Route path="/chat" element={<ChatPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

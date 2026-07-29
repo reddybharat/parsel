@@ -72,8 +72,11 @@ async def test_preview_returns_all_rows_with_field_issues():
     with patch(
         "tracker.services.known_category_map",
         new=AsyncMock(return_value={"grocery": "Grocery", "dining": "Dining"}),
+    ), patch(
+        "tracker.services.list_missing_category_names",
+        new=AsyncMock(return_value=["Pet Care"]),
     ):
-        preview = await preview_transactions_import(csv_bytes)
+        preview = await preview_transactions_import(csv_bytes, user_id=ALICE_ID)
 
     assert len(preview.rows) == 4
     assert preview.valid_row_count == 1
@@ -145,6 +148,9 @@ async def test_reviewed_import_inserts_selected_rows():
     with patch(
         "tracker.services.resolve_category_name",
         new=AsyncMock(return_value="Grocery"),
+    ), patch(
+        "tracker.services.known_category_map",
+        new=AsyncMock(return_value={"grocery": "Grocery"}),
     ), patch("tracker.services.get_connection") as mock_conn:
         session = AsyncMock()
         mock_conn.return_value.__aenter__.return_value = session
@@ -170,8 +176,8 @@ async def test_reviewed_import_rejects_unapproved_new_category():
     )
 
     with patch(
-        "tracker.services.resolve_category_name",
-        new=AsyncMock(side_effect=ValueError('Unknown category "Pet Care".')),
+        "tracker.services.known_category_map",
+        new=AsyncMock(return_value={"grocery": "Grocery"}),
     ):
         result = await import_reviewed_transactions(payload, user_id=ALICE_ID)
 

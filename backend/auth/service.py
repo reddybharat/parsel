@@ -13,7 +13,10 @@ from auth.models import User
 from auth.security import hash_password, verify_password
 from common.database import get_connection, get_readonly_connection
 
-_DEFAULT_PREFERENCES: dict[str, Any] = {"theme": "light"}
+_DEFAULT_PREFERENCES: dict[str, Any] = {
+    "theme": "light",
+    "custom_categories": [],
+}
 _UNSET = object()
 
 

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   getCoreRowModel,
@@ -8,6 +8,7 @@ import {
   type VisibilityState,
 } from "@tanstack/react-table";
 import { Search } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 
 import { DataTable } from "@/components/data-table/data-table";
 import { DataTablePagination } from "@/components/data-table/data-table-pagination";
@@ -36,25 +37,37 @@ import {
 } from "@/api/tracker";
 import type { Transaction } from "@/lib/types";
 
-function defaultFilters(): LedgerFilters {
+function defaultFilters(category = ""): LedgerFilters {
   return {
     startDate: monthStartLocal(),
     endDate: localDateIso(),
     query: "",
-    category: "",
+    category,
     paymentMethod: "",
     direction: "",
   };
 }
 
 export function SearchPage() {
+  const [urlParams] = useSearchParams();
+  const initialCategory = urlParams.get("category")?.trim() ?? "";
   const { data: trackerConfig } = useQuery(trackerConfigQueryOptions());
   const categories = trackerConfig?.categories ?? [];
   const paymentMethods = trackerConfig?.payment_methods ?? [];
 
-  const [filters, setFilters] = useState<LedgerFilters>(defaultFilters);
+  const [filters, setFilters] = useState<LedgerFilters>(() => defaultFilters(initialCategory));
   // Idle until the first explicit search; then filter changes refetch live.
-  const [hasSearched, setHasSearched] = useState(false);
+  // Deep links with a category should search immediately.
+  const [hasSearched, setHasSearched] = useState(() => Boolean(initialCategory));
+
+  useEffect(() => {
+    const nextCategory = urlParams.get("category")?.trim() ?? "";
+    if (!nextCategory) return;
+    setFilters((current) =>
+      current.category === nextCategory ? current : { ...current, category: nextCategory },
+    );
+    setHasSearched(true);
+  }, [urlParams]);
 
   const [sorting, setSorting] = useState<SortingState>([{ id: "transaction_date", desc: true }]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 15 });

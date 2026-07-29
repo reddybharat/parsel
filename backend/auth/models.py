@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from common.base import Base
 
-_DEFAULT_PREFERENCES = {"theme": "light"}
+_DEFAULT_PREFERENCES = {"theme": "light", "custom_categories": []}
 
 
 class User(Base):
@@ -30,7 +30,9 @@ class User(Base):
         JSONB,
         nullable=False,
         default=lambda: dict(_DEFAULT_PREFERENCES),
-        server_default=text("'{\"theme\":\"light\"}'::jsonb"),
+        server_default=text(
+            "'{\"theme\":\"light\",\"custom_categories\":[]}'::jsonb"
+        ),
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"

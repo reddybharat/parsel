@@ -1,10 +1,12 @@
 """Category validation and API behaviour (DB mocked)."""
 
 from datetime import date
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
+import pytest
 
 import os
 
@@ -17,7 +19,9 @@ from main import app
 from tracker.category_service import (
     CategoryInfo,
     category_key,
+    delete_category,
     normalize_category_name,
+    register_category_name,
     validate_category_name,
 )
 from tracker.schemas import ImportPreviewResponse, TransactionCreate
@@ -90,9 +94,10 @@ def test_create_category_endpoint_validates_without_table():
     with patch(
         "tracker.router.categories.register_category_name",
         new=AsyncMock(return_value=CategoryInfo(name="Pet Care", is_system=False)),
-    ):
+    ) as register:
         response = client.post("/categories", json={"name": "Pet Care"}, headers=headers)
     assert response.status_code == 201
+    register.assert_awaited_once_with(ALICE_ID, "Pet Care")
     body = response.json()
     assert body["name"] == "Pet Care"
     assert body["is_system"] is False
@@ -104,7 +109,7 @@ def test_rename_category_endpoint():
     with patch(
         "tracker.router.categories.rename_category",
         new=AsyncMock(return_value=CategoryInfo(name="Pets", is_system=False)),
-    ):
+    ) as rename:
         response = client.patch(
             "/categories",
             json={"old_name": "Pet Care", "new_name": "Pets"},
@@ -112,6 +117,64 @@ def test_rename_category_endpoint():
         )
     assert response.status_code == 200
     assert response.json()["name"] == "Pets"
+    rename.assert_awaited_once_with(ALICE_ID, "Pet Care", "Pets")
+
+
+def test_delete_category_endpoint():
+    headers = _auth_headers()
+    with patch(
+        "tracker.router.categories.delete_category",
+        new=AsyncMock(return_value=None),
+    ) as delete:
+        response = client.delete(
+            "/categories",
+            params={"name": "Pet Care"},
+            headers=headers,
+        )
+    assert response.status_code == 204
+    delete.assert_awaited_once_with(ALICE_ID, "Pet Care")
+
+
+@pytest.mark.anyio
+async def test_custom_category_limit_is_enforced():
+    user = _user()
+    user.preferences = {
+        "theme": "light",
+        "custom_categories": [f"Custom {index}" for index in range(10)],
+    }
+    session = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = user
+    session.execute.return_value = result
+
+    with patch("tracker.category_service.get_connection") as connection:
+        connection.return_value.__aenter__.return_value = session
+        with pytest.raises(ValueError, match="up to 10"):
+            await register_category_name(ALICE_ID, "One Too Many")
+
+
+@pytest.mark.anyio
+async def test_category_in_use_cannot_be_deleted():
+    user = _user()
+    user.preferences = {
+        "theme": "light",
+        "custom_categories": ["Pet Care"],
+    }
+    user_result = MagicMock()
+    user_result.scalar_one_or_none.return_value = user
+    usage_result = MagicMock()
+    usage_result.scalar_one.return_value = 1
+    session = AsyncMock()
+    session.execute.side_effect = [user_result, usage_result]
+
+    with patch("tracker.category_service.get_connection") as connection:
+        connection.return_value.__aenter__.return_value = session
+        with pytest.raises(HTTPException) as exc_info:
+            await delete_category(ALICE_ID, "Pet Care")
+
+    assert exc_info.value.status_code == 409
+    assert "1 transaction" in str(exc_info.value.detail)
+    assert user.preferences["custom_categories"] == ["Pet Care"]
 
 
 def test_import_preview_reports_new_categories():

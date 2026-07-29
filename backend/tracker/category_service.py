@@ -1,19 +1,22 @@
-"""
-Category helpers without a catalog table.
-
-Known names = SYSTEM_CATEGORIES ∪ distinct transaction.category values (global).
-Custom names exist only while at least one transaction uses them.
-"""
+"""User-scoped custom categories stored in user preferences."""
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import func, select, update
 
+from auth.models import User
 from common.database import get_connection, get_readonly_connection
-from tracker.constants import CATEGORY_NAME_MAX_LENGTH, SYSTEM_CATEGORIES
+from tracker.constants import (
+    CATEGORY_NAME_MAX_LENGTH,
+    MAX_CUSTOM_CATEGORIES,
+    SYSTEM_CATEGORIES,
+)
 from tracker.models import Transaction
 
 
@@ -48,33 +51,58 @@ def _system_key_map() -> dict[str, str]:
     return {category_key(name): name for name in SYSTEM_CATEGORIES}
 
 
-async def _distinct_transaction_categories() -> list[str]:
+def _custom_categories_from_preferences(
+    preferences: dict[str, Any] | None,
+) -> list[str]:
+    raw_categories = (
+        preferences.get("custom_categories", [])
+        if isinstance(preferences, dict)
+        else []
+    )
+    if not isinstance(raw_categories, list):
+        return []
+
+    system_keys = set(_system_key_map())
+    categories: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_categories:
+        try:
+            name = validate_category_name(raw)
+        except ValueError:
+            continue
+        key = category_key(name)
+        if key in system_keys or key in seen:
+            continue
+        seen.add(key)
+        categories.append(name)
+        if len(categories) == MAX_CUSTOM_CATEGORIES:
+            break
+    return categories
+
+
+async def _load_custom_categories(user_id: uuid.UUID) -> list[str]:
     async with get_readonly_connection() as session:
-        rows = (
+        preferences = (
             await session.execute(
-                select(Transaction.category)
-                .where(Transaction.category.is_not(None))
-                .distinct()
+                select(User.preferences).where(User.id == user_id)
             )
-        ).scalars().all()
-    names = [str(name) for name in rows if name and str(name).strip()]
-    names.sort(key=str.casefold)
-    return names
+        ).scalar_one_or_none()
+    return _custom_categories_from_preferences(preferences)
 
 
-async def known_category_map() -> dict[str, str]:
-    """casefold key → canonical display name (system preferred over transaction spelling)."""
+async def known_category_map(user_id: uuid.UUID) -> dict[str, str]:
+    """Return casefold key → canonical display name for one user."""
     mapping = _system_key_map()
-    for name in await _distinct_transaction_categories():
+    for name in await _load_custom_categories(user_id):
         key = category_key(name)
         if key not in mapping:
-            mapping[key] = normalize_category_name(name)
+            mapping[key] = name
     return mapping
 
 
-async def list_categories() -> list[CategoryInfo]:
+async def list_categories(user_id: uuid.UUID) -> list[CategoryInfo]:
     system_keys = set(_system_key_map())
-    known = await known_category_map()
+    known = await known_category_map(user_id)
     items = [
         CategoryInfo(name=name, is_system=(category_key(name) in system_keys))
         for name in known.values()
@@ -83,50 +111,107 @@ async def list_categories() -> list[CategoryInfo]:
     return items
 
 
-async def find_canonical_name(raw: str) -> str | None:
+async def find_canonical_name(user_id: uuid.UUID, raw: str) -> str | None:
     name = validate_category_name(raw)
-    known = await known_category_map()
+    known = await known_category_map(user_id)
     return known.get(category_key(name))
 
 
+async def register_category_names(
+    user_id: uuid.UUID,
+    raw_names: list[str],
+) -> list[CategoryInfo]:
+    """Atomically register names in one user's preferences."""
+    names: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_names:
+        name = validate_category_name(raw)
+        key = category_key(name)
+        if key not in seen:
+            names.append(name)
+            seen.add(key)
+
+    if not names:
+        return []
+
+    async with get_connection() as session:
+        user = (
+            await session.execute(
+                select(User).where(User.id == user_id).with_for_update()
+            )
+        ).scalar_one_or_none()
+        if user is None:
+            raise ValueError("Account not found.")
+
+        custom_categories = _custom_categories_from_preferences(user.preferences)
+        known = _system_key_map()
+        known.update({category_key(name): name for name in custom_categories})
+        results: list[CategoryInfo] = []
+        changed = False
+
+        for name in names:
+            key = category_key(name)
+            canonical = known.get(key)
+            if canonical is not None:
+                results.append(
+                    CategoryInfo(name=canonical, is_system=key in _system_key_map())
+                )
+                continue
+            if len(custom_categories) >= MAX_CUSTOM_CATEGORIES:
+                raise ValueError(
+                    f"You can create up to {MAX_CUSTOM_CATEGORIES} custom categories."
+                )
+            custom_categories.append(name)
+            known[key] = name
+            results.append(CategoryInfo(name=name, is_system=False))
+            changed = True
+
+        if changed:
+            preferences = dict(user.preferences or {})
+            preferences["custom_categories"] = custom_categories
+            user.preferences = preferences
+            user.updated_at = datetime.now(timezone.utc)
+            user.version_no = int(user.version_no or 0) + 1
+
+    return results
+
+
 async def resolve_category_name(
+    user_id: uuid.UUID,
     raw: str,
     *,
     allow_new: bool = True,
 ) -> str:
     """
     Return the canonical category string to store on a transaction.
-    Case-insensitive match against system + existing transaction names.
-    When allow_new is True, unknown names are accepted as new custom labels.
+    Case-insensitive match against system + the user's custom category names.
+    When allow_new is True, unknown names are registered in user preferences.
     """
     name = validate_category_name(raw)
-    canonical = await find_canonical_name(name)
+    canonical = await find_canonical_name(user_id, name)
     if canonical is not None:
         return canonical
     if allow_new:
-        return name
+        registered = await register_category_names(user_id, [name])
+        return registered[0].name
     raise ValueError(
         f'Unknown category "{name}". Create it from the dropdown or confirm import '
         "to add new categories."
     )
 
 
-async def register_category_name(raw_name: str) -> CategoryInfo:
-    """
-    Validate a name for on-the-fly use. Does not persist anything —
-    the name becomes part of the shared list once a transaction uses it.
-    """
-    name = validate_category_name(raw_name)
-    canonical = await find_canonical_name(name)
-    if canonical is not None:
-        return CategoryInfo(
-            name=canonical,
-            is_system=category_key(canonical) in _system_key_map(),
-        )
-    return CategoryInfo(name=name, is_system=False)
+async def register_category_name(
+    user_id: uuid.UUID,
+    raw_name: str,
+) -> CategoryInfo:
+    return (await register_category_names(user_id, [raw_name]))[0]
 
 
-async def rename_category(old_raw: str, new_raw: str) -> CategoryInfo:
+async def rename_category(
+    user_id: uuid.UUID,
+    old_raw: str,
+    new_raw: str,
+) -> CategoryInfo:
     old_name = validate_category_name(old_raw)
     new_name = validate_category_name(new_raw)
     old_key = category_key(old_name)
@@ -139,20 +224,6 @@ async def rename_category(old_raw: str, new_raw: str) -> CategoryInfo:
             detail="System categories cannot be renamed.",
         )
 
-    known = await known_category_map()
-    if old_key not in known:
-        raise HTTPException(status_code=404, detail="Category not found")
-
-    canonical_old = known[old_key]
-    if new_key != old_key and new_key in known:
-        raise HTTPException(
-            status_code=409,
-            detail=f'A category named "{known[new_key]}" already exists.',
-        )
-
-    # Prefer system casing if renaming onto a system key (blocked above for old;
-    # new_key in system would mean merging into system — allow only via exact key match
-    # after rename of custom → would collide with system name).
     if new_key in system_keys:
         raise HTTPException(
             status_code=409,
@@ -161,21 +232,42 @@ async def rename_category(old_raw: str, new_raw: str) -> CategoryInfo:
 
     display_new = new_name
     async with get_connection() as session:
-        usage = int(
-            (
-                await session.execute(
-                    select(func.count())
-                    .select_from(Transaction)
-                    .where(func.lower(Transaction.category) == old_key)
-                )
-            ).scalar_one()
-        )
-        if usage == 0:
+        user = (
+            await session.execute(
+                select(User).where(User.id == user_id).with_for_update()
+            )
+        ).scalar_one_or_none()
+        if user is None:
             raise HTTPException(status_code=404, detail="Category not found")
+
+        custom_categories = _custom_categories_from_preferences(user.preferences)
+        custom_by_key = {
+            category_key(category): category for category in custom_categories
+        }
+        if old_key not in custom_by_key:
+            raise HTTPException(status_code=404, detail="Category not found")
+        if new_key != old_key and new_key in custom_by_key:
+            raise HTTPException(
+                status_code=409,
+                detail=f'A category named "{custom_by_key[new_key]}" already exists.',
+            )
+
+        custom_categories = [
+            display_new if category_key(category) == old_key else category
+            for category in custom_categories
+        ]
+        preferences = dict(user.preferences or {})
+        preferences["custom_categories"] = custom_categories
+        user.preferences = preferences
+        user.updated_at = datetime.now(timezone.utc)
+        user.version_no = int(user.version_no or 0) + 1
 
         await session.execute(
             update(Transaction)
-            .where(func.lower(Transaction.category) == old_key)
+            .where(
+                Transaction.user_id == user_id,
+                func.lower(Transaction.category) == old_key,
+            )
             .values(
                 category=display_new,
                 updated_at=func.now(),
@@ -186,9 +278,68 @@ async def rename_category(old_raw: str, new_raw: str) -> CategoryInfo:
     return CategoryInfo(name=display_new, is_system=False)
 
 
-async def list_missing_category_names(names: list[str]) -> list[str]:
-    """Unique display names not yet known (system or used on any transaction)."""
-    known = await known_category_map()
+async def delete_category(user_id: uuid.UUID, raw_name: str) -> None:
+    """Delete an unused custom category from one user's preferences."""
+    name = validate_category_name(raw_name)
+    key = category_key(name)
+    if key in _system_key_map():
+        raise HTTPException(
+            status_code=400,
+            detail="System categories cannot be deleted.",
+        )
+
+    async with get_connection() as session:
+        user = (
+            await session.execute(
+                select(User).where(User.id == user_id).with_for_update()
+            )
+        ).scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status_code=404, detail="Category not found")
+
+        custom_categories = _custom_categories_from_preferences(user.preferences)
+        if key not in {category_key(category) for category in custom_categories}:
+            raise HTTPException(status_code=404, detail="Category not found")
+
+        usage = int(
+            (
+                await session.execute(
+                    select(func.count())
+                    .select_from(Transaction)
+                    .where(
+                        Transaction.user_id == user_id,
+                        func.lower(Transaction.category) == key,
+                    )
+                )
+            ).scalar_one()
+        )
+        if usage > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f'Category "{name}" is used by {usage} '
+                    f'{"transaction" if usage == 1 else "transactions"}. '
+                    "Reassign or delete them first."
+                ),
+            )
+
+        preferences = dict(user.preferences or {})
+        preferences["custom_categories"] = [
+            category
+            for category in custom_categories
+            if category_key(category) != key
+        ]
+        user.preferences = preferences
+        user.updated_at = datetime.now(timezone.utc)
+        user.version_no = int(user.version_no or 0) + 1
+
+
+async def list_missing_category_names(
+    user_id: uuid.UUID,
+    names: list[str],
+) -> list[str]:
+    """Return unique names not yet known to one user."""
+    known = await known_category_map(user_id)
     missing: list[str] = []
     seen: set[str] = set()
     for raw in names:

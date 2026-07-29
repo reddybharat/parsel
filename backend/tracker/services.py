@@ -19,6 +19,7 @@ from tracker.category_service import (
     known_category_map,
     list_missing_category_names,
     normalize_category_name,
+    register_category_names,
     resolve_category_name,
 )
 from tracker.constants import INVESTMENTS_CATEGORY, PAYMENT_METHODS
@@ -250,6 +251,8 @@ def transactions_csv_template() -> str:
 
 async def _parse_csv_rows_for_preview(
     content: bytes,
+    *,
+    user_id: uuid.UUID,
 ) -> tuple[list[ImportPreviewRow], list[str], list[str]]:
     """
     Parse CSV into preview rows with per-field issues.
@@ -276,7 +279,7 @@ async def _parse_csv_rows_for_preview(
             [],
         )
 
-    known = await known_category_map()
+    known = await known_category_map(user_id)
     preview_rows: list[ImportPreviewRow] = []
     category_names: list[str] = []
 
@@ -587,11 +590,18 @@ async def _parse_csv_transaction_rows(
     return rows, errors, category_names
 
 
-async def preview_transactions_import(content: bytes) -> ImportPreviewResponse:
+async def preview_transactions_import(
+    content: bytes,
+    *,
+    user_id: uuid.UUID,
+) -> ImportPreviewResponse:
     """
     Parse CSV without inserting. Return every row with field-level issues.
     """
-    preview_rows, file_errors, category_names = await _parse_csv_rows_for_preview(content)
+    preview_rows, file_errors, category_names = await _parse_csv_rows_for_preview(
+        content,
+        user_id=user_id,
+    )
     if file_errors:
         return ImportPreviewResponse(
             rows=[],
@@ -601,7 +611,7 @@ async def preview_transactions_import(content: bytes) -> ImportPreviewResponse:
             errors=file_errors,
         )
 
-    new_categories = await list_missing_category_names(category_names)
+    new_categories = await list_missing_category_names(user_id, category_names)
     valid_row_count = sum(1 for row in preview_rows if row.is_ready)
     row_errors = [
         f"Row {row.source_row}: {issue.message}"
@@ -628,26 +638,58 @@ async def import_reviewed_transactions(
     Insert only the user-reviewed rows atomically.
     """
     approved_keys = {
-        category_key(name)
-        for name in payload.approved_new_categories
+        category_key(name) for name in payload.approved_new_categories
     }
     rows_to_insert: list[dict] = []
-    created_categories: list[str] = []
-    errors: list[str] = []
+    row_category_keys = {category_key(row.category) for row in payload.rows}
+    approved_names = [
+        name
+        for name in payload.approved_new_categories
+        if category_key(name) in row_category_keys
+    ]
+    known = await known_category_map(user_id)
+    errors = [
+        (
+            f'Row {row.source_row}: Unknown category "{row.category}". '
+            "Create it from the dropdown or confirm import to add new categories."
+        )
+        for row in payload.rows
+        if category_key(row.category) not in known
+        and category_key(row.category) not in approved_keys
+    ]
+    if errors:
+        return ReviewedImportResponse(
+            inserted=0,
+            created_categories=[],
+            errors=errors,
+        )
+
+    missing_approved = (
+        await list_missing_category_names(user_id, approved_names)
+        if approved_names
+        else []
+    )
+    try:
+        registered = await register_category_names(user_id, missing_approved)
+    except ValueError as exc:
+        return ReviewedImportResponse(
+            inserted=0,
+            created_categories=[],
+            errors=[str(exc)],
+        )
+    created_categories = [category.name for category in registered]
+    errors = []
 
     for row in payload.rows:
         try:
             canonical = await resolve_category_name(
+                user_id,
                 row.category,
-                allow_new=category_key(row.category) in approved_keys,
+                allow_new=False,
             )
         except ValueError as exc:
             errors.append(f"Row {row.source_row}: {exc}")
             continue
-
-        if category_key(canonical) in approved_keys:
-            if canonical not in created_categories:
-                created_categories.append(canonical)
 
         rows_to_insert.append(
             {
@@ -701,14 +743,23 @@ async def import_transactions_from_csv(
 
     created_categories: list[str] = []
     if create_missing_categories:
-        created_categories = await list_missing_category_names(category_names)
+        missing_categories = await list_missing_category_names(
+            user_id,
+            category_names,
+        )
+        try:
+            registered = await register_category_names(user_id, missing_categories)
+        except ValueError as exc:
+            return 0, [*errors, str(exc)], []
+        created_categories = [category.name for category in registered]
 
     rows_to_insert: list[dict] = []
     for idx, row in enumerate(rows):
         try:
             canonical = await resolve_category_name(
+                user_id,
                 row["category"],
-                allow_new=create_missing_categories,
+                allow_new=False,
             )
             rows_to_insert.append(
                 {

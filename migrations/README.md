@@ -7,6 +7,7 @@ Hand-applied SQL scripts (no migration runner). Run them against the same databa
 | [001_initial_transactions.sql](001_initial_transactions.sql) | Original baseline: `transactions` table + indexes (pre-auth) |
 | [002_users_and_transaction_user_id.sql](002_users_and_transaction_user_id.sql) | Multi-user: `users` (uuid, username, email, optional names, JSONB preferences) + `transactions.user_id` |
 | [003_search_indexes.sql](003_search_indexes.sql) | Ledger search: user-scoped composite indexes, `pg_trgm` trigram indexes for free-text `q` |
+| [004_user_custom_categories.sql](004_user_custom_categories.sql) | Update `users.preferences` default to include `custom_categories` |
 
 ## Fresh database
 
@@ -14,6 +15,7 @@ Hand-applied SQL scripts (no migration runner). Run them against the same databa
 psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/001_initial_transactions.sql
 psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/002_users_and_transaction_user_id.sql
 psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/003_search_indexes.sql
+psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/004_user_custom_categories.sql
 ```
 
 Then:
