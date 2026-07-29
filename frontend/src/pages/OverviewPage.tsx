@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowUp, Plus, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import { ParselMark } from "@/components/brand/ParselMark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CashFlowTiles } from "@/components/dashboard/CashFlowTiles";
@@ -103,7 +104,10 @@ function QuickActionsBlock() {
 
       <article className="flex min-h-0 flex-col justify-between rounded-none bg-parsel-primary p-3 text-primary-foreground shadow-none lg:h-full">
         <div className="space-y-2">
-          <p className="text-sm font-semibold leading-tight">Parsel AI</p>
+          <p className="flex items-center gap-1.5 text-sm font-semibold leading-tight">
+            <ParselMark fit="fitted" className="h-2.5 w-3" />
+            Parsel AI
+          </p>
           <p className="text-xs leading-relaxed opacity-90">
             See where your money went this month, or ask about categories and recent transactions.
             Clear answers from your ledger, in plain language.

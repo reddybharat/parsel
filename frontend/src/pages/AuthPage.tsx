@@ -2,6 +2,7 @@ import { FormEvent, useState, type ComponentProps } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 
+import { ParselMark } from "@/components/brand/ParselMark";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -107,8 +108,9 @@ export function AuthPage({ mode }: { mode: Mode }) {
       <header className="flex items-center justify-between px-4 py-3 sm:px-6">
         <Link
           to="/"
-          className="text-sm font-semibold uppercase tracking-[0.08em] text-parsel-primary hover:underline"
+          className="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-[0.08em] text-parsel-primary hover:underline"
         >
+          <ParselMark fit="fitted" className="h-2.5 w-3" />
           Parsel
         </Link>
         <ThemeToggle />
@@ -117,7 +119,8 @@ export function AuthPage({ mode }: { mode: Mode }) {
       <div className="flex flex-1 items-center justify-center px-4 py-10">
         <div className="w-full max-w-md rounded-none border border-parsel-border bg-parsel-surface p-6 shadow-none">
           <div className="mb-6">
-            <p className="text-[28px] font-semibold uppercase tracking-[0.08em] text-parsel-primary">
+            <p className="flex items-center gap-2.5 text-[28px] font-semibold uppercase tracking-[0.08em] text-parsel-primary">
+              <ParselMark fit="fitted" className="h-5 w-6" />
               Parsel
             </p>
             <h1 className="mt-1 text-xl font-semibold">{title}</h1>

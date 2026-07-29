@@ -7,6 +7,7 @@
  */
 import { Link, Navigate } from "react-router-dom";
 
+import { ParselMark } from "@/components/brand/ParselMark";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
@@ -200,8 +201,9 @@ export function LandingPage() {
       <nav className="sticky top-0 z-10 flex items-center justify-between border-b border-parsel-border bg-parsel-surface px-6 py-3 lg:px-14">
         <Link
           to="/"
-          className="text-lg font-semibold uppercase tracking-[0.08em] text-parsel-primary"
+          className="flex items-center gap-2 text-lg font-semibold uppercase tracking-[0.08em] text-parsel-primary"
         >
+          <ParselMark fit="fitted" className="h-[13px] w-4" />
           Parsel
         </Link>
         <div className="flex items-center gap-4">
@@ -211,7 +213,8 @@ export function LandingPage() {
       </nav>
 
       <section className="landing-hero px-6 py-16 lg:px-14 lg:py-24">
-        <p className="text-[48px] font-semibold uppercase tracking-[0.08em] text-parsel-primary lg:text-[64px]">
+        <p className="flex items-center gap-4 text-[48px] font-semibold uppercase tracking-[0.08em] text-parsel-primary lg:text-[64px]">
+          <ParselMark fit="fitted" className="h-[34px] w-10 lg:h-[46px] lg:w-[54px]" />
           Parsel
         </p>
         <h1 className="mt-4 max-w-2xl text-3xl font-semibold leading-tight text-parsel-text lg:text-5xl">

@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import { EmptyState } from "../components/feedback/EmptyState";
 import { ErrorState } from "../components/feedback/ErrorState";
 import { exitChat, invokeChat, resumeChat } from "../api/chat";
+import { ParselMark } from "@/components/brand/ParselMark";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
@@ -18,6 +19,8 @@ import {
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
 import { Spinner } from "@/components/ui/spinner";
+import { useAuth } from "@/lib/auth";
+import { initialsFromProfile } from "@/lib/profile";
 
 type ChatMessage = { id: string; role: "user" | "assistant"; content: string };
 
@@ -31,16 +34,31 @@ const SUGGESTIONS = [
 function ParselAvatar() {
   return (
     <Avatar className="h-8 w-8">
-      <AvatarFallback className="bg-parsel-nav-active-bg text-parsel-primary">
-        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-          <path d="M12 2.5l1.2 3.6 3.8 1.2-3.8 1.2L12 12.5 10.8 8.9 7 7.7l3.8-1.2L12 2.5zm0 9.5l.9 2.7 2.9.9-2.9.9-.9 2.7-.9-2.7-2.9-.9 2.9-.9.9-2.7z" />
-        </svg>
+      <AvatarFallback className="bg-parsel-nav-active-bg text-parsel-nav-active-text">
+        <span className="sr-only">Parsel</span>
+        <ParselMark className="h-5 w-5" />
       </AvatarFallback>
     </Avatar>
   );
 }
 
-function ChatMessageRow({ message }: { message: ChatMessage }) {
+function UserAvatar({ initials }: { initials: string }) {
+  return (
+    <Avatar className="h-8 w-8">
+      <AvatarFallback className="bg-parsel-avatar-bg text-xs font-semibold text-parsel-secondary">
+        {initials}
+      </AvatarFallback>
+    </Avatar>
+  );
+}
+
+function ChatMessageRow({
+  message,
+  userInitials,
+}: {
+  message: ChatMessage;
+  userInitials: string;
+}) {
   const isUser = message.role === "user";
 
   return (
@@ -61,6 +79,11 @@ function ChatMessageRow({ message }: { message: ChatMessage }) {
           </BubbleContent>
         </Bubble>
       </MessageContent>
+      {isUser ? (
+        <MessageAvatar>
+          <UserAvatar initials={userInitials} />
+        </MessageAvatar>
+      ) : null}
     </Message>
   );
 }
@@ -84,6 +107,8 @@ function ThinkingRow() {
 }
 
 export function ChatPage() {
+  const { firstName, lastName, username, email } = useAuth();
+  const userInitials = initialsFromProfile(firstName, lastName, username ?? email);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -189,7 +214,7 @@ export function ChatPage() {
                     messageId={message.id}
                     scrollAnchor={message.role === "user"}
                   >
-                    <ChatMessageRow message={message} />
+                    <ChatMessageRow message={message} userInitials={userInitials} />
                   </MessageScrollerItem>
                 ))}
 

@@ -113,6 +113,16 @@ Flat by default. Structure from canvas → surface + 1px borders only.
 
 ## Components
 
+### Brand mark
+The logo is a prompt caret reading into a squared, curveless **P** — the console and the name in one glyph. Built on a 24-unit grid: 2-unit strokes, square caps, miter joins, ink spanning 10 units of cap height. Lives in `frontend/src/components/brand/ParselMark.tsx` and inherits `currentColor`.
+
+- **Lockup:** mark then wordmark, both cyan, mark set to roughly 0.72em so its ink matches the wordmark's cap height. Used on the landing nav and hero, and on auth. The in-app header stays wordmark-only — the shell already carries the mark in the rail.
+- **Nav rail:** the mark *is* the Parsel AI item's icon, at 1.25-unit strokes so it matches the weight of the sibling line icons.
+- **Chip:** on the inverted ink surface (`--parsel-nav-active-bg` / `-text`) for the assistant avatar. Never cyan-on-chip — the chip flips to near-white in dark mode.
+- **App icon:** cyan square, ink glyph, heavier 3-unit strokes so the P's counter survives at 16px.
+
+**The One Mark Rule.** Geometry is fixed: the mark is only ever recolored through `currentColor` and re-weighted for optical size (1.25 in the rail, 2 default, 3 at icon scale). Never redraw it with curves, rounded caps, or a second color.
+
 ### Buttons
 Primary = cyan fill. Outline = hairline mono. Sharp corners, no shadow.
 
@@ -128,8 +138,10 @@ Single-series fills/strokes use Precision Cyan.
 - **Do** keep dashboard gaps tight.
 - **Do** use cyan for primary CTAs and charts.
 - **Do** keep money amounts in green/red.
+- **Do** pair the mark with the wordmark at cap height.
 
 ### Don't:
 - **Don't** reintroduce soft card shadows or large radii on Overview.
 - **Don't** paint inflow amounts in cyan — cyan is not money-positive.
 - **Don't** add a second display font.
+- **Don't** redraw the mark with rounded caps, curves, or a second color.

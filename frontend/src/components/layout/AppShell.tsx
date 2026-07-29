@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 
+import { ParselMark } from "@/components/brand/ParselMark";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/lib/auth";
 import { prefetchDashboardOverview } from "@/lib/dashboardQuery";
+import { initialsFromProfile } from "@/lib/profile";
 import { ThemeToggle } from "./ThemeToggle";
 
 type ShellNavItem = {
@@ -40,14 +43,6 @@ function ImportIcon() {
   );
 }
 
-function AiIcon() {
-  return (
-    <svg className={ICON_CLASS} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M12 2l1.1 3.4 3.5 1.1-3.5 1.1L12 11l-1.1-3.4-3.5-1.1 3.5-1.1L12 2zm0 10l.8 2.4 2.5.8-2.5.8-.8 2.4-.8-2.4-2.5-.8 2.5-.8.8-2.4z" />
-    </svg>
-  );
-}
-
 function SettingsIcon() {
   return (
     <svg className={ICON_CLASS} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -66,32 +61,15 @@ function LogoutIcon() {
   );
 }
 
-function initialsFromProfile(
-  firstName: string | null,
-  lastName: string | null,
-  username: string | null,
-): string {
-  const first = firstName?.trim();
-  const last = lastName?.trim();
-  if (first && last) {
-    return `${first[0] ?? ""}${last[0] ?? ""}`.toUpperCase();
-  }
-  if (first) {
-    return first.slice(0, 2).toUpperCase();
-  }
-  if (!username) return "?";
-  const parts = username.split(/[._-]+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
-  }
-  return username.slice(0, 2).toUpperCase();
-}
-
 const NAV_ITEMS: ShellNavItem[] = [
   { to: "/overview", label: "Home", icon: <HomeIcon /> },
   { to: "/ledger/search", label: "Ledger", icon: <LedgerIcon /> },
   { to: "/ledger/add", label: "Import Data", icon: <ImportIcon /> },
-  { to: "/chat", label: "Parsel AI", icon: <AiIcon /> },
+  {
+    to: "/chat",
+    label: "Parsel AI",
+    icon: <ParselMark fit="fitted" strokeWidth={1.25} className="h-[13px] w-[15px]" />,
+  },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -139,12 +117,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="mt-auto border-t border-parsel-border pt-3">
               <div className="rounded-none border border-parsel-border bg-parsel-soft p-2.5">
                 <div className="flex items-center gap-2.5 px-0.5 py-0.5">
-                  <span
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-none bg-parsel-avatar-bg text-xs font-semibold text-parsel-secondary"
-                    aria-hidden
-                  >
-                    {initials}
-                  </span>
+                  <Avatar className="h-8 w-8" aria-hidden>
+                    <AvatarFallback className="bg-parsel-avatar-bg text-xs font-semibold text-parsel-secondary">
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium leading-tight" title={primaryLabel}>
                       {primaryLabel}
