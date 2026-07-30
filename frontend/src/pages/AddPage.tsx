@@ -270,15 +270,17 @@ export function AddPage() {
                   <FieldDescription>
                     Add a blank row and type the details. Add as many as you need before importing.
                   </FieldDescription>
-                  <Button
-                    type="button"
-                    className="w-fit gap-1.5"
-                    onClick={onAddManualRow}
-                    disabled={busyBulk}
-                  >
-                    <Plus className="size-4" aria-hidden />
-                    Add transaction
-                  </Button>
+                  <div>
+                    <Button
+                      type="button"
+                      className="w-fit gap-1.5"
+                      onClick={onAddManualRow}
+                      disabled={busyBulk}
+                    >
+                      <Plus className="size-4" aria-hidden />
+                      Add transaction
+                    </Button>
+                  </div>
                 </Field>
 
                 <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-parsel-muted">
