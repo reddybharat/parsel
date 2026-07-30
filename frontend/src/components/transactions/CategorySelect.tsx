@@ -26,6 +26,9 @@ export function CategorySelect({
   required,
   placeholder = "Select Category",
   allowEmpty = true,
+  size = "default",
+  invalid,
+  disabled,
 }: {
   id?: string;
   value: string;
@@ -35,11 +38,16 @@ export function CategorySelect({
   required?: boolean;
   placeholder?: string;
   allowEmpty?: boolean;
+  size?: "xs" | "sm" | "default";
+  invalid?: boolean;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const customCategoryLimitReached =
+    categories.filter((category) => !category.is_system).length >= 10;
 
   function openCreate() {
     setDraft("");
@@ -87,6 +95,9 @@ export function CategorySelect({
         value={value}
         onChange={(e) => handleSelectChange(e.target.value)}
         required={required}
+        size={size}
+        disabled={disabled}
+        aria-invalid={invalid}
       >
         {allowEmpty ? <NativeSelectOption value="">{placeholder}</NativeSelectOption> : null}
         {categories.map((item) => (
@@ -94,7 +105,11 @@ export function CategorySelect({
             {item.name}
           </NativeSelectOption>
         ))}
-        <NativeSelectOption value={CREATE_VALUE}>+ Create new category…</NativeSelectOption>
+        <NativeSelectOption value={CREATE_VALUE} disabled={customCategoryLimitReached}>
+          {customCategoryLimitReached
+            ? "Custom category limit reached"
+            : "+ Create new category…"}
+        </NativeSelectOption>
       </NativeSelect>
 
       <Dialog open={open} onOpenChange={(next) => !saving && setOpen(next)}>
@@ -107,7 +122,7 @@ export function CategorySelect({
           <Field>
             <FieldLabel htmlFor={`${id ?? "category"}-new-name`}>Name</FieldLabel>
             <FieldDescription>
-              New names are shared once used on a transaction. Matching ignores case.
+              Saved to your account. You can create up to 10 custom categories.
             </FieldDescription>
             <Input
               id={`${id ?? "category"}-new-name`}

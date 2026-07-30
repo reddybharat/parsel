@@ -1,199 +1,195 @@
-import { FormEvent, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-
-import { EmptyState } from "../components/feedback/EmptyState";
-import { InlineProgress } from "../components/feedback/InlineProgress";
-import { StatusAlert, type FeedbackMessage } from "../components/feedback/StatusAlert";
-import { Button } from "@/components/ui/button";
-import { DatePicker } from "@/components/ui/date-picker";
-import { Field, FieldLabel } from "@/components/ui/field";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
-import { ConfirmDeleteDialog } from "../components/transactions/ConfirmDeleteDialog";
-import { EditTransactionDialog } from "../components/transactions/EditTransactionDialog";
-import { TransactionTable } from "../components/transactions/TransactionTable";
+  getCoreRowModel,
+  useReactTable,
+  type PaginationState,
+  type SortingState,
+  type VisibilityState,
+} from "@tanstack/react-table";
+import { Search } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+
+import { DataTable } from "@/components/data-table/data-table";
+import { DataTablePagination } from "@/components/data-table/data-table-pagination";
+import { StatusAlert, type FeedbackMessage } from "@/components/feedback/StatusAlert";
+import { AddTransactionDrawer } from "@/components/transactions/AddTransactionDrawer";
+import { ConfirmDeleteDialog } from "@/components/transactions/ConfirmDeleteDialog";
+import { EditTransactionDialog } from "@/components/transactions/EditTransactionDialog";
+import { createLedgerColumns } from "@/components/transactions/ledgerColumns";
+import { localDateIso, monthStartLocal } from "@/components/transactions/LedgerDateRange";
+import { LedgerToolbar, type LedgerFilters } from "@/components/transactions/LedgerToolbar";
+import { Button } from "@/components/ui/button";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { invalidateDashboardOverview } from "@/lib/dashboardQuery";
+import { formatInrSigned, signedAmount } from "@/lib/format";
 import { trackerConfigQueryOptions } from "@/lib/trackerConfigQuery";
+import {
+  invalidateTransactionSearch,
+  transactionSearchQueryOptions,
+} from "@/lib/transactionSearchQuery";
 import {
   deleteTransaction,
   exportTransactions,
-  searchTransactions,
   updateTransaction,
-} from "../api/tracker";
-import { formatInrSigned, signedAmount } from "../lib/format";
-import type { SearchResult, Transaction } from "../lib/types";
+  type SearchParams,
+  type SortColumn,
+} from "@/api/tracker";
+import type { Transaction } from "@/lib/types";
 
-const fieldLabelClass = "text-xs font-semibold uppercase tracking-wide text-parsel-secondary";
-
-type DatePreset = "lastMonth" | "today" | "last7" | "month";
-
-function localDateIso(d = new Date()): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function monthStartLocal(): string {
-  const d = new Date();
-  d.setDate(1);
-  return localDateIso(d);
-}
-
-function daysAgoLocal(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return localDateIso(d);
-}
-
-function lastMonthStartLocal(): string {
-  const d = new Date();
-  d.setDate(1);
-  d.setMonth(d.getMonth() - 1);
-  return localDateIso(d);
-}
-
-function lastMonthEndLocal(): string {
-  const d = new Date();
-  d.setDate(0);
-  return localDateIso(d);
-}
-
-function pageNumbers(current: number, total: number): number[] {
-  if (total <= 7) {
-    return Array.from({ length: total }, (_, i) => i + 1);
-  }
-  const set = new Set<number>([1, total, current, current - 1, current + 1]);
-  return [...set].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
+function defaultFilters(category = ""): LedgerFilters {
+  return {
+    startDate: monthStartLocal(),
+    endDate: localDateIso(),
+    query: "",
+    category,
+    paymentMethod: "",
+    direction: "",
+  };
 }
 
 export function SearchPage() {
-  const { data: trackerConfig, isPending: loadingConfig } = useQuery(trackerConfigQueryOptions());
+  const [urlParams] = useSearchParams();
+  const initialCategory = urlParams.get("category")?.trim() ?? "";
+  const { data: trackerConfig } = useQuery(trackerConfigQueryOptions());
   const categories = trackerConfig?.categories ?? [];
   const paymentMethods = trackerConfig?.payment_methods ?? [];
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [errorTitle, setErrorTitle] = useState("Something went wrong");
-  const [errorRetry, setErrorRetry] = useState<(() => void) | null>(null);
-  const [result, setResult] = useState<SearchResult | null>(null);
+
+  const [filters, setFilters] = useState<LedgerFilters>(() => defaultFilters(initialCategory));
+  // Idle until the first explicit search; then filter changes refetch live.
+  // Deep links with a category should search immediately.
+  const [hasSearched, setHasSearched] = useState(() => Boolean(initialCategory));
+
+  useEffect(() => {
+    const nextCategory = urlParams.get("category")?.trim() ?? "";
+    if (!nextCategory) return;
+    setFilters((current) =>
+      current.category === nextCategory ? current : { ...current, category: nextCategory },
+    );
+    setHasSearched(true);
+  }, [urlParams]);
+
+  const [sorting, setSorting] = useState<SortingState>([{ id: "transaction_date", desc: true }]);
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 15 });
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+
+  const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [deleting, setDeleting] = useState<Transaction | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackMessage | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const [startDate, setStartDate] = useState(monthStartLocal());
-  const [endDate, setEndDate] = useState(localDateIso());
-  const [category, setCategory] = useState("All");
-  const [activePreset, setActivePreset] = useState<DatePreset | null>(null);
-  const [sortColumn, setSortColumn] = useState<"transaction_date" | "amount" | "category" | "payment_method" | "description">(
-    "transaction_date",
+  const debouncedQuery = useDebouncedValue(filters.query, 300);
+  const invalidRange = filters.startDate > filters.endDate;
+
+  const searchParams: SearchParams = useMemo(
+    () => ({
+      start_date: filters.startDate,
+      end_date: filters.endDate,
+      q: debouncedQuery.trim() || undefined,
+      category: filters.category || undefined,
+      payment_method: filters.paymentMethod || undefined,
+      is_debit: filters.direction === "" ? undefined : filters.direction === "debit",
+      sort_column: (sorting[0]?.id ?? "transaction_date") as SortColumn,
+      sort_desc: sorting[0]?.desc ?? true,
+      page: pagination.pageIndex + 1,
+      page_size: pagination.pageSize,
+    }),
+    [
+      filters.startDate,
+      filters.endDate,
+      filters.category,
+      filters.paymentMethod,
+      filters.direction,
+      debouncedQuery,
+      sorting,
+      pagination.pageIndex,
+      pagination.pageSize,
+    ],
   );
-  const [sortDesc, setSortDesc] = useState(true);
-  const [page, setPage] = useState(1);
-  const PAGE_SIZE = 15;
 
-  const totalPages = useMemo(() => (result ? Math.max(1, Math.ceil(result.total / result.page_size)) : 1), [result]);
+  const { data, isPending, isFetching, isError, error, refetch } = useQuery(
+    transactionSearchQueryOptions(searchParams, hasSearched && !invalidRange),
+  );
 
-  function showError(title: string, description: string, retry?: () => void) {
-    setErrorTitle(title);
-    setError(description);
-    setErrorRetry(retry ? () => retry : null);
-  }
+  const rows = data?.items ?? [];
+  const total = data?.total ?? 0;
 
-  function clearError() {
-    setError(null);
-    setErrorTitle("Something went wrong");
-    setErrorRetry(null);
-  }
+  const isDirty = useMemo(() => {
+    const base = defaultFilters();
+    return (
+      filters.startDate !== base.startDate ||
+      filters.endDate !== base.endDate ||
+      filters.query !== "" ||
+      filters.category !== "" ||
+      filters.paymentMethod !== "" ||
+      filters.direction !== ""
+    );
+  }, [filters]);
 
-  function applyPreset(preset: DatePreset) {
-    const today = localDateIso();
-    if (preset === "lastMonth") {
-      setStartDate(lastMonthStartLocal());
-      setEndDate(lastMonthEndLocal());
-    } else if (preset === "today") {
-      setStartDate(today);
-      setEndDate(today);
-    } else if (preset === "last7") {
-      setStartDate(daysAgoLocal(6));
-      setEndDate(today);
+  const hasNarrowingFilters =
+    filters.query !== "" || filters.category !== "" || filters.paymentMethod !== "" || filters.direction !== "";
+
+  const resetPage = useCallback(() => {
+    setPagination((current) => (current.pageIndex === 0 ? current : { ...current, pageIndex: 0 }));
+  }, []);
+
+  const onFiltersChange = useCallback(
+    (next: Partial<LedgerFilters>) => {
+      setFilters((current) => ({ ...current, ...next }));
+      resetPage();
+    },
+    [resetPage],
+  );
+
+  const onReset = useCallback(() => {
+    setFilters(defaultFilters());
+    resetPage();
+  }, [resetPage]);
+
+  const columns = useMemo(
+    () => createLedgerColumns({ onEdit: setEditing, onDelete: setDeleting }),
+    [],
+  );
+
+  const table = useReactTable({
+    data: rows,
+    columns,
+    getRowId: (row) => row.id,
+    getCoreRowModel: getCoreRowModel(),
+    manualPagination: true,
+    manualSorting: true,
+    pageCount: total > 0 ? Math.ceil(total / pagination.pageSize) : 0,
+    rowCount: total,
+    enableSortingRemoval: false,
+    state: { sorting, pagination, columnVisibility },
+    onSortingChange: (updater) => {
+      setSorting(updater);
+      resetPage();
+    },
+    onPaginationChange: setPagination,
+    onColumnVisibilityChange: setColumnVisibility,
+  });
+
+  function runSearch() {
+    if (invalidRange) return;
+    if (hasSearched) {
+      void refetch();
     } else {
-      setStartDate(monthStartLocal());
-      setEndDate(today);
-    }
-    setActivePreset(preset);
-  }
-
-  function onStartDateChange(value: string) {
-    setStartDate(value);
-    setActivePreset(null);
-  }
-
-  function onEndDateChange(value: string) {
-    setEndDate(value);
-    setActivePreset(null);
-  }
-
-  function clearFilters() {
-    setStartDate(monthStartLocal());
-    setEndDate(localDateIso());
-    setCategory("All");
-    setActivePreset(null);
-  }
-
-  async function runSearch(
-    targetPage = page,
-    opts?: { sortColumn?: typeof sortColumn; sortDesc?: boolean },
-  ) {
-    const nextSortColumn = opts?.sortColumn ?? sortColumn;
-    const nextSortDesc = opts?.sortDesc ?? sortDesc;
-    setLoading(true);
-    clearError();
-    try {
-      const data = await searchTransactions({
-        start_date: startDate,
-        end_date: endDate,
-        category,
-        sort_column: nextSortColumn,
-        sort_desc: nextSortDesc,
-        page: targetPage,
-        page_size: PAGE_SIZE,
-      });
-      setPage(targetPage);
-      setResult(data);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Search failed.";
-      showError("Search failed", message, () => void runSearch(targetPage, opts));
-    } finally {
-      setLoading(false);
+      setHasSearched(true);
     }
   }
 
-  async function onSearchSubmit(event: FormEvent) {
-    event.preventDefault();
-    await runSearch(1);
-  }
-
-  async function onDeleteConfirm() {
-    if (!deleting) return;
+  async function withMutation(action: () => Promise<void>, failureTitle: string) {
     setSubmitting(true);
+    setActionError(null);
     try {
-      await deleteTransaction(deleting.id);
+      await action();
+      await invalidateTransactionSearch();
       void invalidateDashboardOverview();
-      setFeedback({ variant: "success", title: "Transaction deleted" });
-      setDeleting(null);
-      await runSearch(page);
     } catch (err) {
-      showError("Delete failed", err instanceof Error ? err.message : "Delete failed.");
+      setActionError(err instanceof Error ? err.message : `${failureTitle}.`);
     } finally {
       setSubmitting(false);
     }
@@ -201,239 +197,150 @@ export function SearchPage() {
 
   async function onEditSave() {
     if (!editing) return;
-    setSubmitting(true);
-    try {
-      await updateTransaction(editing.id, editing);
-      void invalidateDashboardOverview();
+    const target = editing;
+    await withMutation(async () => {
+      await updateTransaction(target.id, target);
       setEditing(null);
       setFeedback({ variant: "success", title: "Transaction updated" });
-      await runSearch(page);
-    } catch (err) {
-      showError("Update failed", err instanceof Error ? err.message : "Update failed.");
-    } finally {
-      setSubmitting(false);
-    }
+    }, "Update failed");
+  }
+
+  async function onDeleteConfirm() {
+    if (!deleting) return;
+    const target = deleting;
+    await withMutation(async () => {
+      await deleteTransaction(target.id);
+      setDeleting(null);
+      setFeedback({ variant: "success", title: "Transaction deleted" });
+    }, "Delete failed");
   }
 
   async function onExport() {
     try {
       const blob = await exportTransactions({
-        start_date: startDate,
-        end_date: endDate,
-        category,
+        start_date: searchParams.start_date,
+        end_date: searchParams.end_date,
+        q: searchParams.q,
+        category: searchParams.category,
+        payment_method: searchParams.payment_method,
+        is_debit: searchParams.is_debit,
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `transactions_${startDate}_${endDate}.csv`;
+      link.download = `transactions_${searchParams.start_date}_${searchParams.end_date}.csv`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      showError("Export failed", err instanceof Error ? err.message : "Export failed.");
+      setActionError(err instanceof Error ? err.message : "Export failed.");
     }
   }
 
-  const rangeStart = result ? (result.page - 1) * result.page_size + 1 : 0;
-  const rangeEnd = result ? Math.min(result.page * result.page_size, result.total) : 0;
-  const pages = result ? pageNumbers(result.page, totalPages) : [];
-  const canExport = Boolean(result && result.total > 0);
+  const showTable = hasSearched && !invalidRange;
+  const firstLoad = showTable && isPending;
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-content min-h-0 flex-col gap-1.5 overflow-hidden">
+    <div className="flex h-full w-full min-h-0 flex-col gap-1.5 overflow-hidden">
       {feedback ? <StatusAlert {...feedback} onDismiss={() => setFeedback(null)} /> : null}
-      {error ? (
+      {actionError ? (
         <StatusAlert
           variant="error"
-          title={errorTitle}
-          description={error}
-          onDismiss={clearError}
+          title="Something went wrong"
+          description={actionError}
+          onDismiss={() => setActionError(null)}
+        />
+      ) : null}
+      {isError ? (
+        <StatusAlert
+          variant="error"
+          title="Search failed"
+          description={error instanceof Error ? error.message : "Could not load transactions."}
           action={
-            errorRetry ? (
-              <Button size="sm" variant="outline" type="button" onClick={() => errorRetry()}>
-                Retry
-              </Button>
-            ) : undefined
+            <Button size="sm" variant="outline" type="button" onClick={() => void refetch()}>
+              Retry
+            </Button>
           }
         />
       ) : null}
 
-      <form className="space-y-4 rounded-none border border-parsel-border bg-parsel-soft p-4 shadow-none" onSubmit={onSearchSubmit}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              className={activePreset === "lastMonth" ? "border-parsel-nav-active-bg bg-parsel-nav-active-bg text-parsel-nav-active-text hover:bg-parsel-nav-active-bg" : ""}
-              type="button"
-              variant={activePreset === "lastMonth" ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => applyPreset("lastMonth")}
-            >
-              Last Month
-            </Button>
-            <Button
-              className={activePreset === "today" ? "border-parsel-nav-active-bg bg-parsel-nav-active-bg text-parsel-nav-active-text hover:bg-parsel-nav-active-bg" : ""}
-              type="button"
-              variant={activePreset === "today" ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => applyPreset("today")}
-            >
-              Today
-            </Button>
-            <Button
-              className={activePreset === "last7" ? "border-parsel-nav-active-bg bg-parsel-nav-active-bg text-parsel-nav-active-text hover:bg-parsel-nav-active-bg" : ""}
-              type="button"
-              variant={activePreset === "last7" ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => applyPreset("last7")}
-            >
-              Last 7 days
-            </Button>
-            <Button
-              className={activePreset === "month" ? "border-parsel-nav-active-bg bg-parsel-nav-active-bg text-parsel-nav-active-text hover:bg-parsel-nav-active-bg" : ""}
-              type="button"
-              variant={activePreset === "month" ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => applyPreset("month")}
-            >
-              This month
-            </Button>
-          </div>
-          <Button asChild>
-            <Link to="/ledger/add">+ Add Transaction</Link>
-          </Button>
-        </div>
-        <div className="flex items-end gap-3">
-          <Field className="w-auto min-w-[170px] flex-1">
-            <FieldLabel htmlFor="search-start" className={fieldLabelClass}>
-              Start Date
-            </FieldLabel>
-            <DatePicker id="search-start" value={startDate} onChange={onStartDateChange} placeholder="Start date" />
-          </Field>
-          <Field className="w-auto min-w-[170px] flex-1">
-            <FieldLabel htmlFor="search-end" className={fieldLabelClass}>
-              End Date
-            </FieldLabel>
-            <DatePicker id="search-end" value={endDate} onChange={onEndDateChange} placeholder="End date" />
-          </Field>
-          <Field className="w-auto min-w-[180px] flex-1">
-            <FieldLabel htmlFor="search-category" className={fieldLabelClass}>
-              Category
-            </FieldLabel>
-            <NativeSelect
-              id="search-category"
-              key={`search-category-${categories.length}-${categories.map((c) => c.name).join("|")}`}
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-            >
-              <NativeSelectOption value="All">All Categories</NativeSelectOption>
-              {loadingConfig && categories.length === 0 ? (
-                <NativeSelectOption value="__loading" disabled>
-                  Loading categories…
-                </NativeSelectOption>
-              ) : null}
-              {categories.map((item) => (
-                <NativeSelectOption key={item.name} value={item.name}>
-                  {item.name}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </Field>
-          <Button className="shrink-0" type="submit" disabled={loading}>
-            Search
-          </Button>
-          {canExport ? (
-            <Button
-              className="shrink-0 bg-parsel-emerald hover:bg-parsel-emerald/90"
-              type="button"
-              onClick={() => void onExport()}
-            >
-              Export CSV
-            </Button>
-          ) : null}
-        </div>
-        {loading ? <InlineProgress label="Searching ledger…" /> : null}
-      </form>
+      <LedgerToolbar
+        filters={filters}
+        onFiltersChange={onFiltersChange}
+        onReset={onReset}
+        isDirty={isDirty}
+        invalidRange={invalidRange}
+        categories={categories}
+        paymentMethods={paymentMethods}
+        table={table}
+        onExport={() => void onExport()}
+        canExport={total > 0}
+        onSubmit={runSearch}
+        onAdd={() => setAddOpen(true)}
+      />
 
-      {result && !loading ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-2">
-          {result.items.length === 0 ? (
-            <div className="rounded-none border border-parsel-border bg-parsel-surface py-20">
-              <EmptyState title="No transactions found" detail="Try adjusting your filters." />
-              <div className="mt-4 flex justify-center gap-3">
-                <Button type="button" variant="outline" onClick={clearFilters}>
-                  Clear all filters
-                </Button>
-                <Button asChild className="bg-parsel-emerald hover:bg-parsel-emerald/90">
-                  <Link to="/ledger/add">Add New Entry</Link>
-                </Button>
+      <AddTransactionDrawer
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        categories={categories}
+        paymentMethods={paymentMethods}
+        onSaved={() => {
+          void invalidateTransactionSearch();
+          setFeedback({ variant: "success", title: "Transaction saved" });
+        }}
+      />
+
+      {showTable ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <DataTable
+            table={table}
+            isLoading={firstLoad}
+            isRefreshing={isFetching && !firstLoad}
+            skeletonRows={Math.min(pagination.pageSize, 10)}
+            empty={
+              <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+                <p className="text-sm text-parsel-text">
+                  {hasNarrowingFilters ? "No transactions match these filters" : "Nothing recorded in this range"}
+                </p>
+                <p className="max-w-sm text-xs text-parsel-muted">
+                  {hasNarrowingFilters
+                    ? "Widen the date range or clear a filter to see more."
+                    : "Pick a wider date range, or add your first entry for these dates."}
+                </p>
+                <div className="mt-1 flex gap-1.5">
+                  {isDirty ? (
+                    <Button variant="outline" size="sm" onClick={onReset}>
+                      Reset filters
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    variant={isDirty ? "ghost" : "default"}
+                    onClick={() => setAddOpen(true)}
+                  >
+                    Add transaction
+                  </Button>
+                </div>
               </div>
-            </div>
-          ) : (
-            <TransactionTable
-              items={result.items}
-              sortColumn={sortColumn}
-              sortDesc={sortDesc}
-              onSortChange={(column) => {
-                const nextDesc = column === sortColumn ? !sortDesc : true;
-                setSortColumn(column);
-                setSortDesc(nextDesc);
-                void runSearch(1, { sortColumn: column, sortDesc: nextDesc });
-              }}
-              onEdit={(row) => setEditing(row)}
-              onDelete={(row) => setDeleting(row)}
-            />
-          )}
-
-          <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-none border border-parsel-border bg-parsel-soft px-4 py-2.5">
-            <p className="text-sm text-parsel-muted">
-              Showing {rangeStart}-{rangeEnd} of {result.total} transactions
-            </p>
-            <Pagination className="mx-0 w-auto justify-end">
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    className={result.page <= 1 ? "pointer-events-none opacity-40" : "cursor-pointer"}
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      if (result.page > 1) void runSearch(result.page - 1);
-                    }}
-                  />
-                </PaginationItem>
-                {pages.map((n, i) => {
-                  const prev = pages[i - 1];
-                  const showEllipsis = prev !== undefined && n - prev > 1;
-                  return (
-                    <PaginationItem key={n}>
-                      {showEllipsis ? <PaginationEllipsis /> : null}
-                      <PaginationLink
-                        className="cursor-pointer"
-                        href="#"
-                        isActive={n === result.page}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          if (n !== result.page) void runSearch(n);
-                        }}
-                      >
-                        {n}
-                      </PaginationLink>
-                    </PaginationItem>
-                  );
-                })}
-                <PaginationItem>
-                  <PaginationNext
-                    className={result.page >= totalPages ? "pointer-events-none opacity-40" : "cursor-pointer"}
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      if (result.page < totalPages) void runSearch(result.page + 1);
-                    }}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          </div>
+            }
+          />
+          <DataTablePagination table={table} />
         </div>
-      ) : null}
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 border border-parsel-border bg-parsel-surface px-6 text-center">
+          <Search className="size-5 text-parsel-muted" aria-hidden />
+          <div className="space-y-1.5">
+            <h2 className="text-sm font-semibold text-parsel-text">Search your ledger</h2>
+            <p className="max-w-sm text-xs text-parsel-muted">
+              {invalidRange
+                ? "The start date is after the end date. Fix the range to search."
+                : "Set a date range and filters above, then run the search. Results update as you refine them."}
+            </p>
+          </div>
+          <Button size="sm" onClick={runSearch} disabled={invalidRange}>
+            Search ledger
+          </Button>
+        </div>
+      )}
 
       <EditTransactionDialog
         open={Boolean(editing)}
@@ -448,7 +355,11 @@ export function SearchPage() {
       <ConfirmDeleteDialog
         open={Boolean(deleting)}
         loading={submitting}
-        itemLabel={deleting ? `${deleting.transaction_date} - ${formatInrSigned(signedAmount(deleting.amount, deleting.is_debit))}` : ""}
+        itemLabel={
+          deleting
+            ? `${deleting.transaction_date} — ${formatInrSigned(signedAmount(deleting.amount, deleting.is_debit))}`
+            : ""
+        }
         onConfirm={() => void onDeleteConfirm()}
         onCancel={() => setDeleting(null)}
       />

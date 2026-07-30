@@ -11,16 +11,33 @@ from datetime import date, datetime
 from typing import Any, Optional
 import uuid
 
-from common.database import get_connection
-from sqlalchemy import select, text
+from common.database import get_connection, get_readonly_connection
+from sqlalchemy import or_, select, text
 
 from tracker.category_service import (
+    category_key,
+    known_category_map,
     list_missing_category_names,
+    normalize_category_name,
+    register_category_names,
     resolve_category_name,
 )
-from tracker.constants import INVESTMENTS_CATEGORY
+from tracker.constants import (
+    INVESTMENTS_CATEGORY,
+    PAYMENT_METHODS,
+    SELF_TRANSFER_CATEGORY,
+    WALLET_TOP_UP_CATEGORY,
+)
 from tracker.models import Transaction
-from tracker.schemas import TransactionCreate
+from tracker.schemas import (
+    ImportFieldIssue,
+    ImportPreviewResponse,
+    ImportPreviewRow,
+    ReviewedImportRequest,
+    ReviewedImportResponse,
+    ReviewedImportRow,
+    TransactionCreate,
+)
 
 # CSV column names (used for export, template, and import)
 CSV_FIELDS = [
@@ -31,6 +48,17 @@ CSV_FIELDS = [
     "description",
     "payment_method",
 ]
+
+
+def transaction_text_search(term: str):
+    """ILIKE contains-match over description, category, and payment_method."""
+    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{escaped}%"
+    return or_(
+        Transaction.description.ilike(pattern),
+        Transaction.category.ilike(pattern),
+        Transaction.payment_method.ilike(pattern),
+    )
 
 
 def _parse_is_debit(raw: Optional[str]) -> bool:
@@ -143,6 +171,8 @@ async def export_transactions_csv(
     payment_method: Optional[str] = None,
     *,
     user_id: uuid.UUID,
+    q: Optional[str] = None,
+    is_debit: Optional[bool] = None,
 ) -> str:
     """Return CSV string for all transactions matching the given filters."""
     stmt = (
@@ -163,7 +193,12 @@ async def export_transactions_csv(
         stmt = stmt.where(Transaction.category == category)
     if payment_method and payment_method != "All":
         stmt = stmt.where(Transaction.payment_method == payment_method)
-    async with get_connection() as session:
+    if is_debit is not None:
+        stmt = stmt.where(Transaction.is_debit == bool(is_debit))
+    term = (q or "").strip()
+    if term:
+        stmt = stmt.where(transaction_text_search(term))
+    async with get_readonly_connection() as session:
         rows = (await session.execute(stmt)).mappings().all()
 
     output = io.StringIO()
@@ -217,6 +252,247 @@ def transactions_csv_template() -> str:
     for row in example_rows:
         writer.writerow(row)
     return output.getvalue()
+
+
+async def _parse_csv_rows_for_preview(
+    content: bytes,
+    *,
+    user_id: uuid.UUID,
+) -> tuple[list[ImportPreviewRow], list[str], list[str]]:
+    """
+    Parse CSV into preview rows with per-field issues.
+
+    Returns (preview_rows, file_errors, category_names_seen).
+    """
+    text_data = content.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text_data))
+
+    if reader.fieldnames is None:
+        return [], ["CSV file has no header row."], []
+
+    header_map = {name.lower(): name for name in reader.fieldnames}
+    required_cols = ["transaction_date", "category", "amount"]
+    missing = [c for c in required_cols if c not in header_map]
+    if missing:
+        return (
+            [],
+            [
+                "Missing required column(s): "
+                + ", ".join(missing)
+                + ". Expected at least: transaction_date, category, amount."
+            ],
+            [],
+        )
+
+    known = await known_category_map(user_id)
+    preview_rows: list[ImportPreviewRow] = []
+    category_names: list[str] = []
+
+    for idx, row in enumerate(reader, start=2):
+        raw_date = (row.get(header_map["transaction_date"]) or "").strip()
+        raw_category = (row.get(header_map["category"]) or "").strip()
+        raw_amount = (row.get(header_map["amount"]) or "").strip()
+        raw_description = (
+            (row.get(header_map.get("description", "")) or "").strip()
+            if "description" in header_map
+            else ""
+        )
+        raw_is_debit = (
+            (row.get(header_map["is_debit"]) or "").strip()
+            if "is_debit" in header_map
+            else "true"
+        )
+        raw_payment_method = (
+            (row.get(header_map["payment_method"]) or "").strip()
+            if "payment_method" in header_map
+            else ""
+        )
+
+        issues: list[ImportFieldIssue] = []
+        parsed_date: date | None = None
+        parsed_amount: float | None = None
+        parsed_is_debit = True
+        parsed_payment_method: str | None = None
+        normalized_category = ""
+
+        if not raw_date:
+            issues.append(
+                ImportFieldIssue(
+                    field="transaction_date",
+                    code="required",
+                    message="Transaction date is required.",
+                )
+            )
+        else:
+            try:
+                parsed_date = _parse_transaction_date(raw_date)
+                if parsed_date > date.today():
+                    issues.append(
+                        ImportFieldIssue(
+                            field="transaction_date",
+                            code="invalid_value",
+                            message="Transaction date cannot be in the future.",
+                        )
+                    )
+            except ValueError as exc:
+                issues.append(
+                    ImportFieldIssue(
+                        field="transaction_date",
+                        code="invalid_format",
+                        message=str(exc),
+                    )
+                )
+
+        if not raw_category:
+            issues.append(
+                ImportFieldIssue(
+                    field="category",
+                    code="required",
+                    message="Category is required.",
+                )
+            )
+        else:
+            try:
+                normalized_category = normalize_category_name(raw_category)
+                if not normalized_category:
+                    issues.append(
+                        ImportFieldIssue(
+                            field="category",
+                            code="required",
+                            message="Category is required.",
+                        )
+                    )
+                elif len(normalized_category) > 40:
+                    issues.append(
+                        ImportFieldIssue(
+                            field="category",
+                            code="invalid_value",
+                            message="Category name must be at most 40 characters.",
+                        )
+                    )
+            except ValueError as exc:
+                issues.append(
+                    ImportFieldIssue(
+                        field="category",
+                        code="invalid_value",
+                        message=str(exc),
+                    )
+                )
+
+        if not raw_amount:
+            issues.append(
+                ImportFieldIssue(
+                    field="amount",
+                    code="required",
+                    message="Amount is required.",
+                )
+            )
+        else:
+            try:
+                parsed_amount = _parse_amount(raw_amount)
+                if parsed_amount <= 0:
+                    issues.append(
+                        ImportFieldIssue(
+                            field="amount",
+                            code="invalid_value",
+                            message="Amount must be greater than 0.",
+                        )
+                    )
+            except ValueError:
+                issues.append(
+                    ImportFieldIssue(
+                        field="amount",
+                        code="invalid_format",
+                        message=f"Invalid amount '{raw_amount}'. Must be a number.",
+                    )
+                )
+
+        if "is_debit" in header_map:
+            try:
+                parsed_is_debit = _parse_is_debit(raw_is_debit)
+            except ValueError as exc:
+                issues.append(
+                    ImportFieldIssue(
+                        field="is_debit",
+                        code="invalid_format",
+                        message=str(exc),
+                    )
+                )
+
+        if raw_payment_method:
+            if raw_payment_method not in PAYMENT_METHODS:
+                issues.append(
+                    ImportFieldIssue(
+                        field="payment_method",
+                        code="invalid_value",
+                        message=(
+                            "Invalid payment method. Must be one of: "
+                            + ", ".join(PAYMENT_METHODS)
+                        ),
+                    )
+                )
+            else:
+                parsed_payment_method = raw_payment_method
+
+        category_is_new = False
+        if normalized_category and not any(
+            issue.field == "category" for issue in issues
+        ):
+            category_is_new = category_key(normalized_category) not in known
+            if category_is_new:
+                issues.append(
+                    ImportFieldIssue(
+                        field="category",
+                        code="unknown_category",
+                        message=(
+                            f'Category "{normalized_category}" is not in your list. '
+                            "Map to an existing category or approve it as new."
+                        ),
+                    )
+                )
+            category_names.append(normalized_category)
+
+        blocking_codes = {"required", "invalid_format", "invalid_value"}
+        has_blocking = any(issue.code in blocking_codes for issue in issues)
+        is_ready = not has_blocking and not category_is_new
+
+        if is_ready and parsed_date and parsed_amount is not None:
+            try:
+                TransactionCreate(
+                    amount=parsed_amount,
+                    category=normalized_category,
+                    payment_method=parsed_payment_method,
+                    transaction_date=parsed_date,
+                    description=raw_description or None,
+                    is_debit=parsed_is_debit,
+                )
+            except Exception as exc:
+                is_ready = False
+                if not any(issue.message == str(exc) for issue in issues):
+                    issues.append(
+                        ImportFieldIssue(
+                            field="row",
+                            code="invalid_value",
+                            message=str(exc),
+                        )
+                    )
+
+        preview_rows.append(
+            ImportPreviewRow(
+                source_row=idx,
+                transaction_date=raw_date,
+                category=raw_category,
+                amount=raw_amount,
+                is_debit=raw_is_debit if "is_debit" in header_map else "true",
+                description=raw_description or None,
+                payment_method=raw_payment_method or None,
+                issues=issues,
+                is_ready=is_ready,
+                category_is_new=category_is_new,
+            )
+        )
+
+    return preview_rows, [], category_names
 
 
 async def _parse_csv_transaction_rows(
@@ -319,17 +595,137 @@ async def _parse_csv_transaction_rows(
     return rows, errors, category_names
 
 
-async def preview_transactions_import(content: bytes) -> dict:
+async def preview_transactions_import(
+    content: bytes,
+    *,
+    user_id: uuid.UUID,
+) -> ImportPreviewResponse:
     """
-    Parse CSV without inserting. Report new categories that would be created.
+    Parse CSV without inserting. Return every row with field-level issues.
     """
-    rows, errors, category_names = await _parse_csv_transaction_rows(content)
-    new_categories = await list_missing_category_names(category_names)
-    return {
-        "valid_row_count": len(rows),
-        "new_categories": new_categories,
-        "errors": errors,
+    preview_rows, file_errors, category_names = await _parse_csv_rows_for_preview(
+        content,
+        user_id=user_id,
+    )
+    if file_errors:
+        return ImportPreviewResponse(
+            rows=[],
+            file_errors=file_errors,
+            new_categories=[],
+            valid_row_count=0,
+            errors=file_errors,
+        )
+
+    new_categories = await list_missing_category_names(user_id, category_names)
+    valid_row_count = sum(1 for row in preview_rows if row.is_ready)
+    row_errors = [
+        f"Row {row.source_row}: {issue.message}"
+        for row in preview_rows
+        for issue in row.issues
+        if issue.code != "unknown_category"
+    ]
+
+    return ImportPreviewResponse(
+        rows=preview_rows,
+        file_errors=[],
+        new_categories=new_categories,
+        valid_row_count=valid_row_count,
+        errors=row_errors,
+    )
+
+
+async def import_reviewed_transactions(
+    payload: ReviewedImportRequest,
+    *,
+    user_id: uuid.UUID,
+) -> ReviewedImportResponse:
+    """
+    Insert only the user-reviewed rows atomically.
+    """
+    approved_keys = {
+        category_key(name) for name in payload.approved_new_categories
     }
+    rows_to_insert: list[dict] = []
+    row_category_keys = {category_key(row.category) for row in payload.rows}
+    approved_names = [
+        name
+        for name in payload.approved_new_categories
+        if category_key(name) in row_category_keys
+    ]
+    known = await known_category_map(user_id)
+    errors = [
+        (
+            f'Row {row.source_row}: Unknown category "{row.category}". '
+            "Create it from the dropdown or confirm import to add new categories."
+        )
+        for row in payload.rows
+        if category_key(row.category) not in known
+        and category_key(row.category) not in approved_keys
+    ]
+    if errors:
+        return ReviewedImportResponse(
+            inserted=0,
+            created_categories=[],
+            errors=errors,
+        )
+
+    missing_approved = (
+        await list_missing_category_names(user_id, approved_names)
+        if approved_names
+        else []
+    )
+    try:
+        registered = await register_category_names(user_id, missing_approved)
+    except ValueError as exc:
+        return ReviewedImportResponse(
+            inserted=0,
+            created_categories=[],
+            errors=[str(exc)],
+        )
+    created_categories = [category.name for category in registered]
+    errors = []
+
+    for row in payload.rows:
+        try:
+            canonical = await resolve_category_name(
+                user_id,
+                row.category,
+                allow_new=False,
+            )
+        except ValueError as exc:
+            errors.append(f"Row {row.source_row}: {exc}")
+            continue
+
+        rows_to_insert.append(
+            {
+                "user_id": user_id,
+                "amount": float(row.amount),
+                "is_debit": bool(row.is_debit),
+                "category": canonical,
+                "payment_method": row.payment_method,
+                "transaction_date": row.transaction_date,
+                "description": row.description,
+            }
+        )
+
+    if errors:
+        return ReviewedImportResponse(
+            inserted=0,
+            created_categories=[],
+            errors=errors,
+        )
+
+    inserted_count = 0
+    if rows_to_insert:
+        async with get_connection() as session:
+            await session.execute(Transaction.__table__.insert(), rows_to_insert)
+        inserted_count = len(rows_to_insert)
+
+    return ReviewedImportResponse(
+        inserted=inserted_count,
+        created_categories=created_categories,
+        errors=[],
+    )
 
 
 async def import_transactions_from_csv(
@@ -352,14 +748,23 @@ async def import_transactions_from_csv(
 
     created_categories: list[str] = []
     if create_missing_categories:
-        created_categories = await list_missing_category_names(category_names)
+        missing_categories = await list_missing_category_names(
+            user_id,
+            category_names,
+        )
+        try:
+            registered = await register_category_names(user_id, missing_categories)
+        except ValueError as exc:
+            return 0, [*errors, str(exc)], []
+        created_categories = [category.name for category in registered]
 
     rows_to_insert: list[dict] = []
     for idx, row in enumerate(rows):
         try:
             canonical = await resolve_category_name(
+                user_id,
                 row["category"],
-                allow_new=create_missing_categories,
+                allow_new=False,
             )
             rows_to_insert.append(
                 {
@@ -415,6 +820,8 @@ def _dashboard_params(bounds: dict[str, date], user_id: uuid.UUID) -> dict[str, 
         **bounds,
         "user_id": user_id,
         "investments_category": INVESTMENTS_CATEGORY,
+        "self_transfer_category": SELF_TRANSFER_CATEGORY,
+        "wallet_top_up_category": WALLET_TOP_UP_CATEGORY,
     }
 
 
@@ -481,20 +888,26 @@ spend_txns AS (
   SELECT cm.*
   FROM current_month cm
   WHERE cm.is_debit = TRUE
-    AND cm.category <> :investments_category
+    AND cm.category NOT IN (
+      :investments_category, :self_transfer_category, :wallet_top_up_category
+    )
 ),
 summary AS (
   SELECT
     COALESCE(SUM(CASE WHEN t.is_debit THEN -t.amount ELSE t.amount END), 0)::float8 AS portfolio_net,
     COALESCE(SUM(CASE
       WHEN t.is_debit = TRUE
-       AND t.category <> :investments_category
+       AND t.category NOT IN (
+         :investments_category, :self_transfer_category, :wallet_top_up_category
+       )
        AND t.transaction_date >= :month_now_start
        AND t.transaction_date < :month_next_start
       THEN t.amount ELSE 0 END), 0)::float8 AS current_month_spend,
     COALESCE(SUM(CASE
       WHEN t.is_debit = TRUE
-       AND t.category <> :investments_category
+       AND t.category NOT IN (
+         :investments_category, :self_transfer_category, :wallet_top_up_category
+       )
        AND t.transaction_date >= :prev_month_start
        AND t.transaction_date < :month_now_start
       THEN t.amount ELSE 0 END), 0)::float8 AS previous_month_spend
@@ -508,7 +921,9 @@ trend_rows AS (
   FROM transactions t
   WHERE t.user_id = :user_id
     AND t.is_debit = TRUE
-    AND t.category <> :investments_category
+    AND t.category NOT IN (
+      :investments_category, :self_transfer_category, :wallet_top_up_category
+    )
     AND t.transaction_date >= :trend_start
     AND t.transaction_date < :month_next_start
   GROUP BY 1
@@ -599,7 +1014,7 @@ async def _get_dashboard_aggregates(
     user_id: uuid.UUID,
 ) -> dict:
     """Single-query dashboard aggregates (summary, trend, highlights, daily spend)."""
-    async with get_connection() as session:
+    async with get_readonly_connection() as session:
         result = await session.execute(
             text(_DASHBOARD_AGGREGATES_SQL),
             _dashboard_params(bounds, user_id),
@@ -674,7 +1089,7 @@ async def _get_dashboard_recent(recent_limit: int, *, user_id: uuid.UUID) -> lis
         ORDER BY transaction_date DESC, created_at DESC
         LIMIT :recent_limit
     """
-    async with get_connection() as session:
+    async with get_readonly_connection() as session:
         result = await session.execute(
             text(sql),
             {"recent_limit": recent_limit, "user_id": user_id},

@@ -55,3 +55,11 @@ export async function getMe(): Promise<MeResponse> {
 export async function updateMe(payload: UpdateMePayload): Promise<UpdateMeResponse> {
   return patchJson<UpdateMeResponse>("/auth/me", payload);
 }
+
+export async function changePassword(payload: {
+  current_password: string;
+  new_password: string;
+  confirm_password: string;
+}): Promise<TokenResponse> {
+  return postJson<TokenResponse>("/auth/change-password", payload);
+}

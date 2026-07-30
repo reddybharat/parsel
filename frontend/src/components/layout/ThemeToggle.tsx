@@ -1,23 +1,15 @@
 import { Moon, Sun } from "lucide-react";
 
 import { Switch } from "@/components/ui/switch";
-import { useAuth } from "@/lib/auth";
 import { useTheme, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
-  const { isAuthenticated, updateProfile } = useAuth();
   const isDark = theme === "dark";
 
-  async function handleThemeChange(next: Theme) {
+  function handleThemeChange(next: Theme) {
     setTheme(next);
-    if (!isAuthenticated) return;
-    try {
-      await updateProfile({ preferences: { theme: next } });
-    } catch {
-      // Local theme already applied; server sync can retry on next settings save.
-    }
   }
 
   return (
@@ -29,7 +21,7 @@ export function ThemeToggle() {
       <Switch
         checked={isDark}
         onCheckedChange={(checked) => {
-          void handleThemeChange(checked ? "dark" : "light");
+          handleThemeChange(checked ? "dark" : "light");
         }}
         aria-label="Color theme"
       />

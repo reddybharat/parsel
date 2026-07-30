@@ -1,8 +1,6 @@
-import { useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 
 import { ParselMark } from "@/components/brand/ParselMark";
-import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/lib/auth";
 import { prefetchDashboardOverview } from "@/lib/dashboardQuery";
@@ -52,15 +50,6 @@ function SettingsIcon() {
   );
 }
 
-function LogoutIcon() {
-  return (
-    <svg className={ICON_CLASS} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12H3m12 0l-3.5-3.5M15 12l-3.5 3.5" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h2" />
-    </svg>
-  );
-}
-
 const NAV_ITEMS: ShellNavItem[] = [
   { to: "/overview", label: "Home", icon: <HomeIcon /> },
   { to: "/ledger/search", label: "Ledger", icon: <LedgerIcon /> },
@@ -73,17 +62,10 @@ const NAV_ITEMS: ShellNavItem[] = [
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { username, email, firstName, lastName, logout } = useAuth();
-  const navigate = useNavigate();
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const { username, email, firstName, lastName } = useAuth();
   const primaryLabel = firstName?.trim() || username || email || "Signed in";
   const secondaryLabel = username ?? email ?? "";
   const initials = initialsFromProfile(firstName, lastName, username ?? email);
-
-  function handleLogout() {
-    logout();
-    navigate("/", { replace: true });
-  }
 
   return (
     <div className="flex h-dvh w-full flex-col bg-parsel-bg text-parsel-text">
@@ -132,23 +114,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       </p>
                     ) : null}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setSettingsOpen(true)}
-                    className="shrink-0 rounded-md p-1 text-parsel-muted transition hover:bg-parsel-surface hover:text-parsel-text"
+                  <NavLink
+                    to="/settings"
+                    className={({ isActive }) =>
+                      `shrink-0 rounded-md p-1 transition hover:bg-parsel-surface hover:text-parsel-text ${
+                        isActive ? "text-parsel-primary" : "text-parsel-muted"
+                      }`
+                    }
                     aria-label="Settings"
                   >
                     <SettingsIcon />
-                  </button>
+                  </NavLink>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-none border border-parsel-border bg-parsel-surface px-2.5 py-2 text-sm font-medium text-parsel-muted transition hover:border-parsel-danger/40 hover:bg-parsel-danger-bg hover:text-parsel-danger-text"
-                >
-                  <LogoutIcon />
-                  <span>Log out</span>
-                </button>
               </div>
             </div>
           </div>
@@ -157,7 +134,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex h-full w-full min-h-0 flex-col overflow-hidden px-4 py-3">{children}</div>
         </main>
       </div>
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   );
 }

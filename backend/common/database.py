@@ -16,6 +16,11 @@ from sqlalchemy.ext.asyncio import (
 _DATABASE_URL: str | None = None
 _ASYNC_ENGINE: AsyncEngine | None = None
 _SESSIONMAKER: async_sessionmaker[AsyncSession] | None = None
+_READONLY_ENGINE: AsyncEngine | None = None
+_READONLY_SESSIONMAKER: async_sessionmaker[AsyncSession] | None = None
+
+# Prefer recycle over pool_pre_ping (avoids a round trip on every checkout).
+_POOL_RECYCLE_SECONDS = 240
 
 
 def get_database_url() -> str:
@@ -50,10 +55,25 @@ def get_async_engine() -> AsyncEngine:
     if _ASYNC_ENGINE is None:
         _ASYNC_ENGINE = create_async_engine(
             get_async_database_url(),
-            pool_pre_ping=True,
+            pool_pre_ping=False,
+            pool_recycle=_POOL_RECYCLE_SECONDS,
             future=True,
         )
     return _ASYNC_ENGINE
+
+
+def get_readonly_engine() -> AsyncEngine:
+    """Read-only engine; AUTOCOMMIT skips BEGIN/COMMIT around SELECTs."""
+    global _READONLY_ENGINE
+    if _READONLY_ENGINE is None:
+        _READONLY_ENGINE = create_async_engine(
+            get_async_database_url(),
+            pool_pre_ping=False,
+            pool_recycle=_POOL_RECYCLE_SECONDS,
+            isolation_level="AUTOCOMMIT",
+            future=True,
+        )
+    return _READONLY_ENGINE
 
 
 def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
@@ -68,12 +88,21 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
     return _SESSIONMAKER
 
 
+def get_readonly_sessionmaker() -> async_sessionmaker[AsyncSession]:
+    global _READONLY_SESSIONMAKER
+    if _READONLY_SESSIONMAKER is None:
+        _READONLY_SESSIONMAKER = async_sessionmaker(
+            bind=get_readonly_engine(),
+            class_=AsyncSession,
+            expire_on_commit=False,
+            autoflush=False,
+        )
+    return _READONLY_SESSIONMAKER
+
+
 @asynccontextmanager
 async def get_connection() -> AsyncIterator[AsyncSession]:
-    """
-    Async context manager for DB session.
-    Kept as `get_connection` for compatibility across existing imports.
-    """
+    """Read-write session (commits on success)."""
     session = get_sessionmaker()()
     try:
         yield session
@@ -81,5 +110,15 @@ async def get_connection() -> AsyncIterator[AsyncSession]:
     except Exception:
         await session.rollback()
         raise
+    finally:
+        await session.close()
+
+
+@asynccontextmanager
+async def get_readonly_connection() -> AsyncIterator[AsyncSession]:
+    """Read-only session — SELECTs only; writes must use `get_connection`."""
+    session = get_readonly_sessionmaker()()
+    try:
+        yield session
     finally:
         await session.close()

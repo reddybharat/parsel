@@ -11,8 +11,7 @@ router = APIRouter(prefix="/config", tags=["config"])
 
 @router.get("/tracker")
 async def tracker_config(current_user: User = Depends(get_current_user)) -> dict:
-    del current_user  # auth gate only; categories are shared
-    rows = await list_categories()
+    rows = await list_categories(current_user.id)
     return {
         "categories": [
             CategoryResponse(name=row.name, is_system=bool(row.is_system)).model_dump()

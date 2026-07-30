@@ -11,9 +11,12 @@ from sqlalchemy.exc import IntegrityError
 
 from auth.models import User
 from auth.security import hash_password, verify_password
-from common.database import get_connection
+from common.database import get_connection, get_readonly_connection
 
-_DEFAULT_PREFERENCES: dict[str, Any] = {"theme": "light"}
+_DEFAULT_PREFERENCES: dict[str, Any] = {
+    "theme": "light",
+    "custom_categories": [],
+}
 _UNSET = object()
 
 
@@ -108,9 +111,34 @@ async def authenticate_user(login: str, password: str) -> User:
 
 
 async def get_user_by_id(user_id: uuid.UUID) -> User | None:
-    async with get_connection() as session:
+    async with get_readonly_connection() as session:
         result = await session.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
+
+
+async def change_password(
+    user_id: uuid.UUID,
+    *,
+    current_password: str,
+    new_password: str,
+) -> User:
+    async with get_connection() as session:
+        result = await session.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise AccountInactiveError("Account not found.")
+        if not user.is_active:
+            raise AccountInactiveError("Account is disabled.")
+        if not verify_password(current_password, user.password_hash):
+            raise InvalidCredentialsError("Current password is incorrect.")
+
+        user.password_hash = hash_password(new_password)
+        user.password_changed_at = datetime.now(timezone.utc)
+        user.updated_at = datetime.now(timezone.utc)
+        user.version_no = int(user.version_no or 0) + 1
+        await session.flush()
+        await session.refresh(user)
+        return user
 
 
 async def update_me(

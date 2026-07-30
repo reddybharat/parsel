@@ -1,62 +1,53 @@
-import { FormEvent, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, FileSearch, FolderPlus, Loader2 } from "lucide-react";
-import { Link, useSearchParams } from "react-router-dom";
+import { CheckCircle2, Download, FileSearch, Loader2, Plus, Upload } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { EmptyState } from "../components/feedback/EmptyState";
 import { InlineProgress } from "../components/feedback/InlineProgress";
 import { StatusAlert, type FeedbackMessage } from "../components/feedback/StatusAlert";
-import { CategorySelect } from "../components/transactions/CategorySelect";
+import { ImportReviewTable } from "../components/transactions/ImportReviewTable";
 import { Button } from "@/components/ui/button";
-import { DatePicker } from "@/components/ui/date-picker";
 import {
   Field,
   FieldDescription,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { invalidateDashboardOverview } from "@/lib/dashboardQuery";
+import {
+  collectApprovedNewCategories,
+  createManualRow,
+  isRowSelectable,
+  recomputeRow,
+  toEditableRow,
+  toReviewedPayload,
+  type EditableImportRow,
+} from "@/lib/importReview";
 import {
   invalidateTrackerConfig,
   trackerConfigQueryOptions,
 } from "@/lib/trackerConfigQuery";
 import {
-  createTransaction,
   downloadImportTemplate,
-  importTransactions,
+  importReviewedTransactions,
   previewImportTransactions,
 } from "../api/tracker";
 
 const fieldLabelClass = "text-xs font-semibold uppercase tracking-wide text-parsel-secondary";
 
-type BulkStep = "idle" | "reading" | "preview" | "creating" | "importing" | "done";
+type BulkStep = "idle" | "reading" | "preview" | "importing" | "done";
 
 const BULK_PROGRESS: Record<Exclude<BulkStep, "idle">, { value: number; label: string }> = {
   reading: { value: 25, label: "Reading file…" },
   preview: { value: 50, label: "Preview ready" },
-  creating: { value: 70, label: "Creating categories…" },
   importing: { value: 85, label: "Importing transactions…" },
   done: { value: 100, label: "Import finished" },
 };
 
-function localDateIso(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 export function AddPage() {
-  const [searchParams] = useSearchParams();
-  const initialTab = searchParams.get("tab") === "bulk" ? "bulk" : "manual";
   const {
     data: trackerConfig,
     isPending: loadingConfig,
@@ -65,72 +56,58 @@ export function AddPage() {
   } = useQuery(trackerConfigQueryOptions());
   const categories = trackerConfig?.categories ?? [];
   const paymentMethods = trackerConfig?.payment_methods ?? [];
-  const [feedback, setFeedback] = useState<FeedbackMessage | null>(null);
-  const [manualFeedback, setManualFeedback] = useState<FeedbackMessage | null>(null);
   const [bulkFeedback, setBulkFeedback] = useState<FeedbackMessage | null>(null);
   const [importErrors, setImportErrors] = useState<string | null>(null);
-  const [savingManual, setSavingManual] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
   const [bulkStep, setBulkStep] = useState<BulkStep>("idle");
-  const [previewValidRows, setPreviewValidRows] = useState(0);
-  const [previewNewCategories, setPreviewNewCategories] = useState<string[]>([]);
-  const [previewErrors, setPreviewErrors] = useState<string[]>([]);
+  const [reviewRows, setReviewRows] = useState<EditableImportRow[]>([]);
+  const [previewFileErrors, setPreviewFileErrors] = useState<string[]>([]);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Lets the stable row callbacks below read the latest rows without re-creating themselves.
+  const reviewRowsRef = useRef(reviewRows);
+  reviewRowsRef.current = reviewRows;
 
-  const [amount, setAmount] = useState(0);
-  const [isDebit, setIsDebit] = useState(true);
-  const [category, setCategory] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("");
-  const [transactionDate, setTransactionDate] = useState(localDateIso());
-  const [description, setDescription] = useState("");
-  const [tab, setTab] = useState<"manual" | "bulk">(initialTab);
+  const resetBulkPreview = useCallback(() => {
+    setBulkStep("idle");
+    setReviewRows([]);
+    setPreviewFileErrors([]);
+    setFileName(null);
+    // Allow re-selecting the same file after a reset.
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
 
-  function resetManualForm() {
-    setAmount(0);
-    setIsDebit(true);
-    setCategory("");
-    setPaymentMethod("");
-    setTransactionDate(localDateIso());
-    setDescription("");
-    setFeedback(null);
-    setManualFeedback(null);
+  function onFileSelected(next: File | null) {
     setBulkFeedback(null);
     setImportErrors(null);
-  }
-
-  function resetBulkPreview() {
-    setBulkStep("idle");
-    setPreviewValidRows(0);
-    setPreviewNewCategories([]);
-    setPreviewErrors([]);
-  }
-
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    setManualFeedback(null);
-    setSavingManual(true);
-    try {
-      await createTransaction({
-        amount,
-        is_debit: isDebit,
-        category,
-        payment_method: paymentMethod || null,
-        transaction_date: transactionDate,
-        description: description.trim() || null,
-      });
-      void invalidateDashboardOverview();
-      setManualFeedback({ variant: "success", title: "Transaction saved" });
-      setAmount(0);
-      setDescription("");
-    } catch (err) {
-      setManualFeedback({
-        variant: "error",
-        title: "Save failed",
-        description: err instanceof Error ? err.message : "Failed to save transaction.",
-      });
-    } finally {
-      setSavingManual(false);
+    if (!next) {
+      resetBulkPreview();
+      return;
     }
+    setFileName(next.name);
+    void onPreviewImport(next);
   }
+
+  function onAddManualRow() {
+    setBulkFeedback(null);
+    setImportErrors(null);
+    setReviewRows((current) => {
+      // Continue the numbering already on screen so typed rows read 1, 2, 3… on their own,
+      // and pick up after the last CSV line when mixed with an uploaded file.
+      const nextRow = current.reduce((max, row) => Math.max(max, row.source_row), 0) + 1;
+      return [...current, recomputeRow(createManualRow(nextRow), categories)];
+    });
+    setBulkStep((step) => (step === "importing" ? step : "preview"));
+  }
+
+  const onRemoveRow = useCallback(
+    (sourceRow: number) => {
+      const next = reviewRowsRef.current.filter((row) => row.source_row !== sourceRow);
+      setReviewRows(next);
+      if (next.length === 0) resetBulkPreview();
+    },
+    [resetBulkPreview],
+  );
 
   async function onDownloadTemplate() {
     try {
@@ -150,24 +127,28 @@ export function AddPage() {
     }
   }
 
-  async function onPreviewImport() {
-    if (!file) return;
+  async function onPreviewImport(selectedFile: File) {
     setBulkFeedback(null);
     setImportErrors(null);
     setBulkStep("reading");
     try {
-      const result = await previewImportTransactions(file);
-      setPreviewValidRows(result.valid_row_count);
-      setPreviewNewCategories(result.new_categories);
-      setPreviewErrors(result.errors);
+      const result = await previewImportTransactions(selectedFile);
+      const editable = result.rows.map(toEditableRow).map((row) => recomputeRow(row, categories));
+      setReviewRows(editable);
+      setPreviewFileErrors(result.file_errors);
       setBulkStep("preview");
-      if (result.valid_row_count === 0 && result.errors.length) {
+      if (result.file_errors.length) {
+        setBulkFeedback({
+          variant: "error",
+          title: "Could not read file",
+          description: result.file_errors.join("\n"),
+        });
+      } else if (editable.length === 0) {
         setBulkFeedback({
           variant: "error",
           title: "Nothing to import",
-          description: "Fix the row errors below, then try again.",
+          description: "The CSV has no data rows.",
         });
-        setImportErrors(result.errors.slice(0, 8).join("\n"));
       }
     } catch (err) {
       resetBulkPreview();
@@ -179,42 +160,49 @@ export function AddPage() {
     }
   }
 
-  async function onConfirmImport() {
-    if (!file) return;
+  async function onConfirmImport(selected: EditableImportRow[]) {
     setBulkFeedback(null);
     setImportErrors(null);
-    const needsCreate = previewNewCategories.length > 0;
-    setBulkStep(needsCreate ? "creating" : "importing");
+    setBulkStep("importing");
     try {
-      if (needsCreate) {
-        // Brief status beat before the network call for the Marker trail.
-        await new Promise((r) => window.setTimeout(r, 250));
-        setBulkStep("importing");
+      const payloads = selected.map(toReviewedPayload).filter((row) => row !== null);
+      if (payloads.length === 0) {
+        throw new Error("No valid rows selected for import.");
       }
-      const result = await importTransactions(file, { createMissingCategories: true });
+      const approved = collectApprovedNewCategories(selected);
+      const result = await importReviewedTransactions({
+        rows: payloads,
+        approved_new_categories: approved,
+      });
+      if (result.errors.length) {
+        setBulkStep("preview");
+        setImportErrors(result.errors.join("\n"));
+        setBulkFeedback({
+          variant: "error",
+          title: "Import failed",
+          description: result.errors.join("\n"),
+        });
+        return;
+      }
       void invalidateDashboardOverview();
       if (result.created_categories.length) {
         void invalidateTrackerConfig();
       }
       setBulkStep("done");
-      const errorCount = result.errors.length;
       const createdNote = result.created_categories.length
         ? ` Created ${result.created_categories.length} categor${result.created_categories.length === 1 ? "y" : "ies"}.`
         : "";
+      const importedRows = new Set(selected.map((row) => row.source_row));
+      setReviewRows((current) =>
+        current.map((row) =>
+          importedRows.has(row.source_row) ? { ...row, imported: true } : row,
+        ),
+      );
       setBulkFeedback({
-        variant: errorCount ? "info" : "success",
+        variant: "success",
         title: "Import complete",
-        description: `Imported ${result.inserted} transaction(s).${createdNote}${
-          errorCount ? ` ${errorCount} row(s) failed.` : ""
-        }`,
+        description: `Imported ${result.inserted} transaction(s).${createdNote} Remaining rows stay here until you leave this screen.`,
       });
-      if (errorCount) {
-        setImportErrors(result.errors.slice(0, 8).join("\n"));
-      }
-      if (result.created_categories.length) {
-        setPreviewNewCategories(result.created_categories);
-      }
-      setFile(null);
     } catch (err) {
       setBulkStep("preview");
       setBulkFeedback({
@@ -225,19 +213,23 @@ export function AddPage() {
     }
   }
 
-  const busyBulk = bulkStep === "reading" || bulkStep === "creating" || bulkStep === "importing";
+  const busyBulk = bulkStep === "reading" || bulkStep === "importing";
+  const readyCount = reviewRows.filter(isRowSelectable).length;
+  const reviewActive = bulkStep !== "idle" && bulkStep !== "reading" && reviewRows.length > 0;
+
+  useEffect(() => {
+    if (reviewRows.length === 0) return;
+    setReviewRows((current) => current.map((row) => recomputeRow(row, categories)));
+  }, [categories]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-1.5 overflow-y-auto">
-      <Link
-        to="/ledger/search"
-        className="inline-flex w-fit items-center gap-1 text-xs font-semibold uppercase tracking-wide text-parsel-secondary hover:text-parsel-primary"
-      >
-        <span aria-hidden>←</span>
-        Back to Ledger
-      </Link>
-
-      {feedback ? <StatusAlert {...feedback} onDismiss={() => setFeedback(null)} /> : null}
+    <div
+      className={cn(
+        "flex h-full min-h-0 flex-col gap-1.5",
+        // During review the table body owns the only scrollbar; otherwise the page scrolls.
+        reviewActive ? "overflow-hidden" : "overflow-y-auto",
+      )}
+    >
       {configError ? (
         <StatusAlert
           variant="error"
@@ -247,304 +239,228 @@ export function AddPage() {
       ) : null}
 
       {loadingConfig ? (
-        <div className="mx-auto w-full max-w-content rounded-none border border-parsel-border bg-parsel-soft p-4">
+        <div className="w-full rounded-none border border-parsel-border bg-parsel-soft p-4">
           <InlineProgress label="Loading categories & payment methods…" />
         </div>
       ) : null}
 
       {!loadingConfig && categories.length === 0 ? (
-        <EmptyState title="No categories available" detail="Configure tracker categories before adding transactions." />
+        <EmptyState title="No categories available" detail="Configure tracker categories before importing transactions." />
       ) : null}
 
       {!loadingConfig && categories.length > 0 ? (
-        <div className="mx-auto w-full max-w-content rounded-none border border-parsel-border bg-parsel-surface shadow-none">
-          <Tabs value={tab} onValueChange={(value) => setTab(value as "manual" | "bulk")}>
-            <TabsList className="grid h-auto w-full grid-cols-2 rounded-none border-b border-parsel-border bg-transparent p-0">
-              <TabsTrigger
-                className="rounded-none py-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:border-b-2 data-[state=active]:border-parsel-primary data-[state=active]:text-parsel-primary data-[state=active]:shadow-none"
-                value="manual"
-              >
-                Manual Entry
-              </TabsTrigger>
-              <TabsTrigger
-                className="rounded-none py-3 text-xs font-semibold uppercase tracking-wide data-[state=active]:border-b-2 data-[state=active]:border-parsel-primary data-[state=active]:text-parsel-primary data-[state=active]:shadow-none"
-                value="bulk"
-              >
-                Bulk Import
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent className="mt-0" value="manual">
-              <form className="p-6 md:p-8" onSubmit={onSubmit}>
-                <FieldGroup className="grid gap-x-6 gap-y-5 md:grid-cols-2">
-                  <Field className="md:col-span-2">
-                    <FieldLabel className={fieldLabelClass}>Transaction Type</FieldLabel>
-                    <div className="flex w-fit items-center gap-3">
-                      <span className={cn("text-sm", isDebit ? "font-medium text-parsel-primary" : "text-parsel-muted")}>
-                        Debit
-                      </span>
-                      <Switch
-                        checked={!isDebit}
-                        onCheckedChange={(checked) => setIsDebit(!checked)}
-                        aria-label="Transaction type"
-                      />
-                      <span className={cn("text-sm", !isDebit ? "font-medium text-parsel-primary" : "text-parsel-muted")}>
-                        Credit
-                      </span>
-                    </div>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="add-amount" className={fieldLabelClass}>
-                      Amount
-                    </FieldLabel>
-                    <div className="flex overflow-hidden rounded-none border border-input">
-                      <span className="flex items-center bg-parsel-soft px-3 text-sm text-parsel-muted">₹</span>
-                      <Input
-                        id="add-amount"
-                        className="border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 tabular-nums"
-                        type="number"
-                        min={0.01}
-                        step={0.01}
-                        value={amount || ""}
-                        onChange={(e) => setAmount(Number(e.target.value))}
-                      />
-                    </div>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="add-category" className={fieldLabelClass}>
-                      Category
-                    </FieldLabel>
-                    <CategorySelect
-                      id="add-category"
-                      value={category}
-                      categories={categories}
-                      onChange={setCategory}
-                      required
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="add-date" className={fieldLabelClass}>
-                      Transaction Date
-                    </FieldLabel>
-                    <DatePicker
-                      id="add-date"
-                      value={transactionDate}
-                      onChange={setTransactionDate}
-                      placeholder="Select date"
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="add-payment" className={fieldLabelClass}>
-                      Payment Method
-                    </FieldLabel>
-                    <NativeSelect
-                      id="add-payment"
-                      value={paymentMethod}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
+        <div
+          className={cn(
+            "w-full rounded-none border border-parsel-border bg-parsel-surface shadow-none",
+            reviewActive && "flex min-h-0 flex-1 flex-col",
+          )}
+        >
+          <div className="border-b border-parsel-border px-6 py-4">
+            <h1 className="text-sm font-semibold uppercase tracking-wide text-parsel-neutral">Add Transactions</h1>
+            <p className="mt-1 text-xs text-parsel-muted">
+              Type transactions one at a time or upload a CSV, review them together, then import in one go.
+            </p>
+          </div>
+          <section className={cn("p-6 md:p-8", reviewActive && "flex min-h-0 flex-1 flex-col")}>
+            <FieldGroup className={cn(reviewActive && "min-h-0 flex-1 gap-4")}>
+              {reviewActive ? null : (
+                <>
+                <Field>
+                  <FieldLabel className={fieldLabelClass}>Enter manually</FieldLabel>
+                  <FieldDescription>
+                    Add a blank row and type the details. Add as many as you need before importing.
+                  </FieldDescription>
+                  <div>
+                    <Button
+                      type="button"
+                      className="w-fit gap-1.5"
+                      onClick={onAddManualRow}
+                      disabled={busyBulk}
                     >
-                      <NativeSelectOption value="">Select Account</NativeSelectOption>
-                      {paymentMethods.map((item) => (
-                        <NativeSelectOption key={item} value={item}>
-                          {item}
-                        </NativeSelectOption>
-                      ))}
-                    </NativeSelect>
-                  </Field>
-                  <Field className="md:col-span-2">
-                    <FieldLabel htmlFor="add-description" className={fieldLabelClass}>
-                      Description / Notes
-                    </FieldLabel>
-                    <Textarea
-                      id="add-description"
-                      rows={3}
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="What was this for?"
-                    />
-                  </Field>
-                  <div className="flex flex-wrap items-center justify-between gap-2 md:col-span-2">
-                    <div className="min-w-0 flex-1">
-                      {manualFeedback ? (
-                        <StatusAlert {...manualFeedback} onDismiss={() => setManualFeedback(null)} />
-                      ) : null}
-                    </div>
-                    <div className="flex shrink-0 gap-2">
-                      <Button asChild variant="secondary" type="button">
-                        <Link to="/ledger/search" onClick={resetManualForm}>
-                          Cancel
-                        </Link>
-                      </Button>
-                      <Button type="submit" disabled={savingManual}>
-                        {savingManual ? "Saving…" : "Save Transaction"}
-                      </Button>
-                    </div>
+                      <Plus className="size-4" aria-hidden />
+                      Add transaction
+                    </Button>
                   </div>
-                  {savingManual ? (
-                    <div className="md:col-span-2">
-                      <InlineProgress label="Saving transaction…" />
-                    </div>
-                  ) : null}
-                </FieldGroup>
-              </form>
-            </TabsContent>
-            <TabsContent className="mt-0" value="bulk">
-              <section className="p-6 md:p-8">
-                <FieldGroup>
-                  <Field>
+                </Field>
+
+                <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-parsel-muted">
+                  <span className="h-px flex-1 bg-parsel-border" />
+                  or
+                  <span className="h-px flex-1 bg-parsel-border" />
+                </div>
+
+                <Field>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <FieldLabel htmlFor="bulk-csv" className={fieldLabelClass}>
                       CSV File
                     </FieldLabel>
-                    <FieldDescription>
-                      Use the template for columns and date format. New categories are previewed before import.
-                    </FieldDescription>
-                    <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Input
-                          id="bulk-csv"
-                          className="max-w-xs"
-                          type="file"
-                          accept=".csv"
-                          disabled={busyBulk}
-                          onChange={(e) => {
-                            setFile(e.target.files?.[0] || null);
-                            resetBulkPreview();
-                            setBulkFeedback(null);
-                            setImportErrors(null);
-                          }}
-                        />
-                        <Button
-                          type="button"
-                          onClick={() => void onPreviewImport()}
-                          disabled={!file || busyBulk}
-                        >
-                          {bulkStep === "reading" ? "Reading…" : "Review import"}
-                        </Button>
-                      </div>
-                      <Button type="button" variant="outline" onClick={() => void onDownloadTemplate()} disabled={busyBulk}>
-                        Download template
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1.5 px-2 text-xs font-semibold uppercase tracking-wide text-parsel-primary hover:bg-parsel-soft"
+                      onClick={() => void onDownloadTemplate()}
+                      disabled={busyBulk}
+                    >
+                      <Download className="size-3.5" aria-hidden />
+                      Download template
+                    </Button>
+                  </div>
+                  <FieldDescription>
+                    Rows are parsed on upload so you can review and fix them before importing.
+                  </FieldDescription>
+                  <input
+                    id="bulk-csv"
+                    ref={fileInputRef}
+                    className="peer sr-only"
+                    type="file"
+                    accept=".csv"
+                    disabled={busyBulk}
+                    onChange={(e) => onFileSelected(e.target.files?.[0] || null)}
+                  />
+                  <label
+                    htmlFor="bulk-csv"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (!busyBulk) setDragActive(true);
+                    }}
+                    onDragLeave={() => setDragActive(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragActive(false);
+                      if (busyBulk) return;
+                      onFileSelected(e.dataTransfer.files?.[0] || null);
+                    }}
+                    className={cn(
+                      "flex flex-wrap items-center gap-3 border border-dashed border-parsel-border bg-parsel-soft/40 p-4 transition-colors",
+                      "peer-focus-visible:ring-2 peer-focus-visible:ring-parsel-primary peer-focus-visible:ring-offset-2",
+                      busyBulk
+                        ? "cursor-not-allowed opacity-60"
+                        : "cursor-pointer hover:border-parsel-primary hover:bg-parsel-soft",
+                      dragActive && "border-parsel-primary bg-parsel-soft",
+                    )}
+                  >
+                    <span className="inline-flex h-9 shrink-0 items-center gap-2 bg-parsel-primary px-3 text-xs font-semibold uppercase tracking-wide text-white">
+                      <Upload className="size-3.5" aria-hidden />
+                      Choose CSV
+                    </span>
+                    <span className="min-w-0 truncate text-xs text-parsel-muted">
+                      {fileName ?? "or drop a .csv file here"}
+                    </span>
+                  </label>
+                </Field>
+                </>
+              )}
+
+              {bulkStep !== "idle" && (fileName !== null || bulkStep === "importing" || bulkStep === "done") ? (
+                <div className="flex shrink-0 flex-col gap-3 border border-parsel-border bg-parsel-soft/40 p-4">
+                  <InlineProgress
+                    label={BULK_PROGRESS[bulkStep].label}
+                    value={BULK_PROGRESS[bulkStep].value}
+                  />
+                  <div className="flex flex-col gap-2">
+                    <Marker role="status" aria-live="polite">
+                      <MarkerIcon>
+                        {bulkStep === "reading" ? (
+                          <Loader2 className="size-4 animate-spin text-parsel-primary" />
+                        ) : (
+                          <FileSearch className="size-4 text-parsel-primary" />
+                        )}
+                      </MarkerIcon>
+                      <MarkerContent>
+                        {bulkStep === "reading"
+                          ? "Reading file…"
+                          : `${fileName ? "Read file — " : ""}${reviewRows.length} row${reviewRows.length === 1 ? "" : "s"} · ${readyCount} ready`}
+                      </MarkerContent>
+                    </Marker>
+                    {(bulkStep === "importing" || bulkStep === "done") && (
+                      <Marker role="status" aria-live="polite">
+                        <MarkerIcon>
+                          {bulkStep === "importing" ? (
+                            <Loader2 className="size-4 animate-spin text-parsel-primary" />
+                          ) : (
+                            <CheckCircle2 className="size-4 text-parsel-inflow" />
+                          )}
+                        </MarkerIcon>
+                        <MarkerContent>
+                          {bulkStep === "importing" ? "Importing transactions…" : "Import finished"}
+                        </MarkerContent>
+                      </Marker>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              {reviewActive ? (
+                <div className="flex min-h-0 flex-1 flex-col gap-2 border border-parsel-border p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-parsel-neutral">
+                        Review before import
+                        {fileName ? (
+                          <span className="ml-2 font-normal text-parsel-muted">{fileName}</span>
+                        ) : null}
+                      </p>
+                      <p className="mt-1 text-sm text-parsel-muted">
+                        Fix flagged fields inline, verify categories, then import selected rows into your ledger.
+                        Imported rows stay listed here and are locked.
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-1.5"
+                        onClick={onAddManualRow}
+                        disabled={busyBulk}
+                      >
+                        <Plus className="size-4" aria-hidden />
+                        Add row
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={resetBulkPreview}
+                        disabled={busyBulk}
+                      >
+                        Start over
+                      </Button>
+                      <Button asChild type="button" variant="outline">
+                        <Link to="/ledger/search">View ledger</Link>
                       </Button>
                     </div>
-                  </Field>
+                  </div>
+                  <ImportReviewTable
+                    rows={reviewRows}
+                    categories={categories}
+                    paymentMethods={paymentMethods}
+                    onRowsChange={setReviewRows}
+                    onImport={(selected) => void onConfirmImport(selected)}
+                    onRemoveRow={onRemoveRow}
+                    importing={bulkStep === "importing"}
+                  />
+                </div>
+              ) : null}
 
-                  {bulkStep !== "idle" ? (
-                    <div className="flex flex-col gap-3 border border-parsel-border bg-parsel-soft/40 p-4">
-                      <InlineProgress
-                        label={BULK_PROGRESS[bulkStep].label}
-                        value={BULK_PROGRESS[bulkStep].value}
-                      />
-                      <div className="flex flex-col gap-2">
-                        <Marker role="status" aria-live="polite">
-                          <MarkerIcon>
-                            {bulkStep === "reading" ? (
-                              <Loader2 className="size-4 animate-spin text-parsel-primary" />
-                            ) : (
-                              <FileSearch className="size-4 text-parsel-primary" />
-                            )}
-                          </MarkerIcon>
-                          <MarkerContent>
-                            {bulkStep === "reading"
-                              ? "Reading file…"
-                              : `Read file — ${previewValidRows} valid row${previewValidRows === 1 ? "" : "s"}`}
-                          </MarkerContent>
-                        </Marker>
-                        {(bulkStep === "preview" ||
-                          bulkStep === "creating" ||
-                          bulkStep === "importing" ||
-                          bulkStep === "done") && (
-                          <Marker role="status" aria-live="polite">
-                            <MarkerIcon>
-                              {bulkStep === "creating" ? (
-                                <Loader2 className="size-4 animate-spin text-parsel-primary" />
-                              ) : (
-                                <FolderPlus className="size-4 text-parsel-primary" />
-                              )}
-                            </MarkerIcon>
-                            <MarkerContent>
-                              {bulkStep === "creating"
-                                ? `Creating ${previewNewCategories.length} categor${previewNewCategories.length === 1 ? "y" : "ies"}…`
-                                : previewNewCategories.length
-                                  ? `${previewNewCategories.length} new categor${previewNewCategories.length === 1 ? "y" : "ies"} to add`
-                                  : "All categories already exist"}
-                            </MarkerContent>
-                          </Marker>
-                        )}
-                        {(bulkStep === "importing" || bulkStep === "done") && (
-                          <Marker role="status" aria-live="polite">
-                            <MarkerIcon>
-                              {bulkStep === "importing" ? (
-                                <Loader2 className="size-4 animate-spin text-parsel-primary" />
-                              ) : (
-                                <CheckCircle2 className="size-4 text-parsel-inflow" />
-                              )}
-                            </MarkerIcon>
-                            <MarkerContent>
-                              {bulkStep === "importing" ? "Importing transactions…" : "Import finished"}
-                            </MarkerContent>
-                          </Marker>
-                        )}
-                      </div>
-                    </div>
-                  ) : null}
+              {previewFileErrors.length > 0 ? (
+                <StatusAlert
+                  variant="error"
+                  title="File errors"
+                  description={previewFileErrors.join("\n")}
+                />
+              ) : null}
 
-                  {bulkStep === "preview" && previewValidRows > 0 ? (
-                    <div className="flex flex-col gap-3 border border-parsel-border p-4">
-                      <div>
-                        <p className="text-sm font-semibold text-parsel-neutral">Ready to import</p>
-                        <p className="mt-1 text-sm text-parsel-muted">
-                          {previewValidRows} valid row{previewValidRows === 1 ? "" : "s"}
-                          {previewErrors.length
-                            ? ` · ${previewErrors.length} row${previewErrors.length === 1 ? "" : "s"} will be skipped`
-                            : ""}
-                          .
-                        </p>
-                      </div>
-                      {previewNewCategories.length > 0 ? (
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-parsel-secondary">
-                            New categories
-                          </p>
-                          <p className="mt-1 text-sm text-parsel-muted">
-                            These are not in your list yet and will be added if you continue:
-                          </p>
-                          <ul className="mt-2 list-disc pl-5 text-sm text-parsel-neutral">
-                            {previewNewCategories.map((name) => (
-                              <li key={name}>{name}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-parsel-muted">All categories in this file already exist.</p>
-                      )}
-                      {previewErrors.length > 0 ? (
-                        <StatusAlert
-                          variant="error"
-                          title="Some rows have errors"
-                          description={previewErrors.slice(0, 8).join("\n")}
-                        />
-                      ) : null}
-                      <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="ghost" onClick={resetBulkPreview}>
-                          Cancel
-                        </Button>
-                        <Button type="button" onClick={() => void onConfirmImport()}>
-                          Continue import
-                        </Button>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {bulkFeedback ? <StatusAlert {...bulkFeedback} onDismiss={() => setBulkFeedback(null)} /> : null}
-                  {importErrors ? (
-                    <StatusAlert
-                      variant="error"
-                      title="Import row errors"
-                      description={importErrors}
-                      onDismiss={() => setImportErrors(null)}
-                    />
-                  ) : null}
-                </FieldGroup>
-              </section>
-            </TabsContent>
-          </Tabs>
+              {bulkFeedback ? <StatusAlert {...bulkFeedback} onDismiss={() => setBulkFeedback(null)} /> : null}
+              {importErrors ? (
+                <StatusAlert
+                  variant="error"
+                  title="Import row errors"
+                  description={importErrors}
+                  onDismiss={() => setImportErrors(null)}
+                />
+              ) : null}
+            </FieldGroup>
+          </section>
         </div>
       ) : null}
     </div>

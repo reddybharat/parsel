@@ -223,3 +223,91 @@ class DashboardOverviewResponse(BaseModel):
     highlights: DashboardHighlightsResponse
     daily_spend: DashboardDailySpendResponse
     category_spend: DashboardCategorySpendResponse
+
+
+class ImportFieldIssue(BaseModel):
+    field: str
+    code: str
+    message: str
+
+
+class ImportPreviewRow(BaseModel):
+    source_row: int
+    transaction_date: str
+    category: str
+    amount: str
+    is_debit: str
+    description: Optional[str] = None
+    payment_method: Optional[str] = None
+    issues: list[ImportFieldIssue] = Field(default_factory=list)
+    is_ready: bool = False
+    category_is_new: bool = False
+
+
+class ImportPreviewResponse(BaseModel):
+    rows: list[ImportPreviewRow] = Field(default_factory=list)
+    file_errors: list[str] = Field(default_factory=list)
+    new_categories: list[str] = Field(default_factory=list)
+    valid_row_count: int = 0
+    errors: list[str] = Field(default_factory=list)
+
+
+class ReviewedImportRow(BaseModel):
+    source_row: int
+    amount: float = Field(..., gt=0)
+    category: str = Field(..., min_length=1)
+    payment_method: Optional[str] = None
+    transaction_date: date
+    description: Optional[str] = None
+    is_debit: bool = True
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def category_required(cls, v: object) -> str:
+        if v is None or (isinstance(v, str) and not str(v).strip()):
+            raise ValueError("Please select a category.")
+        s = normalize_category_name(str(v))
+        if not s:
+            raise ValueError("Please select a category.")
+        if len(s) > CATEGORY_NAME_MAX_LENGTH:
+            raise ValueError(
+                f"Category name must be at most {CATEGORY_NAME_MAX_LENGTH} characters."
+            )
+        return s
+
+    @field_validator("amount")
+    @classmethod
+    def amount_must_be_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("Amount must be greater than 0.")
+        return v
+
+    @field_validator("transaction_date")
+    @classmethod
+    def transaction_date_not_in_future(cls, v: date) -> date:
+        if v > date.today():
+            raise ValueError("Transaction date cannot be in the future.")
+        return v
+
+    @field_validator("payment_method", mode="before")
+    @classmethod
+    def payment_method_optional(cls, v: object) -> Optional[str]:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        s = str(v).strip()
+        if s not in PAYMENT_METHODS:
+            raise ValueError(
+                f"Invalid payment_method. Must be one of: {', '.join(PAYMENT_METHODS)}"
+            )
+        return s
+
+
+class ReviewedImportRequest(BaseModel):
+    rows: list[ReviewedImportRow] = Field(..., min_length=1)
+    approved_new_categories: list[str] = Field(default_factory=list)
+
+
+class ReviewedImportResponse(BaseModel):
+    inserted: int
+    created_categories: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)

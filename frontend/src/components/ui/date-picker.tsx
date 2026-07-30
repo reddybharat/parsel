@@ -27,23 +27,26 @@ export function DatePicker({
   placeholder = "Pick a date",
   className,
   id,
+  disabled = false,
 }: {
   value: string
   onChange: (value: string) => void
   placeholder?: string
   className?: string
   id?: string
+  disabled?: boolean
 }) {
   const [open, setOpen] = React.useState(false)
   const selected = isoToDate(value)
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(next) => !disabled && setOpen(next)}>
       <PopoverTrigger asChild>
         <Button
           id={id}
           type="button"
           variant="outline"
+          disabled={disabled}
           className={cn(
             "w-full justify-start text-left font-normal",
             !value && "text-muted-foreground",

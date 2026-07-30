@@ -8,11 +8,14 @@ from sqlalchemy import case, delete, func, insert, select, update
 
 from auth.deps import get_current_user
 from auth.models import User
-from common.database import get_connection
+from common.database import get_connection, get_readonly_connection
 from common.logger import get_logger
 from tracker.category_service import resolve_category_name
 from tracker.models import Transaction
 from tracker.schemas import (
+    ImportPreviewResponse,
+    ReviewedImportRequest,
+    ReviewedImportResponse,
     TransactionCreate,
     TransactionResponse,
     TransactionsSearchResult,
@@ -20,8 +23,10 @@ from tracker.schemas import (
 )
 from tracker.services import (
     export_transactions_csv,
+    import_reviewed_transactions,
     import_transactions_from_csv,
     preview_transactions_import,
+    transaction_text_search,
     transactions_csv_template,
 )
 
@@ -48,6 +53,7 @@ def _to_response(tx: Transaction) -> TransactionResponse:
 async def search_transactions(
     start_date: date = Query(...),
     end_date: date = Query(...),
+    q: Optional[str] = Query(None, max_length=200),
     category: Optional[str] = Query(None),
     payment_method: Optional[str] = Query(None),
     is_debit: Optional[bool] = Query(None),
@@ -82,6 +88,10 @@ async def search_transactions(
     if is_debit is not None:
         where_parts.append(Transaction.is_debit == bool(is_debit))
 
+    term = (q or "").strip()
+    if term:
+        where_parts.append(transaction_text_search(term))
+
     if sort_column == "amount":
         # Mixed debit+credit views should use signed values for correct net ordering.
         # Single-side filters (only debit or only credit) should sort by raw amount
@@ -101,34 +111,43 @@ async def search_transactions(
         order_by = func.lower(func.coalesce(Transaction.description, ""))
     else:
         order_by = Transaction.transaction_date
-    order_by = order_by.desc() if sort_desc else order_by.asc()
 
-    async with get_connection() as session:
-        total_count = int(
-            (
-                await session.execute(
-                    select(func.count()).select_from(Transaction).where(*where_parts)
-                )
-            ).scalar_one()
-        )
-        rows = (
-            await session.execute(
-                select(Transaction)
-                .where(*where_parts)
-                .order_by(order_by)
-                .offset(offset_start)
-                .limit(page_size)
+    # Tie-breakers keep paging stable; window count avoids a second round trip.
+    if sort_desc:
+        order_by_clauses = [order_by.desc(), Transaction.created_at.desc(), Transaction.id.desc()]
+    else:
+        order_by_clauses = [order_by.asc(), Transaction.created_at.asc(), Transaction.id.asc()]
+
+    page_stmt = (
+        select(Transaction, func.count().over().label("total_count"))
+        .where(*where_parts)
+        .order_by(*order_by_clauses)
+        .offset(offset_start)
+        .limit(page_size)
+    )
+
+    async with get_readonly_connection() as session:
+        result = (await session.execute(page_stmt)).all()
+        if result:
+            total_count = int(result[0][1])
+        else:
+            total_count = int(
+                (
+                    await session.execute(
+                        select(func.count()).select_from(Transaction).where(*where_parts)
+                    )
+                ).scalar_one()
             )
-        ).scalars().all()
 
-    items = [_to_response(r) for r in rows]
+    items = [_to_response(row[0]) for row in result]
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
-        "search_transactions completed in %.1f ms (total=%d, page=%d, page_size=%d, category=%s, sort=%s %s)",
+        "search_transactions completed in %.1f ms (total=%d, page=%d, page_size=%d, q=%s, category=%s, sort=%s %s)",
         elapsed_ms,
         total_count,
         page,
         page_size,
+        term or "-",
         category or "All",
         sort_column,
         "DESC" if sort_desc else "ASC",
@@ -140,8 +159,10 @@ async def search_transactions(
 async def export_transactions(
     start_date: date = Query(...),
     end_date: date = Query(...),
+    q: Optional[str] = Query(None, max_length=200),
     category: Optional[str] = Query(None),
     payment_method: Optional[str] = Query(None),
+    is_debit: Optional[bool] = Query(None),
     current_user: User = Depends(get_current_user),
 ) -> Response:
     t0 = time.perf_counter()
@@ -151,6 +172,8 @@ async def export_transactions(
         category,
         payment_method,
         user_id=current_user.id,
+        q=q,
+        is_debit=is_debit,
     )
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
@@ -169,22 +192,40 @@ async def export_transactions(
     )
 
 
-@router.post("/import/preview")
+@router.post("/import/preview", response_model=ImportPreviewResponse)
 async def import_transactions_preview(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
-) -> dict:
-    del current_user
+) -> ImportPreviewResponse:
     t0 = time.perf_counter()
     content = await file.read()
-    result = await preview_transactions_import(content)
+    result = await preview_transactions_import(content, user_id=current_user.id)
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
-        "import_transactions_preview completed in %.1f ms (valid=%d, new_categories=%d, errors=%d)",
+        "import_transactions_preview completed in %.1f ms (rows=%d, ready=%d, new_categories=%d, errors=%d)",
         elapsed_ms,
-        result["valid_row_count"],
-        len(result["new_categories"]),
-        len(result["errors"]),
+        len(result.rows),
+        result.valid_row_count,
+        len(result.new_categories),
+        len(result.errors),
+    )
+    return result
+
+
+@router.post("/import/reviewed", response_model=ReviewedImportResponse)
+async def import_reviewed_transactions_endpoint(
+    payload: ReviewedImportRequest,
+    current_user: User = Depends(get_current_user),
+) -> ReviewedImportResponse:
+    t0 = time.perf_counter()
+    result = await import_reviewed_transactions(payload, user_id=current_user.id)
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    logger.info(
+        "import_reviewed_transactions completed in %.1f ms (inserted=%d, errors=%d, created_categories=%d)",
+        elapsed_ms,
+        result.inserted,
+        len(result.errors),
+        len(result.created_categories),
     )
     return result
 
@@ -238,6 +279,7 @@ async def create_transaction(
     t0 = time.perf_counter()
     try:
         canonical_category = await resolve_category_name(
+            current_user.id,
             payload.category,
             allow_new=True,
         )
@@ -282,6 +324,7 @@ async def update_transaction(
     if "category" in payload_dict and payload_dict["category"] is not None:
         try:
             payload_dict["category"] = await resolve_category_name(
+                current_user.id,
                 payload_dict["category"],
                 allow_new=True,
             )

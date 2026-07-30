@@ -3,6 +3,7 @@
 from auth.deps import get_current_user
 from auth.models import User
 from auth.schemas import (
+    ChangePasswordRequest,
     LoginRequest,
     MeResponse,
     RegisterRequest,
@@ -18,6 +19,7 @@ from auth.service import (
     InvalidCredentialsError,
     UsernameAlreadyTakenError,
     authenticate_user,
+    change_password,
     register_user,
     update_me,
 )
@@ -120,4 +122,22 @@ async def patch_me(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except AccountInactiveError as exc:
         raise unauthorized(str(exc)) from exc
+
+
+@router.post("/change-password", response_model=TokenResponse)
+async def post_change_password(
+    body: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+) -> TokenResponse:
+    try:
+        updated = await change_password(
+            user.id,
+            current_password=body.current_password,
+            new_password=body.new_password,
+        )
+    except InvalidCredentialsError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except AccountInactiveError as exc:
+        raise unauthorized(str(exc)) from exc
+    return _token_response(updated)
 

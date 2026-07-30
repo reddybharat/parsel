@@ -16,6 +16,15 @@ The API is stateless and directly calls feature services.
 - `backend/chat/`: chat agent graph and chat API routes (thread + SQL scoped to user).
 - `backend/tests/`: backend tests.
 
+## Database access
+
+`backend/common/database.py` exposes two session helpers:
+
+- `get_connection()` — read/write (transactional commit).
+- `get_readonly_connection()` — `AUTOCOMMIT` for pure SELECTs (skips `BEGIN`/`COMMIT` round trips).
+
+Pools use `pool_recycle` instead of `pool_pre_ping`. Prefer the read-only session for auth lookups and other hot read paths.
+
 ## Frontend structure
 
 - `frontend/src/App.tsx`: auth routes, protected shell, and navigation.
@@ -23,6 +32,7 @@ The API is stateless and directly calls feature services.
 - `frontend/src/pages/AuthPage.tsx`: login and register.
 - `frontend/src/pages/OverviewPage.tsx`: dashboard view.
 - `frontend/src/pages/SearchPage.tsx`: searchable transaction ledger with edit/delete/export.
+- `frontend/src/components/data-table/`: reusable TanStack Table pieces (shell, sortable header, pagination, column visibility, filter select) driven in manual mode against server-side paging.
 - `frontend/src/pages/AddPage.tsx`: transaction create form and CSV import.
 - `frontend/src/pages/ChatPage.tsx`: chat UI with invoke/resume/exit flow.
 - `frontend/src/api/`: fetch wrappers for API calls (Bearer token attached in `client.ts`).
