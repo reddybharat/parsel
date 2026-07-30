@@ -22,7 +22,12 @@ from tracker.category_service import (
     register_category_names,
     resolve_category_name,
 )
-from tracker.constants import INVESTMENTS_CATEGORY, PAYMENT_METHODS
+from tracker.constants import (
+    INVESTMENTS_CATEGORY,
+    PAYMENT_METHODS,
+    SELF_TRANSFER_CATEGORY,
+    WALLET_TOP_UP_CATEGORY,
+)
 from tracker.models import Transaction
 from tracker.schemas import (
     ImportFieldIssue,
@@ -815,6 +820,8 @@ def _dashboard_params(bounds: dict[str, date], user_id: uuid.UUID) -> dict[str, 
         **bounds,
         "user_id": user_id,
         "investments_category": INVESTMENTS_CATEGORY,
+        "self_transfer_category": SELF_TRANSFER_CATEGORY,
+        "wallet_top_up_category": WALLET_TOP_UP_CATEGORY,
     }
 
 
@@ -881,20 +888,26 @@ spend_txns AS (
   SELECT cm.*
   FROM current_month cm
   WHERE cm.is_debit = TRUE
-    AND cm.category <> :investments_category
+    AND cm.category NOT IN (
+      :investments_category, :self_transfer_category, :wallet_top_up_category
+    )
 ),
 summary AS (
   SELECT
     COALESCE(SUM(CASE WHEN t.is_debit THEN -t.amount ELSE t.amount END), 0)::float8 AS portfolio_net,
     COALESCE(SUM(CASE
       WHEN t.is_debit = TRUE
-       AND t.category <> :investments_category
+       AND t.category NOT IN (
+         :investments_category, :self_transfer_category, :wallet_top_up_category
+       )
        AND t.transaction_date >= :month_now_start
        AND t.transaction_date < :month_next_start
       THEN t.amount ELSE 0 END), 0)::float8 AS current_month_spend,
     COALESCE(SUM(CASE
       WHEN t.is_debit = TRUE
-       AND t.category <> :investments_category
+       AND t.category NOT IN (
+         :investments_category, :self_transfer_category, :wallet_top_up_category
+       )
        AND t.transaction_date >= :prev_month_start
        AND t.transaction_date < :month_now_start
       THEN t.amount ELSE 0 END), 0)::float8 AS previous_month_spend
@@ -908,7 +921,9 @@ trend_rows AS (
   FROM transactions t
   WHERE t.user_id = :user_id
     AND t.is_debit = TRUE
-    AND t.category <> :investments_category
+    AND t.category NOT IN (
+      :investments_category, :self_transfer_category, :wallet_top_up_category
+    )
     AND t.transaction_date >= :trend_start
     AND t.transaction_date < :month_next_start
   GROUP BY 1

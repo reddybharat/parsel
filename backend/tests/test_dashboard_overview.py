@@ -6,10 +6,31 @@ import uuid
 
 import pytest
 
-from tracker.constants import INVESTMENTS_CATEGORY
+from tracker.constants import (
+    INVESTMENTS_CATEGORY,
+    NON_SPEND_CATEGORIES,
+    SELF_TRANSFER_CATEGORY,
+    SYSTEM_CATEGORIES,
+    WALLET_TOP_UP_CATEGORY,
+)
 from tracker.services import _get_dashboard_aggregates, get_dashboard_overview
 
 pytestmark = pytest.mark.anyio
+
+
+async def test_transfer_categories_are_global_non_spend_categories():
+    assert SELF_TRANSFER_CATEGORY in SYSTEM_CATEGORIES
+    assert WALLET_TOP_UP_CATEGORY in SYSTEM_CATEGORIES
+    assert NON_SPEND_CATEGORIES == (
+        INVESTMENTS_CATEGORY,
+        SELF_TRANSFER_CATEGORY,
+        WALLET_TOP_UP_CATEGORY,
+    )
+
+
+async def test_money_lent_is_a_global_category_that_still_counts_as_spend():
+    assert "Money Lent" in SYSTEM_CATEGORIES
+    assert "Money Lent" not in NON_SPEND_CATEGORIES
 
 
 def _aggregate_row(**overrides):
@@ -56,6 +77,17 @@ async def test_get_dashboard_aggregates_parses_category_spend_sorted():
             months=12,
             user_id=uuid.UUID("55555555-5555-5555-5555-555555555555"),
         )
+
+    statement, params = mock_session.execute.await_args.args
+    sql = " ".join(str(statement).split())
+    assert sql.count(
+        "category NOT IN ( :investments_category, :self_transfer_category, "
+        ":wallet_top_up_category )"
+    ) == 4
+    assert "cm.category = :investments_category" in sql
+    assert params["investments_category"] == INVESTMENTS_CATEGORY
+    assert params["self_transfer_category"] == SELF_TRANSFER_CATEGORY
+    assert params["wallet_top_up_category"] == WALLET_TOP_UP_CATEGORY
 
     items = result["category_spend"]["items"]
     assert len(items) == 2

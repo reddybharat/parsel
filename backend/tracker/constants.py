@@ -15,6 +15,13 @@ PAYMENT_METHODS = [
 
 # Used in spend aggregates (trend, monthly spend); not treated as consumption.
 INVESTMENTS_CATEGORY = "Investments"
+SELF_TRANSFER_CATEGORY = "Self Transfer"
+WALLET_TOP_UP_CATEGORY = "Wallet Top-up"
+NON_SPEND_CATEGORIES = (
+    INVESTMENTS_CATEGORY,
+    SELF_TRANSFER_CATEGORY,
+    WALLET_TOP_UP_CATEGORY,
+)
 
 # Locked system category names are always offered. Each user can also persist a
 # small set of custom names in their preferences.
@@ -32,15 +39,18 @@ SYSTEM_CATEGORIES = [
     "Income",
     "Investments",
     "Misc",
+    "Money Lent",
     "Other Income",
     "Personal",
     "Refunds",
     "Rent",
+    "Self Transfer",
     "Shopping",
     "Subscriptions",
     "Transportation",
     "Travel",
     "Utilities",
+    "Wallet Top-up",
 ]
 
 # Back-compat alias for older imports / chat schema text.

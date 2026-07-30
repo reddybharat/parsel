@@ -32,7 +32,8 @@ Columns:
 - version_no          integer NOT NULL
 
 Notes:
-- Amounts are INR. Investments category is 'Investments'.
+- Amounts are INR. 'Investments', 'Self Transfer', and 'Wallet Top-up' are excluded from spending.
+- Only 'Investments' counts as investments; the transfer categories are not investments.
 - There is no separate categories table; category is stored as text on each row.
 """.strip(),
 }
