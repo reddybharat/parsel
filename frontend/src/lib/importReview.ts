@@ -13,7 +13,6 @@ export function isRowSelectable(row: EditableImportRow): boolean {
 }
 
 const PAYMENT_METHODS = ["Cash", "UPI", "Bank transfer", "Card", "Wallet", "NEFT", "Other"];
-const BANKS = ["SBI", "Kotak", "Slice"];
 const DUPLICATE_KEY_FIELDS = new Set([
   "transaction_date",
   "amount",
@@ -114,6 +113,7 @@ export function isCategoryKnown(name: string, categories: Category[]): boolean {
 export function validateImportRow(
   row: EditableImportRow,
   categories: Category[],
+  banks: string[],
 ): { issues: ImportFieldIssue[]; isReady: boolean } {
   const issues: ImportFieldIssue[] = [];
   const normalizedCategory = normalizeCategory(row.category);
@@ -184,7 +184,7 @@ export function validateImportRow(
 
   if (!row.bank?.trim()) {
     issues.push({ field: "bank", code: "required", message: "Required" });
-  } else if (!BANKS.includes(row.bank.trim())) {
+  } else if (!banks.includes(row.bank.trim())) {
     issues.push({
       field: "bank",
       code: "invalid_value",
@@ -225,8 +225,9 @@ export function validateImportRow(
 export function recomputeRow(
   row: EditableImportRow,
   categories: Category[],
+  banks: string[],
 ): EditableImportRow {
-  const { issues: validationIssues, isReady } = validateImportRow(row, categories);
+  const { issues: validationIssues, isReady } = validateImportRow(row, categories, banks);
   const duplicateIssue = row.is_duplicate
     ? row.issues.find((issue) => issue.code === "duplicate")
     : undefined;
@@ -259,7 +260,10 @@ export function patchClearsDuplicate(
   };
 }
 
-export function toReviewedPayload(row: EditableImportRow): {
+export function toReviewedPayload(
+  row: EditableImportRow,
+  banks: string[],
+): {
   source_row: number;
   amount: number;
   is_debit: boolean;
@@ -281,7 +285,7 @@ export function toReviewedPayload(row: EditableImportRow): {
     isDebit === null ||
     !normalizedCategory ||
     !bank ||
-    !BANKS.includes(bank) ||
+    !banks.includes(bank) ||
     !dateCheck.valid ||
     (row.is_duplicate && !row.force_duplicate)
   ) {

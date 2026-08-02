@@ -25,6 +25,7 @@ function eligibleKeys(source: EditableImportRow[]): Set<string> {
 export function ImportReviewTable({
   rows,
   categories,
+  banks,
   paymentMethods,
   onRowsChange,
   onImport,
@@ -33,6 +34,7 @@ export function ImportReviewTable({
 }: {
   rows: EditableImportRow[];
   categories: Category[];
+  banks: string[];
   paymentMethods: string[];
   onRowsChange: (rows: EditableImportRow[]) => void;
   onImport: (selected: EditableImportRow[]) => void;
@@ -83,11 +85,11 @@ export function ImportReviewTable({
     (sourceRow: number, patch: Partial<EditableImportRow>) => {
       const next = rowsRef.current.map((row) => {
         if (row.source_row !== sourceRow) return row;
-        return recomputeRow({ ...row, ...patchClearsDuplicate(patch) }, categories);
+        return recomputeRow({ ...row, ...patchClearsDuplicate(patch) }, categories, banks);
       });
       onRowsChange(next);
     },
-    [categories, onRowsChange],
+    [banks, categories, onRowsChange],
   );
 
   const approveNewCategory = useCallback(

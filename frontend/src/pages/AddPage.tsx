@@ -138,7 +138,7 @@ export function AddPage() {
       const nextRow = current.reduce((max, row) => Math.max(max, row.source_row), 0) + 1;
       return [
         ...current,
-        recomputeRow(createManualRow(nextRow, { bank: importBank }), categories),
+        recomputeRow(createManualRow(nextRow, { bank: importBank }), categories, banks),
       ];
     });
     setBulkStep((step) => (step === "importing" ? step : "preview"));
@@ -191,7 +191,9 @@ export function AddPage() {
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
-      const editable = result.rows.map(toEditableRow).map((row) => recomputeRow(row, categories));
+      const editable = result.rows
+        .map(toEditableRow)
+        .map((row) => recomputeRow(row, categories, banks));
       setReviewRows(editable);
       setBulkStep("preview");
       if (editable.length === 0) {
@@ -215,7 +217,9 @@ export function AddPage() {
     setBulkFeedback(null);
     setBulkStep("importing");
     try {
-      const payloads = selected.map(toReviewedPayload).filter((row) => row !== null);
+      const payloads = selected
+        .map((row) => toReviewedPayload(row, banks))
+        .filter((row) => row !== null);
       if (payloads.length === 0) {
         throw new Error("No valid rows selected for import.");
       }
@@ -271,8 +275,8 @@ export function AddPage() {
 
   useEffect(() => {
     if (reviewRows.length === 0) return;
-    setReviewRows((current) => current.map((row) => recomputeRow(row, categories)));
-  }, [categories]);
+    setReviewRows((current) => current.map((row) => recomputeRow(row, categories, banks)));
+  }, [banks, categories]);
 
   return (
     <div
@@ -556,6 +560,7 @@ export function AddPage() {
                   <ImportReviewTable
                     rows={reviewRows}
                     categories={categories}
+                    banks={banks}
                     paymentMethods={paymentMethods}
                     onRowsChange={setReviewRows}
                     onImport={(selected) => void onConfirmImport(selected)}
