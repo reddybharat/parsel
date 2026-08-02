@@ -254,6 +254,7 @@ class DashboardOverviewResponse(BaseModel):
     highlights: DashboardHighlightsResponse
     daily_spend: DashboardDailySpendResponse
     category_spend: DashboardCategorySpendResponse
+    active_banks: list[str] = Field(default_factory=list)
 
 
 class ImportFieldIssue(BaseModel):

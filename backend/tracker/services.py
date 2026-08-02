@@ -973,8 +973,24 @@ def _add_months(month_start: date, delta_months: int) -> date:
     return date(year, month, 1)
 
 
-def _dashboard_bounds(months: int) -> dict[str, date]:
-    month_now_start = date.today().replace(day=1)
+def _parse_focus_month(month: str | None) -> date:
+    """Parse YYYY-MM into the first day of that month; default to the current month."""
+    if month is None or not str(month).strip():
+        return date.today().replace(day=1)
+    raw = str(month).strip()
+    try:
+        year_s, month_s = raw.split("-", 1)
+        year = int(year_s)
+        mon = int(month_s)
+        if mon < 1 or mon > 12:
+            raise ValueError
+        return date(year, mon, 1)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("month must be YYYY-MM") from exc
+
+
+def _dashboard_bounds(months: int, focus_month: date | None = None) -> dict[str, date]:
+    month_now_start = focus_month or date.today().replace(day=1)
     return {
         "month_now_start": month_now_start,
         "month_next_start": _add_months(month_now_start, 1),
@@ -983,10 +999,34 @@ def _dashboard_bounds(months: int) -> dict[str, date]:
     }
 
 
-def _dashboard_params(bounds: dict[str, date], user_id: uuid.UUID) -> dict[str, Any]:
+def _normalize_banks_filter(banks: list[str] | None) -> list[str] | None:
+    """Return validated bank names to filter on, or None for all banks."""
+    if not banks:
+        return None
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in banks:
+        name = str(raw).strip()
+        if not name or name in seen:
+            continue
+        if name not in BANKS:
+            raise ValueError(f"Invalid bank. Must be one of: {', '.join(BANKS)}")
+        seen.add(name)
+        normalized.append(name)
+    return normalized or None
+
+
+def _dashboard_params(
+    bounds: dict[str, date],
+    user_id: uuid.UUID,
+    *,
+    banks: list[str] | None = None,
+) -> dict[str, Any]:
     return {
         **bounds,
         "user_id": user_id,
+        "filter_banks": banks is not None,
+        "banks_csv": ",".join(banks) if banks else "",
         "investments_category": INVESTMENTS_CATEGORY,
         "self_transfer_category": SELF_TRANSFER_CATEGORY,
         "wallet_top_up_category": WALLET_TOP_UP_CATEGORY,
@@ -1051,6 +1091,7 @@ WITH current_month AS (
   WHERE t.user_id = :user_id
     AND t.transaction_date >= :month_now_start
     AND t.transaction_date < :month_next_start
+    AND (NOT :filter_banks OR t.bank = ANY(string_to_array(:banks_csv, ',')))
 ),
 spend_txns AS (
   SELECT cm.*
@@ -1081,6 +1122,8 @@ summary AS (
       THEN t.amount ELSE 0 END), 0)::float8 AS previous_month_spend
   FROM transactions t
   WHERE t.user_id = :user_id
+    AND t.transaction_date < :month_next_start
+    AND (NOT :filter_banks OR t.bank = ANY(string_to_array(:banks_csv, ',')))
 ),
 trend_rows AS (
   SELECT
@@ -1094,6 +1137,7 @@ trend_rows AS (
     )
     AND t.transaction_date >= :trend_start
     AND t.transaction_date < :month_next_start
+    AND (NOT :filter_banks OR t.bank = ANY(string_to_array(:banks_csv, ',')))
   GROUP BY 1
 ),
 highlights AS (
@@ -1180,12 +1224,13 @@ async def _get_dashboard_aggregates(
     months: int,
     *,
     user_id: uuid.UUID,
+    banks: list[str] | None = None,
 ) -> dict:
     """Single-query dashboard aggregates (summary, trend, highlights, daily spend)."""
     async with get_readonly_connection() as session:
         result = await session.execute(
             text(_DASHBOARD_AGGREGATES_SQL),
-            _dashboard_params(bounds, user_id),
+            _dashboard_params(bounds, user_id, banks=banks),
         )
         row = result.mappings().first() or {}
 
@@ -1242,7 +1287,13 @@ async def _get_dashboard_aggregates(
     }
 
 
-async def _get_dashboard_recent(recent_limit: int, *, user_id: uuid.UUID) -> list:
+async def _get_dashboard_recent(
+    recent_limit: int,
+    bounds: dict[str, date],
+    *,
+    user_id: uuid.UUID,
+    banks: list[str] | None = None,
+) -> list:
     sql = """
         SELECT
           id::text,
@@ -1255,13 +1306,23 @@ async def _get_dashboard_recent(recent_limit: int, *, user_id: uuid.UUID) -> lis
           description
         FROM transactions
         WHERE user_id = :user_id
+          AND transaction_date >= :month_now_start
+          AND transaction_date < :month_next_start
+          AND (NOT :filter_banks OR bank = ANY(string_to_array(:banks_csv, ',')))
         ORDER BY transaction_date DESC, created_at DESC
         LIMIT :recent_limit
     """
     async with get_readonly_connection() as session:
         result = await session.execute(
             text(sql),
-            {"recent_limit": recent_limit, "user_id": user_id},
+            {
+                "recent_limit": recent_limit,
+                "user_id": user_id,
+                "month_now_start": bounds["month_now_start"],
+                "month_next_start": bounds["month_next_start"],
+                "filter_banks": banks is not None,
+                "banks_csv": ",".join(banks) if banks else "",
+            },
         )
         rows = result.mappings().all()
 
@@ -1280,20 +1341,40 @@ async def _get_dashboard_recent(recent_limit: int, *, user_id: uuid.UUID) -> lis
     ]
 
 
+async def _get_active_banks(*, user_id: uuid.UUID) -> list[str]:
+    """Banks that appear on the user's transactions, in product order."""
+    sql = """
+        SELECT DISTINCT bank
+        FROM transactions
+        WHERE user_id = :user_id
+          AND bank IS NOT NULL
+          AND btrim(bank) <> ''
+    """
+    async with get_readonly_connection() as session:
+        result = await session.execute(text(sql), {"user_id": user_id})
+        found = {str(row[0]) for row in result.fetchall() if row[0]}
+    return [name for name in BANKS if name in found]
+
+
 async def get_dashboard_overview(
     months: int = 12,
     recent_limit: int = 5,
     *,
     user_id: uuid.UUID,
+    month: str | None = None,
+    banks: list[str] | None = None,
 ) -> dict:
     """Return dashboard data via one aggregate query and one recent-transactions query."""
     months = max(1, min(int(months), 24))
     recent_limit = max(1, min(int(recent_limit), 20))
-    bounds = _dashboard_bounds(months)
+    focus_month = _parse_focus_month(month)
+    bank_filter = _normalize_banks_filter(banks)
+    bounds = _dashboard_bounds(months, focus_month)
 
-    aggregates, recent_items = await asyncio.gather(
-        _get_dashboard_aggregates(bounds, months, user_id=user_id),
-        _get_dashboard_recent(recent_limit, user_id=user_id),
+    aggregates, recent_items, active_banks = await asyncio.gather(
+        _get_dashboard_aggregates(bounds, months, user_id=user_id, banks=bank_filter),
+        _get_dashboard_recent(recent_limit, bounds, user_id=user_id, banks=bank_filter),
+        _get_active_banks(user_id=user_id),
     )
 
     return {
@@ -1303,4 +1384,5 @@ async def get_dashboard_overview(
         "highlights": aggregates["highlights"],
         "daily_spend": aggregates["daily_spend"],
         "category_spend": aggregates["category_spend"],
+        "active_banks": active_banks,
     }

@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Upload } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -9,9 +9,11 @@ import { Button } from "@/components/ui/button";
 import { CashFlowTiles } from "@/components/dashboard/CashFlowTiles";
 import { ChartSkeleton } from "@/components/dashboard/ChartSkeleton";
 import { OverviewLoading } from "@/components/dashboard/OverviewLoading";
+import { OverviewPortfolioControls } from "@/components/dashboard/OverviewPortfolioControls";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
 import {
+  currentMonthValue,
   dashboardOverviewQueryOptions,
   TREND_MONTHS,
 } from "@/lib/dashboardQuery";
@@ -40,16 +42,26 @@ const TILE_FILL = `${TILE} lg:h-full`;
 
 type TrendPoint = DashboardOverview["trend"]["points"][number];
 
-function ensureCurrentMonthPoint(points: TrendPoint[], months: number): TrendPoint[] {
+function ensureFocusMonthPoint(
+  points: TrendPoint[],
+  months: number,
+  monthLabel: string,
+): TrendPoint[] {
   if (points.length === 0) return points;
 
-  const currentMonthLabel = new Date().toLocaleString("en-US", { month: "short" });
+  const focusLabel = monthLabel.split(" ")[0] || monthLabel;
   const lastPoint = points[points.length - 1];
-  if (lastPoint?.month_label === currentMonthLabel) return points;
+  if (lastPoint?.month_label === focusLabel) return points;
 
-  const withCurrentMonth = [...points, { month_label: currentMonthLabel, spend: 0 }];
-  if (withCurrentMonth.length <= months) return withCurrentMonth;
-  return withCurrentMonth.slice(withCurrentMonth.length - months);
+  const withFocusMonth = [...points, { month_label: focusLabel, spend: 0 }];
+  if (withFocusMonth.length <= months) return withFocusMonth;
+  return withFocusMonth.slice(withFocusMonth.length - months);
+}
+
+function sameBankSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((item) => set.has(item));
 }
 
 function ActivityIcon({ label }: { label: string }) {
@@ -120,7 +132,31 @@ function QuickActionsBlock() {
 }
 
 export function OverviewPage() {
-  const { data, isPending, isError, error, refetch, isFetching } = useQuery(dashboardOverviewQueryOptions());
+  const [month, setMonth] = useState(currentMonthValue);
+  const [selectedBanks, setSelectedBanks] = useState<string[] | null>(null);
+
+  const { data, isPending, isError, error, refetch, isFetching } = useQuery(
+    dashboardOverviewQueryOptions({ month, banks: selectedBanks }),
+  );
+
+  const activeBanks = data?.active_banks ?? [];
+  const displaySelectedBanks = selectedBanks ?? activeBanks;
+
+  useEffect(() => {
+    if (!selectedBanks || activeBanks.length === 0) return;
+    const pruned = selectedBanks.filter((bank) => activeBanks.includes(bank));
+    if (pruned.length === 0 || sameBankSet(pruned, activeBanks)) {
+      setSelectedBanks(null);
+      return;
+    }
+    if (!sameBankSet(pruned, selectedBanks)) {
+      setSelectedBanks(pruned);
+    }
+  }, [activeBanks, selectedBanks]);
+
+  function handleSelectedBanksChange(banks: string[]) {
+    setSelectedBanks(activeBanks.length > 0 && sameBankSet(banks, activeBanks) ? null : banks);
+  }
 
   if (isError) {
     return (
@@ -132,7 +168,9 @@ export function OverviewPage() {
   }
 
   const showLoading = isPending && !data;
-  const trendPoints = data ? ensureCurrentMonthPoint(data.trend.points, TREND_MONTHS) : [];
+  const trendPoints = data
+    ? ensureFocusMonthPoint(data.trend.points, TREND_MONTHS, data.daily_spend.month_label)
+    : [];
 
   if (showLoading) {
     return <OverviewLoading />;
@@ -142,7 +180,16 @@ export function OverviewPage() {
     <div className="grid h-full min-h-0 grid-cols-1 gap-1.5 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_minmax(260px,300px)_minmax(280px,340px)] lg:grid-rows-1 lg:overflow-hidden">
       <div className="grid min-h-0 gap-1.5 lg:grid-rows-2 lg:overflow-hidden lg:h-full">
         <article className={TILE_FILL}>
-          <p className={`${SECTION_LABEL} shrink-0`}>Net Portfolio Balance</p>
+          <div className="flex shrink-0 items-start justify-between gap-2">
+            <p className={SECTION_LABEL}>Net Portfolio Balance</p>
+            <OverviewPortfolioControls
+              month={month}
+              onMonthChange={setMonth}
+              activeBanks={activeBanks}
+              selectedBanks={displaySelectedBanks}
+              onSelectedBanksChange={handleSelectedBanksChange}
+            />
+          </div>
           <div className="mt-1 flex shrink-0 flex-wrap items-center gap-2">
             {data && (
               <>

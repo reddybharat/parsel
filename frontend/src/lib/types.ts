@@ -26,6 +26,8 @@ export type DashboardOverview = {
   category_spend: {
     items: Array<{ category: string; spend: number }>;
   };
+  /** Banks that appear on this user's transactions. */
+  active_banks: string[];
 };
 
 export type Transaction = {

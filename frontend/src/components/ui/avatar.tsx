@@ -9,6 +9,7 @@ const Avatar = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AvatarPrimitive.Root
     ref={ref}
+    data-slot="avatar"
     className={cn("relative flex h-10 w-10 shrink-0 overflow-hidden rounded-none", className)}
     {...props}
   />
@@ -35,4 +36,27 @@ const AvatarFallback = React.forwardRef<
 ))
 AvatarFallback.displayName = AvatarPrimitive.Fallback.displayName
 
-export { Avatar, AvatarImage, AvatarFallback }
+function AvatarGroup({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="avatar-group"
+      className={cn("flex items-center -space-x-2", className)}
+      {...props}
+    />
+  )
+}
+
+function AvatarGroupCount({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="avatar-group-count"
+      className={cn(
+        "relative z-[1] flex size-8 shrink-0 items-center justify-center rounded-full bg-parsel-soft text-[10px] font-semibold text-parsel-secondary ring-2 ring-parsel-surface",
+        className,
+      )}
+      {...props}
+    />
+  )
+}
+
+export { Avatar, AvatarImage, AvatarFallback, AvatarGroup, AvatarGroupCount }
