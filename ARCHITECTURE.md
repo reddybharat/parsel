@@ -13,7 +13,8 @@ The API is stateless and directly calls feature services.
 - `backend/common/`: shared database, declarative base, and logging utilities.
 - `backend/auth/`: user model, register/login, JWT helpers, `get_current_user` dependency.
 - `backend/tracker/`: transactions, dashboard services, constants, schemas, routers (scoped by `user_id`).
-- `backend/chat/`: chat agent graph and chat API routes (thread + SQL scoped to user).
+- `backend/tracker/bank_import/`: bank statement parsers (SBI Excel/PDF, Kotak PDF, Slice PDF) used by transaction import preview.
+- `backend/chat/`: chat agent graph and chat API routes (thread + SQL scoped to user); schema/prompt include `bank`.
 - `backend/tests/`: backend tests.
 
 ## Database access
@@ -30,10 +31,10 @@ Pools use `pool_recycle` instead of `pool_pre_ping`. Prefer the read-only sessio
 - `frontend/src/App.tsx`: auth routes, protected shell, and navigation.
 - `frontend/src/lib/auth.tsx`: AuthProvider and token session helpers.
 - `frontend/src/pages/AuthPage.tsx`: login and register.
-- `frontend/src/pages/OverviewPage.tsx`: dashboard view.
-- `frontend/src/pages/SearchPage.tsx`: searchable transaction ledger with edit/delete/export.
+- `frontend/src/pages/OverviewPage.tsx`: dashboard view with month and multi-bank filters.
+- `frontend/src/pages/SearchPage.tsx`: searchable transaction ledger with bank column/filter, edit/delete/export.
 - `frontend/src/components/data-table/`: reusable TanStack Table pieces (shell, sortable header, pagination, column visibility, filter select) driven in manual mode against server-side paging.
-- `frontend/src/pages/AddPage.tsx`: transaction create form and CSV import.
+- `frontend/src/pages/AddPage.tsx`: transaction create/import (CSV or bank statement) with review table; banks come from `/config/tracker`.
 - `frontend/src/pages/ChatPage.tsx`: chat UI with invoke/resume/exit flow.
 - `frontend/src/api/`: fetch wrappers for API calls (Bearer token attached in `client.ts`).
 
@@ -56,9 +57,9 @@ flowchart LR
   - `/auth/register`
   - `/auth/login`
 - Tracker (Bearer JWT required; data scoped to current user)
-  - `/config/tracker`
-  - `/transactions/*`
-  - `/dashboard/overview`
+  - `/config/tracker` — categories, payment methods, banks allowlist
+  - `/transactions/*` — CRUD, search, CSV export, import preview/commit (CSV + statements)
+  - `/dashboard/overview` — optional `banks=` filter; returns `active_banks`
 - Chat (Bearer JWT required; threads and SQL scoped to current user)
   - `/chat/invoke`
   - `/chat/resume`

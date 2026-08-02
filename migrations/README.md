@@ -9,6 +9,7 @@ Hand-applied SQL scripts (no migration runner). Run them against the same databa
 | [003_search_indexes.sql](003_search_indexes.sql) | Ledger search: user-scoped composite indexes, `pg_trgm` trigram indexes for free-text `q` |
 | [004_user_custom_categories.sql](004_user_custom_categories.sql) | Update `users.preferences` default to include `custom_categories` |
 | [005_non_spend_category_indexes.sql](005_non_spend_category_indexes.sql) | Exclude global non-spend categories from dashboard spend indexes |
+| [006_transaction_bank.sql](006_transaction_bank.sql) | Optional `transactions.bank` label (SBI / Kotak / Slice enforced in app) + `(user_id, bank, transaction_date)` index |
 
 ## Fresh database
 
@@ -18,6 +19,7 @@ psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/002_users_
 psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/003_search_indexes.sql
 psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/004_user_custom_categories.sql
 psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/005_non_spend_category_indexes.sql
+psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/006_transaction_bank.sql
 ```
 
 Then:
@@ -35,11 +37,25 @@ psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/002_users_
 
 Register a user, then run the commented **STEP B** block in `002` with your `users.id`.
 
+Apply later scripts (`003`–`006`) in order if they are not already applied.
+
 ## Search indexes (`003`)
 
 Apply anytime after `002` (indexes only; safe to re-run). `CREATE EXTENSION pg_trgm` needs superuser the first time; without it, free-text `q` still works via sequential scan. Commented `DROP`s at the end of `003` remove superseded pre-auth indexes — confirm with `EXPLAIN ANALYZE` first.
 
 Re-running `002` is safe: `CREATE TABLE IF NOT EXISTS` and `ADD COLUMN IF NOT EXISTS` add profile columns (`first_name`, `last_name`, `preferences`) when upgrading an older `users` table.
+
+## Transaction bank (`006`)
+
+Adds nullable `transactions.bank`. New creates and imports require a bank from the allowlist in `backend/tracker/constants.py` (`SBI`, `Kotak`, `Slice`). Existing rows may stay `NULL` until edited. Safe to re-run (`ADD COLUMN IF NOT EXISTS`).
+
+Optional check after applying:
+
+```sql
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name = 'transactions' AND column_name = 'bank';
+```
 
 ## Check
 

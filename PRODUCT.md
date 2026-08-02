@@ -12,23 +12,24 @@ Individuals in India tracking their own personal spending and cash flow in INR �
 
 ## Product Purpose
 
-Parsel is an INR-focused personal finance tracker. Users log and search transactions, view spending dashboards, import/export CSV, and ask natural-language questions over their own transaction data through a conversational assistant. Success means a trustworthy personal ledger they can operate quickly and query in plain language.
+Parsel is an INR-focused personal finance tracker. Users log and search transactions tagged by bank (SBI, Kotak, Slice), view spending dashboards, import CSV or bank statements, export CSV, and ask natural-language questions over their own transaction data through a conversational assistant. Success means a trustworthy personal ledger they can operate quickly and query in plain language.
 
 ## Positioning
 
-INR-first personal ledger with conversational Q&A over the user’s own transactions (read-only SQL via the chat assistant) — not a multi-currency wealth platform or a bank aggregator.
+INR-first personal ledger with conversational Q&A over the user’s own transactions (read-only SQL via the chat assistant) — not a multi-currency wealth platform or a bank aggregator. Banks are labels on transactions (statement file import), not linked accounts or live balances.
 
 ## Operating Context
 
-- Overview dashboard for monthly spend, category breakdowns, and recent activity
-- Searchable ledger to filter, sort, create, edit, delete, and export transactions
-- Bulk CSV import via template download and upload in the add-transaction flow
-- Chat assistant for read-only questions over transaction data
+- Overview dashboard for monthly spend, category breakdowns, and recent activity, with month and bank filters
+- Searchable ledger to filter, sort, create, edit, delete, and export transactions (including by bank)
+- Bulk import via CSV template or bank statements (SBI Excel/PDF, Kotak PDF, Slice PDF), with review before save
+- Chat assistant for read-only questions over transaction data (including bank-scoped totals)
 - Auth via register/login with JWT-scoped per-user data
 
 ## Capabilities and Constraints
 
 - All amounts are stored and displayed in Indian Rupees (₹)
+- Each transaction may carry a `bank` label from a fixed allowlist; new creates/imports require it
 - Multi-user: transactions and chat threads are scoped to the authenticated user
 - Chat assistant is read-only over transaction data (no write tools for money movement)
 - Stack: React (Vite) frontend, FastAPI backend, PostgreSQL
