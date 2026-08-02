@@ -61,6 +61,7 @@ CSV_FIELDS = [
     "is_debit",
     "description",
     "payment_method",
+    "bank",
 ]
 
 
@@ -348,6 +349,7 @@ async def export_transactions_csv(
             Transaction.is_debit,
             Transaction.description,
             Transaction.payment_method,
+            Transaction.bank,
         )
         .where(Transaction.user_id == user_id)
         .where(Transaction.transaction_date >= start_date)
@@ -380,6 +382,7 @@ async def export_transactions_csv(
                 "is_debit": str(bool(row.get("is_debit", True))).lower(),
                 "description": row.get("description") or "",
                 "payment_method": row.get("payment_method") or "",
+                "bank": row.get("bank") or "",
             }
         )
     return output.getvalue()
@@ -398,6 +401,7 @@ def transactions_csv_template() -> str:
             "is_debit": "true",
             "description": "Weekly groceries",
             "payment_method": "UPI",
+            "bank": "SBI",
         },
         {
             "transaction_date": "2026-03-02",
@@ -406,6 +410,7 @@ def transactions_csv_template() -> str:
             "is_debit": "true",
             "description": "Lunch",
             "payment_method": "Card",
+            "bank": "Kotak",
         },
         {
             "transaction_date": "2026-03-03",
@@ -414,6 +419,7 @@ def transactions_csv_template() -> str:
             "is_debit": "false",
             "description": "",
             "payment_method": "Cash",
+            "bank": "Slice",
         },
     ]
     for row in example_rows:
@@ -484,6 +490,12 @@ async def _parse_csv_rows_for_preview(
             if "payment_method" in header_map
             else ""
         )
+        raw_bank = (
+            (row.get(header_map["bank"]) or "").strip()
+            if "bank" in header_map
+            else ""
+        )
+        row_bank = raw_bank or (bank or "").strip()
 
         preview_row = _build_import_preview_row(
             source_row=idx,
@@ -493,7 +505,7 @@ async def _parse_csv_rows_for_preview(
             raw_is_debit=raw_is_debit if "is_debit" in header_map else "true",
             raw_description=raw_description,
             raw_payment_method=raw_payment_method,
-            bank=bank,
+            bank=row_bank,
             known=known,
             has_is_debit_column="is_debit" in header_map,
         )
@@ -654,6 +666,28 @@ def _build_import_preview_row(
         else:
             parsed_payment_method = raw_payment_method
 
+    parsed_bank = ""
+    if not (bank or "").strip():
+        issues.append(
+            ImportFieldIssue(
+                field="bank",
+                code="required",
+                message="Bank is required.",
+            )
+        )
+    else:
+        try:
+            parsed_bank = _normalize_bank(bank)
+        except ValueError:
+            issues.append(
+                ImportFieldIssue(
+                    field="bank",
+                    code="invalid_value",
+                    message=f"Invalid bank. Must be one of: {', '.join(BANKS)}",
+                )
+            )
+            parsed_bank = (bank or "").strip()
+
     category_is_new = False
     if normalized_category and not any(issue.field == "category" for issue in issues):
         category_is_new = category_key(normalized_category) not in known
@@ -673,12 +707,12 @@ def _build_import_preview_row(
     has_blocking = any(issue.code in blocking_codes for issue in issues)
     is_ready = not has_blocking and not category_is_new
 
-    if is_ready and parsed_date and parsed_amount is not None:
+    if is_ready and parsed_date and parsed_amount is not None and parsed_bank:
         try:
             TransactionCreate(
                 amount=parsed_amount,
                 category=normalized_category,
-                bank=bank,
+                bank=parsed_bank,
                 payment_method=parsed_payment_method,
                 transaction_date=parsed_date,
                 description=raw_description or None,
@@ -704,7 +738,7 @@ def _build_import_preview_row(
         category=raw_category,
         amount=raw_amount,
         is_debit=raw_is_debit if has_is_debit_column else (raw_is_debit or "true"),
-        bank=bank,
+        bank=parsed_bank or (bank or "").strip(),
         description=raw_description or None,
         payment_method=raw_payment_method or None,
         issues=issues,
@@ -886,6 +920,12 @@ async def _parse_csv_transaction_rows(
                 if "payment_method" in header_map
                 else ""
             )
+            raw_bank = (
+                (row.get(header_map["bank"]) or "").strip()
+                if "bank" in header_map
+                else ""
+            )
+            row_bank = raw_bank or (bank or "").strip()
 
             if not raw_date or not raw_category or not raw_amount:
                 raise ValueError(
@@ -909,7 +949,7 @@ async def _parse_csv_transaction_rows(
             tx = TransactionCreate(
                 amount=parsed_amount,
                 category=raw_category,
-                bank=bank,
+                bank=row_bank,
                 payment_method=pm,
                 transaction_date=parsed_date,
                 description=raw_description,
@@ -1199,7 +1239,8 @@ async def import_transactions_from_csv(
 
     Expected columns (case-insensitive):
     transaction_date (YYYY-MM-DD), category, amount, is_debit (optional but recommended),
-    description (optional), payment_method (optional; omitted or empty leaves it unset).
+    description (optional), payment_method (optional; omitted or empty leaves it unset),
+    bank (optional; when present and non-blank, overrides the form-selected bank for that row).
     Returns (inserted_count, errors, created_categories).
     """
     try:

@@ -822,3 +822,125 @@ async def test_reviewed_import_skips_duplicates_unless_forced():
     rows = session.execute.await_args.args[1]
     assert len(rows) == 2
     assert {row["description"] for row in rows} == {"Weekly groceries", "Other"}
+
+
+def test_csv_template_includes_bank_column():
+    from tracker.services import CSV_FIELDS, transactions_csv_template
+
+    assert "bank" in CSV_FIELDS
+    csv_text = transactions_csv_template()
+    header = csv_text.splitlines()[0]
+    assert header.split(",") == CSV_FIELDS
+    assert "SBI" in csv_text
+    assert "Kotak" in csv_text
+    assert "Slice" in csv_text
+
+
+async def test_export_transactions_csv_includes_bank():
+    from tracker.services import export_transactions_csv
+
+    mapping_rows = [
+        {
+            "transaction_date": date(2026, 3, 1),
+            "category": "Grocery",
+            "amount": 100,
+            "is_debit": True,
+            "description": "Milk",
+            "payment_method": "UPI",
+            "bank": "Kotak",
+        },
+        {
+            "transaction_date": date(2026, 3, 2),
+            "category": "Dining",
+            "amount": 50,
+            "is_debit": True,
+            "description": "Lunch",
+            "payment_method": "Card",
+            "bank": None,
+        },
+    ]
+
+    class _Result:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return mapping_rows
+
+    with patch("tracker.services.get_readonly_connection") as mock_conn:
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=_Result())
+        mock_conn.return_value.__aenter__.return_value = session
+        csv_text = await export_transactions_csv(
+            date(2026, 3, 1),
+            date(2026, 3, 31),
+            category=None,
+            user_id=ALICE_ID,
+        )
+
+    lines = csv_text.strip().splitlines()
+    assert lines[0].endswith(",bank")
+    assert "Kotak" in lines[1]
+    assert lines[2].endswith(",")  # null bank exports as empty
+
+
+async def test_preview_uses_per_row_csv_bank_over_form_bank():
+    csv_bytes = (
+        b"transaction_date,category,amount,is_debit,bank\n"
+        b"2026-03-01,Grocery,100,true,Kotak\n"
+        b"2026-03-02,Grocery,50,true,\n"
+        b"2026-03-03,Grocery,25,true,NotABank\n"
+    )
+    with patch(
+        "tracker.services.known_category_map",
+        new=AsyncMock(return_value={"grocery": "Grocery"}),
+    ), patch(
+        "tracker.services.list_missing_category_names",
+        new=AsyncMock(return_value=[]),
+    ):
+        preview = await preview_transactions_import(
+            csv_bytes,
+            user_id=ALICE_ID,
+            bank="SBI",
+        )
+
+    assert preview.rows[0].bank == "Kotak"
+    assert preview.rows[0].is_ready is True
+    assert preview.rows[1].bank == "SBI"
+    assert preview.rows[1].is_ready is True
+    assert preview.rows[2].bank == "NotABank"
+    assert preview.rows[2].is_ready is False
+    assert any(
+        issue.field == "bank" and issue.code == "invalid_value"
+        for issue in preview.rows[2].issues
+    )
+
+
+async def test_legacy_csv_import_uses_per_row_bank():
+    from tracker.services import import_transactions_from_csv
+
+    csv_bytes = (
+        b"transaction_date,category,amount,is_debit,bank\n"
+        b"2026-03-01,Grocery,100,true,Kotak\n"
+        b"2026-03-02,Grocery,50,true,\n"
+    )
+
+    with patch(
+        "tracker.services.resolve_category_name",
+        new=AsyncMock(return_value="Grocery"),
+    ), patch("tracker.services.get_connection") as mock_conn:
+        session = AsyncMock()
+        mock_conn.return_value.__aenter__.return_value = session
+        inserted, errors, created = await import_transactions_from_csv(
+            csv_bytes,
+            user_id=ALICE_ID,
+            bank="SBI",
+            create_missing_categories=False,
+        )
+
+    assert errors == []
+    assert inserted == 2
+    assert created == []
+    session.execute.assert_awaited_once()
+    rows = session.execute.await_args.args[1]
+    assert [row["bank"] for row in rows] == ["Kotak", "SBI"]
