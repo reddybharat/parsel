@@ -132,13 +132,16 @@ export function ImportReviewTable({
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-col gap-0.5 text-xs text-parsel-muted">
           <span>
-            {rows.length} row{rows.length === 1 ? "" : "s"} · {readyCount} ready · {attentionCount}{" "}
-            need attention · {selectedRows.length} selected
-            {importedCount > 0 ? ` · ${importedCount} imported` : ""}
+            {attentionCount > 0
+              ? `${attentionCount} need a category or fix · ${readyCount} ready · ${selectedRows.length} selected`
+              : `${readyCount} ready · ${selectedRows.length} selected`}
+            {importedCount > 0 ? ` · ${importedCount} already imported` : ""}
           </span>
-          <span className="truncate">
-            New categories to create: {approvedCategories.join(", ") || "none"}
-          </span>
+          {approvedCategories.length > 0 ? (
+            <span className="truncate">
+              Will create categories: {approvedCategories.join(", ")}
+            </span>
+          ) : null}
         </div>
         <Button
           type="button"

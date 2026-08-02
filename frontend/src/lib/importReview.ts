@@ -12,6 +12,7 @@ export function isRowSelectable(row: EditableImportRow): boolean {
 }
 
 const PAYMENT_METHODS = ["Cash", "UPI", "Bank transfer", "Card", "Wallet", "NEFT", "Other"];
+const BANKS = ["SBI", "Kotak", "Slice"];
 
 function normalizeCategory(raw: string): string {
   return raw.trim().replace(/\s+/g, " ");
@@ -60,13 +61,17 @@ export function toEditableRow(row: ImportPreviewRow): EditableImportRow {
  * must be unique among the rows currently on screen. Callers should pass the result
  * through `recomputeRow` to populate validation issues.
  */
-export function createManualRow(sourceRow: number, transactionDate = todayIso()): EditableImportRow {
+export function createManualRow(
+  sourceRow: number,
+  options?: { transactionDate?: string; bank?: string },
+): EditableImportRow {
   return {
     source_row: sourceRow,
-    transaction_date: transactionDate,
+    transaction_date: options?.transactionDate ?? todayIso(),
     category: "",
     amount: "",
     is_debit: "",
+    bank: options?.bank ?? "",
     description: null,
     payment_method: null,
     issues: [],
@@ -161,6 +166,16 @@ export function validateImportRow(
     });
   }
 
+  if (!row.bank?.trim()) {
+    issues.push({ field: "bank", code: "required", message: "Required" });
+  } else if (!BANKS.includes(row.bank.trim())) {
+    issues.push({
+      field: "bank",
+      code: "invalid_value",
+      message: "Pick a bank",
+    });
+  }
+
   if (row.payment_method?.trim()) {
     if (!PAYMENT_METHODS.includes(row.payment_method.trim())) {
       issues.push({
@@ -209,6 +224,7 @@ export function toReviewedPayload(row: EditableImportRow): {
   amount: number;
   is_debit: boolean;
   category: string;
+  bank: string;
   payment_method: string | null;
   transaction_date: string;
   description: string | null;
@@ -216,8 +232,17 @@ export function toReviewedPayload(row: EditableImportRow): {
   const amount = parseAmount(row.amount);
   const isDebit = parseIsDebit(row.is_debit);
   const normalizedCategory = normalizeCategory(row.category);
+  const bank = row.bank?.trim() || "";
   const dateCheck = parseDate(row.transaction_date);
-  if (!row.is_ready || amount === null || isDebit === null || !normalizedCategory || !dateCheck.valid) {
+  if (
+    !row.is_ready ||
+    amount === null ||
+    isDebit === null ||
+    !normalizedCategory ||
+    !bank ||
+    !BANKS.includes(bank) ||
+    !dateCheck.valid
+  ) {
     return null;
   }
 
@@ -231,6 +256,7 @@ export function toReviewedPayload(row: EditableImportRow): {
     amount,
     is_debit: isDebit,
     category: normalizedCategory,
+    bank,
     payment_method: row.payment_method?.trim() || null,
     transaction_date: isoDate,
     description: row.description?.trim() || null,

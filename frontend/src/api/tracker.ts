@@ -1,15 +1,22 @@
 import { deleteJson, getBlob, getJson, patchJson, postJson, postMultipart } from "./client";
 import type { Category, SearchResult, TrackerConfig, Transaction } from "../lib/types";
 
-export type SortColumn = "transaction_date" | "amount" | "category" | "payment_method" | "description";
+export type SortColumn =
+  | "transaction_date"
+  | "amount"
+  | "category"
+  | "payment_method"
+  | "bank"
+  | "description";
 
 export type SearchParams = {
   start_date: string;
   end_date: string;
-  /** Free-text contains-match over description, category and payment method. */
+  /** Free-text contains-match over description, category, payment method, and bank. */
   q?: string;
   category?: string;
   payment_method?: string;
+  bank?: string;
   is_debit?: boolean;
   sort_column: SortColumn;
   sort_desc: boolean;
@@ -29,6 +36,7 @@ export type ImportPreviewRow = {
   category: string;
   amount: string;
   is_debit: string;
+  bank: string;
   description: string | null;
   payment_method: string | null;
   issues: ImportFieldIssue[];
@@ -49,6 +57,7 @@ export type ReviewedImportRow = {
   amount: number;
   is_debit: boolean;
   category: string;
+  bank: string;
   payment_method: string | null;
   transaction_date: string;
   description: string | null;
@@ -99,14 +108,22 @@ export function exportTransactions(params: {
   q?: string;
   category?: string;
   payment_method?: string;
+  bank?: string;
   is_debit?: boolean;
 }) {
   return getBlob("/transactions/export", params);
 }
 
-export function previewImportTransactions(file: File) {
+export function previewImportTransactions(
+  file: File,
+  options: { bank: string; password?: string },
+) {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("bank", options.bank);
+  if (options.password?.trim()) {
+    formData.append("password", options.password.trim());
+  }
   return postMultipart<ImportPreviewResult>("/transactions/import/preview", formData);
 }
 
@@ -117,10 +134,14 @@ export function importReviewedTransactions(payload: {
   return postJson<ImportResult>("/transactions/import/reviewed", payload);
 }
 
-export function importTransactions(file: File, options?: { createMissingCategories?: boolean }) {
+export function importTransactions(
+  file: File,
+  options: { bank: string; createMissingCategories?: boolean },
+) {
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("create_missing_categories", options?.createMissingCategories ? "true" : "false");
+  formData.append("bank", options.bank);
+  formData.append("create_missing_categories", options.createMissingCategories ? "true" : "false");
   return postMultipart<ImportResult>("/transactions/import", formData);
 }
 

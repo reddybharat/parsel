@@ -30,17 +30,20 @@ export function AddTransactionDrawer({
   onOpenChange,
   categories,
   paymentMethods,
+  banks,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   categories: Category[];
   paymentMethods: string[];
+  banks: string[];
   onSaved?: () => void;
 }) {
   const [amount, setAmount] = useState(0);
   const [isDebit, setIsDebit] = useState(true);
   const [category, setCategory] = useState("");
+  const [bank, setBank] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [transactionDate, setTransactionDate] = useState(localDateIso());
   const [description, setDescription] = useState("");
@@ -51,6 +54,7 @@ export function AddTransactionDrawer({
     setAmount(0);
     setIsDebit(true);
     setCategory("");
+    setBank("");
     setPaymentMethod("");
     setTransactionDate(localDateIso());
     setDescription("");
@@ -71,6 +75,7 @@ export function AddTransactionDrawer({
         amount,
         is_debit: isDebit,
         category,
+        bank,
         payment_method: paymentMethod || null,
         transaction_date: transactionDate,
         description: description.trim() || null,
@@ -158,6 +163,24 @@ export function AddTransactionDrawer({
                   onChange={setTransactionDate}
                   placeholder="Select date"
                 />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="drawer-bank" className={fieldLabelClass}>
+                  Bank
+                </FieldLabel>
+                <NativeSelect
+                  id="drawer-bank"
+                  value={bank}
+                  onChange={(e) => setBank(e.target.value)}
+                  required
+                >
+                  <NativeSelectOption value="">Select bank</NativeSelectOption>
+                  {banks.map((item) => (
+                    <NativeSelectOption key={item} value={item}>
+                      {item}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
               </Field>
               <Field>
                 <FieldLabel htmlFor="drawer-payment" className={fieldLabelClass}>

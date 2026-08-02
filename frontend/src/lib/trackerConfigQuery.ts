@@ -6,6 +6,7 @@ import type { Category, TrackerConfig } from "@/lib/types";
 export type CachedTrackerConfig = {
   categories: Category[];
   payment_methods: string[];
+  banks: string[];
 };
 
 export const trackerConfigQueryKey = ["tracker", "config"] as const;
@@ -18,6 +19,7 @@ export function trackerConfigQueryOptions() {
       return {
         categories: normalizeCategories(config.categories),
         payment_methods: config.payment_methods,
+        banks: config.banks ?? [],
       };
     },
     // Config rarely changes; refresh only on explicit invalidation (create/rename/import).
@@ -37,7 +39,7 @@ export function invalidateTrackerConfig() {
 export function setTrackerConfigCategories(categories: Category[]) {
   queryClient.setQueryData<CachedTrackerConfig>(trackerConfigQueryKey, (current) => {
     if (!current) {
-      return { categories, payment_methods: [] };
+      return { categories, payment_methods: [], banks: [] };
     }
     return { ...current, categories };
   });
@@ -47,6 +49,7 @@ export function applyTrackerConfig(config: TrackerConfig) {
   const next: CachedTrackerConfig = {
     categories: normalizeCategories(config.categories),
     payment_methods: config.payment_methods,
+    banks: config.banks ?? [],
   };
   queryClient.setQueryData(trackerConfigQueryKey, next);
   return next;

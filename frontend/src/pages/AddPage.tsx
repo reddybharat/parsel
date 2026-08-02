@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Download, FileSearch, Loader2, Plus, Upload } from "lucide-react";
+import { CheckCircle2, Download, Loader2, Plus, Upload } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { EmptyState } from "../components/feedback/EmptyState";
@@ -14,6 +14,8 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { cn } from "@/lib/utils";
 import { invalidateDashboardOverview } from "@/lib/dashboardQuery";
@@ -56,12 +58,14 @@ export function AddPage() {
   } = useQuery(trackerConfigQueryOptions());
   const categories = trackerConfig?.categories ?? [];
   const paymentMethods = trackerConfig?.payment_methods ?? [];
+  const banks = trackerConfig?.banks ?? [];
   const [bulkFeedback, setBulkFeedback] = useState<FeedbackMessage | null>(null);
-  const [importErrors, setImportErrors] = useState<string | null>(null);
   const [bulkStep, setBulkStep] = useState<BulkStep>("idle");
   const [reviewRows, setReviewRows] = useState<EditableImportRow[]>([]);
-  const [previewFileErrors, setPreviewFileErrors] = useState<string[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [importBank, setImportBank] = useState("");
+  const [filePassword, setFilePassword] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Lets the stable row callbacks below read the latest rows without re-creating themselves.
@@ -71,31 +75,71 @@ export function AddPage() {
   const resetBulkPreview = useCallback(() => {
     setBulkStep("idle");
     setReviewRows([]);
-    setPreviewFileErrors([]);
     setFileName(null);
+    setPendingFile(null);
     // Allow re-selecting the same file after a reset.
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
 
   function onFileSelected(next: File | null) {
     setBulkFeedback(null);
-    setImportErrors(null);
     if (!next) {
-      resetBulkPreview();
+      setPendingFile(null);
+      setFileName(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
+    if (!importBank) {
+      setBulkFeedback({
+        variant: "error",
+        title: "Bank required",
+        description: "Select a bank before uploading a file.",
+      });
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    setPendingFile(next);
     setFileName(next.name);
-    void onPreviewImport(next);
+  }
+
+  function onStartFileImport() {
+    if (!pendingFile) {
+      setBulkFeedback({
+        variant: "error",
+        title: "No file selected",
+        description: "Choose a CSV or Excel file first.",
+      });
+      return;
+    }
+    if (!importBank) {
+      setBulkFeedback({
+        variant: "error",
+        title: "Bank required",
+        description: "Select a bank before importing.",
+      });
+      return;
+    }
+    void onPreviewImport(pendingFile);
   }
 
   function onAddManualRow() {
     setBulkFeedback(null);
-    setImportErrors(null);
+    if (!importBank) {
+      setBulkFeedback({
+        variant: "error",
+        title: "Bank required",
+        description: "Select a bank before adding transactions.",
+      });
+      return;
+    }
     setReviewRows((current) => {
       // Continue the numbering already on screen so typed rows read 1, 2, 3… on their own,
       // and pick up after the last CSV line when mixed with an uploaded file.
       const nextRow = current.reduce((max, row) => Math.max(max, row.source_row), 0) + 1;
-      return [...current, recomputeRow(createManualRow(nextRow), categories)];
+      return [
+        ...current,
+        recomputeRow(createManualRow(nextRow, { bank: importBank }), categories),
+      ];
     });
     setBulkStep((step) => (step === "importing" ? step : "preview"));
   }
@@ -129,25 +173,32 @@ export function AddPage() {
 
   async function onPreviewImport(selectedFile: File) {
     setBulkFeedback(null);
-    setImportErrors(null);
     setBulkStep("reading");
     try {
-      const result = await previewImportTransactions(selectedFile);
-      const editable = result.rows.map(toEditableRow).map((row) => recomputeRow(row, categories));
-      setReviewRows(editable);
-      setPreviewFileErrors(result.file_errors);
-      setBulkStep("preview");
+      const result = await previewImportTransactions(selectedFile, {
+        bank: importBank,
+        password: filePassword,
+      });
       if (result.file_errors.length) {
+        setReviewRows([]);
+        setBulkStep("idle");
         setBulkFeedback({
           variant: "error",
           title: "Could not read file",
           description: result.file_errors.join("\n"),
         });
-      } else if (editable.length === 0) {
+        // Keep the file name visible; clear the input so the same file can be re-chosen after password.
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+      const editable = result.rows.map(toEditableRow).map((row) => recomputeRow(row, categories));
+      setReviewRows(editable);
+      setBulkStep("preview");
+      if (editable.length === 0) {
         setBulkFeedback({
           variant: "error",
           title: "Nothing to import",
-          description: "The CSV has no data rows.",
+          description: "The file has no data rows.",
         });
       }
     } catch (err) {
@@ -155,14 +206,13 @@ export function AddPage() {
       setBulkFeedback({
         variant: "error",
         title: "Could not read file",
-        description: err instanceof Error ? err.message : "CSV preview failed.",
+        description: err instanceof Error ? err.message : "File preview failed.",
       });
     }
   }
 
   async function onConfirmImport(selected: EditableImportRow[]) {
     setBulkFeedback(null);
-    setImportErrors(null);
     setBulkStep("importing");
     try {
       const payloads = selected.map(toReviewedPayload).filter((row) => row !== null);
@@ -176,7 +226,6 @@ export function AddPage() {
       });
       if (result.errors.length) {
         setBulkStep("preview");
-        setImportErrors(result.errors.join("\n"));
         setBulkFeedback({
           variant: "error",
           title: "Import failed",
@@ -256,154 +305,207 @@ export function AddPage() {
           )}
         >
           <div className="border-b border-parsel-border px-6 py-4">
-            <h1 className="text-sm font-semibold uppercase tracking-wide text-parsel-neutral">Add Transactions</h1>
+            <h1 className="text-sm font-semibold uppercase tracking-wide text-parsel-neutral">
+              Add transactions
+            </h1>
             <p className="mt-1 text-xs text-parsel-muted">
-              Type transactions one at a time or upload a CSV, review them together, then import in one go.
+              {reviewActive
+                ? "Nothing is saved until you import. Fill categories, fix red fields, then import selected rows."
+                : "Choose a bank, then type rows or upload a file — you always review before saving."}
             </p>
           </div>
           <section className={cn("p-6 md:p-8", reviewActive && "flex min-h-0 flex-1 flex-col")}>
             <FieldGroup className={cn(reviewActive && "min-h-0 flex-1 gap-4")}>
               {reviewActive ? null : (
                 <>
-                <Field>
-                  <FieldLabel className={fieldLabelClass}>Enter manually</FieldLabel>
-                  <FieldDescription>
-                    Add a blank row and type the details. Add as many as you need before importing.
-                  </FieldDescription>
-                  <div>
-                    <Button
-                      type="button"
-                      className="w-fit gap-1.5"
-                      onClick={onAddManualRow}
-                      disabled={busyBulk}
-                    >
-                      <Plus className="size-4" aria-hidden />
-                      Add transaction
-                    </Button>
-                  </div>
-                </Field>
-
-                <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-parsel-muted">
-                  <span className="h-px flex-1 bg-parsel-border" />
-                  or
-                  <span className="h-px flex-1 bg-parsel-border" />
-                </div>
-
-                <Field>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <FieldLabel htmlFor="bulk-csv" className={fieldLabelClass}>
-                      CSV File
+                  <Field>
+                    <FieldLabel htmlFor="import-bank" className={fieldLabelClass}>
+                      1 · Bank
                     </FieldLabel>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 gap-1.5 px-2 text-xs font-semibold uppercase tracking-wide text-parsel-primary hover:bg-parsel-soft"
-                      onClick={() => void onDownloadTemplate()}
+                    <FieldDescription>
+                      Required. Tags every row you add or upload.
+                    </FieldDescription>
+                    <NativeSelect
+                      id="import-bank"
+                      value={importBank}
+                      onChange={(e) => {
+                        setImportBank(e.target.value);
+                        setBulkFeedback(null);
+                      }}
                       disabled={busyBulk}
+                      required
+                      className="max-w-xs"
                     >
-                      <Download className="size-3.5" aria-hidden />
-                      Download template
-                    </Button>
-                  </div>
-                  <FieldDescription>
-                    Rows are parsed on upload so you can review and fix them before importing.
-                  </FieldDescription>
-                  <input
-                    id="bulk-csv"
-                    ref={fileInputRef}
-                    className="peer sr-only"
-                    type="file"
-                    accept=".csv"
-                    disabled={busyBulk}
-                    onChange={(e) => onFileSelected(e.target.files?.[0] || null)}
-                  />
-                  <label
-                    htmlFor="bulk-csv"
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      if (!busyBulk) setDragActive(true);
-                    }}
-                    onDragLeave={() => setDragActive(false)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setDragActive(false);
-                      if (busyBulk) return;
-                      onFileSelected(e.dataTransfer.files?.[0] || null);
-                    }}
+                      <NativeSelectOption value="">Select bank</NativeSelectOption>
+                      {banks.map((item) => (
+                        <NativeSelectOption key={item} value={item}>
+                          {item}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                  </Field>
+
+                  <div
                     className={cn(
-                      "flex flex-wrap items-center gap-3 border border-dashed border-parsel-border bg-parsel-soft/40 p-4 transition-colors",
-                      "peer-focus-visible:ring-2 peer-focus-visible:ring-parsel-primary peer-focus-visible:ring-offset-2",
-                      busyBulk
-                        ? "cursor-not-allowed opacity-60"
-                        : "cursor-pointer hover:border-parsel-primary hover:bg-parsel-soft",
-                      dragActive && "border-parsel-primary bg-parsel-soft",
+                      "flex flex-col gap-5 border border-parsel-border p-4",
+                      !importBank && "opacity-60",
                     )}
                   >
-                    <span className="inline-flex h-9 shrink-0 items-center gap-2 bg-parsel-primary px-3 text-xs font-semibold uppercase tracking-wide text-white">
-                      <Upload className="size-3.5" aria-hidden />
-                      Choose CSV
-                    </span>
-                    <span className="min-w-0 truncate text-xs text-parsel-muted">
-                      {fileName ?? "or drop a .csv file here"}
-                    </span>
-                  </label>
-                </Field>
+                    <div className="min-w-0">
+                      <p className={fieldLabelClass}>2 · Add rows</p>
+                      <p className="mt-1 text-xs text-parsel-muted">
+                        {importBank
+                          ? "Pick one path — type manually, or upload a file."
+                          : "Select a bank above to continue."}
+                      </p>
+                    </div>
+
+                    <Field>
+                      <FieldLabel className={fieldLabelClass}>Type manually</FieldLabel>
+                      <FieldDescription>
+                        Opens a blank row in the review table. Add as many as you need.
+                      </FieldDescription>
+                      <div>
+                        <Button
+                          type="button"
+                          className="w-fit gap-1.5"
+                          onClick={onAddManualRow}
+                          disabled={busyBulk || !importBank}
+                        >
+                          <Plus className="size-4" aria-hidden />
+                          Add blank row
+                        </Button>
+                      </div>
+                    </Field>
+
+                    <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-parsel-muted">
+                      <span className="h-px flex-1 bg-parsel-border" />
+                      or upload a file
+                      <span className="h-px flex-1 bg-parsel-border" />
+                    </div>
+
+                    <Field>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <FieldLabel htmlFor="bulk-csv" className={fieldLabelClass}>
+                          CSV or Excel
+                        </FieldLabel>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1.5 px-2 text-xs font-semibold uppercase tracking-wide text-parsel-primary hover:bg-parsel-soft"
+                          onClick={() => void onDownloadTemplate()}
+                          disabled={busyBulk}
+                        >
+                          <Download className="size-3.5" aria-hidden />
+                          Download CSV Template
+                        </Button>
+                      </div>
+
+                      <div className="mb-3 max-w-xs">
+                        <label
+                          htmlFor="file-password"
+                          className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-parsel-muted"
+                        >
+                          File password (if locked)
+                        </label>
+                        <Input
+                          id="file-password"
+                          type="password"
+                          autoComplete="off"
+                          value={filePassword}
+                          onChange={(e) => setFilePassword(e.target.value)}
+                          disabled={busyBulk || !importBank}
+                          placeholder="Optional"
+                        />
+                      </div>
+
+                      <input
+                        id="bulk-csv"
+                        ref={fileInputRef}
+                        className="peer sr-only"
+                        type="file"
+                        accept=".csv,.xlsx"
+                        disabled={busyBulk || !importBank}
+                        onChange={(e) => onFileSelected(e.target.files?.[0] || null)}
+                      />
+                      <label
+                        htmlFor="bulk-csv"
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (!busyBulk && importBank) setDragActive(true);
+                        }}
+                        onDragLeave={() => setDragActive(false)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setDragActive(false);
+                          if (busyBulk || !importBank) return;
+                          onFileSelected(e.dataTransfer.files?.[0] || null);
+                        }}
+                        className={cn(
+                          "flex flex-wrap items-center gap-3 border border-dashed border-parsel-border bg-parsel-soft/40 p-4 transition-colors",
+                          "peer-focus-visible:ring-2 peer-focus-visible:ring-parsel-primary peer-focus-visible:ring-offset-2",
+                          busyBulk || !importBank
+                            ? "cursor-not-allowed opacity-60"
+                            : "cursor-pointer hover:border-parsel-primary hover:bg-parsel-soft",
+                          dragActive && "border-parsel-primary bg-parsel-soft",
+                        )}
+                      >
+                        <span className="inline-flex h-9 shrink-0 items-center gap-2 bg-parsel-primary px-3 text-xs font-semibold uppercase tracking-wide text-white">
+                          <Upload className="size-3.5" aria-hidden />
+                          Choose file
+                        </span>
+                        <span className="min-w-0 truncate text-xs text-parsel-muted">
+                          {fileName ?? "Drop .csv or .xlsx here"}
+                        </span>
+                      </label>
+                      <div className="mt-3">
+                        <Button
+                          type="button"
+                          className="w-fit gap-1.5"
+                          onClick={onStartFileImport}
+                          disabled={busyBulk || !importBank || !pendingFile}
+                        >
+                          <Upload className="size-4" aria-hidden />
+                          Import
+                        </Button>
+                      </div>
+                    </Field>
+                  </div>
                 </>
               )}
 
-              {bulkStep !== "idle" && (fileName !== null || bulkStep === "importing" || bulkStep === "done") ? (
+              {bulkStep === "reading" ? (
                 <div className="flex shrink-0 flex-col gap-3 border border-parsel-border bg-parsel-soft/40 p-4">
                   <InlineProgress
-                    label={BULK_PROGRESS[bulkStep].label}
-                    value={BULK_PROGRESS[bulkStep].value}
+                    label={BULK_PROGRESS.reading.label}
+                    value={BULK_PROGRESS.reading.value}
                   />
-                  <div className="flex flex-col gap-2">
-                    <Marker role="status" aria-live="polite">
-                      <MarkerIcon>
-                        {bulkStep === "reading" ? (
-                          <Loader2 className="size-4 animate-spin text-parsel-primary" />
-                        ) : (
-                          <FileSearch className="size-4 text-parsel-primary" />
-                        )}
-                      </MarkerIcon>
-                      <MarkerContent>
-                        {bulkStep === "reading"
-                          ? "Reading file…"
-                          : `${fileName ? "Read file — " : ""}${reviewRows.length} row${reviewRows.length === 1 ? "" : "s"} · ${readyCount} ready`}
-                      </MarkerContent>
-                    </Marker>
-                    {(bulkStep === "importing" || bulkStep === "done") && (
-                      <Marker role="status" aria-live="polite">
-                        <MarkerIcon>
-                          {bulkStep === "importing" ? (
-                            <Loader2 className="size-4 animate-spin text-parsel-primary" />
-                          ) : (
-                            <CheckCircle2 className="size-4 text-parsel-inflow" />
-                          )}
-                        </MarkerIcon>
-                        <MarkerContent>
-                          {bulkStep === "importing" ? "Importing transactions…" : "Import finished"}
-                        </MarkerContent>
-                      </Marker>
-                    )}
-                  </div>
+                  <Marker role="status" aria-live="polite">
+                    <MarkerIcon>
+                      <Loader2 className="size-4 animate-spin text-parsel-primary" />
+                    </MarkerIcon>
+                    <MarkerContent>
+                      Reading {fileName ?? "file"}…
+                    </MarkerContent>
+                  </Marker>
                 </div>
               ) : null}
 
               {reviewActive ? (
-                <div className="flex min-h-0 flex-1 flex-col gap-2 border border-parsel-border p-4">
+                <div className="flex min-h-0 flex-1 flex-col gap-3 border border-parsel-border p-4">
                   <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-parsel-neutral">
-                        Review before import
+                        Review · {importBank || "Bank"}
                         {fileName ? (
                           <span className="ml-2 font-normal text-parsel-muted">{fileName}</span>
                         ) : null}
                       </p>
-                      <p className="mt-1 text-sm text-parsel-muted">
-                        Fix flagged fields inline, verify categories, then import selected rows into your ledger.
-                        Imported rows stay listed here and are locked.
+                      <p className="mt-1 text-xs text-parsel-muted">
+                        {readyCount === 0
+                          ? "Set a category on each row (required). Red fields need a fix before you can import."
+                          : `${readyCount} row${readyCount === 1 ? "" : "s"} ready — select what to keep, then import.`}
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -425,11 +527,29 @@ export function AddPage() {
                       >
                         Start over
                       </Button>
-                      <Button asChild type="button" variant="outline">
-                        <Link to="/ledger/search">View ledger</Link>
-                      </Button>
+                      {(bulkStep === "importing" || bulkStep === "done") && (
+                        <Button asChild type="button" variant="outline">
+                          <Link to="/ledger/search">View ledger</Link>
+                        </Button>
+                      )}
                     </div>
                   </div>
+
+                  {(bulkStep === "importing" || bulkStep === "done") && (
+                    <Marker role="status" aria-live="polite">
+                      <MarkerIcon>
+                        {bulkStep === "importing" ? (
+                          <Loader2 className="size-4 animate-spin text-parsel-primary" />
+                        ) : (
+                          <CheckCircle2 className="size-4 text-parsel-inflow" />
+                        )}
+                      </MarkerIcon>
+                      <MarkerContent>
+                        {bulkStep === "importing" ? "Importing selected rows…" : "Import finished — imported rows are locked below."}
+                      </MarkerContent>
+                    </Marker>
+                  )}
+
                   <ImportReviewTable
                     rows={reviewRows}
                     categories={categories}
@@ -442,23 +562,7 @@ export function AddPage() {
                 </div>
               ) : null}
 
-              {previewFileErrors.length > 0 ? (
-                <StatusAlert
-                  variant="error"
-                  title="File errors"
-                  description={previewFileErrors.join("\n")}
-                />
-              ) : null}
-
               {bulkFeedback ? <StatusAlert {...bulkFeedback} onDismiss={() => setBulkFeedback(null)} /> : null}
-              {importErrors ? (
-                <StatusAlert
-                  variant="error"
-                  title="Import row errors"
-                  description={importErrors}
-                  onDismiss={() => setImportErrors(null)}
-                />
-              ) : null}
             </FieldGroup>
           </section>
         </div>

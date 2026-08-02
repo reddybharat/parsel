@@ -21,6 +21,7 @@ export function EditTransactionDialog({
   transaction,
   categories,
   paymentMethods,
+  banks,
   loading,
   onChange,
   onCategoriesChange,
@@ -31,6 +32,7 @@ export function EditTransactionDialog({
   transaction: Transaction | null;
   categories: Category[];
   paymentMethods: string[];
+  banks: string[];
   loading: boolean;
   onChange: (next: Transaction) => void;
   onCategoriesChange?: (next: Category[]) => void;
@@ -104,6 +106,22 @@ export function EditTransactionDialog({
               onChange={(value) => onChange({ ...transaction, transaction_date: value })}
               placeholder="Select date"
             />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="edit-bank">Bank</FieldLabel>
+            <NativeSelect
+              id="edit-bank"
+              value={transaction.bank || ""}
+              onChange={(e) => onChange({ ...transaction, bank: e.target.value || null })}
+              required
+            >
+              <NativeSelectOption value="">Select bank</NativeSelectOption>
+              {banks.map((item) => (
+                <NativeSelectOption key={item} value={item}>
+                  {item}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
           </Field>
           <Field>
             <FieldLabel htmlFor="edit-payment">Payment Method</FieldLabel>

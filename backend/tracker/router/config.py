@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 from auth.deps import get_current_user
 from auth.models import User
 from tracker.category_service import list_categories
-from tracker.constants import PAYMENT_METHODS
+from tracker.constants import BANKS, PAYMENT_METHODS
 from tracker.schemas import CategoryResponse
 
 router = APIRouter(prefix="/config", tags=["config"])
@@ -18,4 +18,5 @@ async def tracker_config(current_user: User = Depends(get_current_user)) -> dict
             for row in rows
         ],
         "payment_methods": PAYMENT_METHODS,
+        "banks": BANKS,
     }

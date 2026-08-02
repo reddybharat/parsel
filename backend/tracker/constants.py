@@ -13,6 +13,15 @@ PAYMENT_METHODS = [
     "Other",
 ]
 
+# Bank / account source (exact values stored in DB)
+BANKS = [
+    "SBI",
+    "Kotak",
+    "Slice",
+]
+# Only bank with Excel (.xlsx) statement import today.
+BANK_SBI = "SBI"
+
 # Used in spend aggregates (trend, monthly spend); not treated as consumption.
 INVESTMENTS_CATEGORY = "Investments"
 SELF_TRANSFER_CATEGORY = "Self Transfer"

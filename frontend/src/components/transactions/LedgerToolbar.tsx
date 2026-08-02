@@ -14,6 +14,7 @@ export type LedgerFilters = {
   query: string;
   category: string;
   paymentMethod: string;
+  bank: string;
   /** "" = any, "debit" = money out, "credit" = money in. */
   direction: "" | "debit" | "credit";
 };
@@ -31,6 +32,7 @@ export function LedgerToolbar({
   invalidRange,
   categories,
   paymentMethods,
+  banks,
   table,
   onExport,
   canExport,
@@ -44,6 +46,7 @@ export function LedgerToolbar({
   invalidRange: boolean;
   categories: Category[];
   paymentMethods: string[];
+  banks: string[];
   table: Table<Transaction>;
   onExport: () => void;
   canExport: boolean;
@@ -70,7 +73,7 @@ export function LedgerToolbar({
               onFiltersChange({ query: "" });
             }
           }}
-          placeholder="Search descriptions, categories, methods…"
+          placeholder="Search descriptions, categories, methods, banks…"
           aria-label="Search transactions"
           className="h-8 border-parsel-border pl-8 pr-8 text-xs"
         />
@@ -109,6 +112,15 @@ export function LedgerToolbar({
         allLabel="All methods"
         options={paymentMethods.map((item) => ({ value: item, label: item }))}
         disabled={paymentMethods.length === 0}
+      />
+
+      <DataTableFilterSelect
+        label="Bank"
+        value={filters.bank}
+        onChange={(value) => onFiltersChange({ bank: value })}
+        allLabel="All banks"
+        options={banks.map((item) => ({ value: item, label: item }))}
+        disabled={banks.length === 0}
       />
 
       <DataTableFilterSelect

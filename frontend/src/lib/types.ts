@@ -33,6 +33,7 @@ export type Transaction = {
   amount: number;
   is_debit: boolean;
   category: string;
+  bank: string | null;
   payment_method: string | null;
   transaction_date: string;
   description: string | null;
@@ -56,6 +57,7 @@ export type Category = {
 export type TrackerConfig = {
   categories: Category[];
   payment_methods: string[];
+  banks: string[];
 };
 
 export type ChatReply = {

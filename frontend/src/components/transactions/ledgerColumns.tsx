@@ -99,6 +99,16 @@ export function createLedgerColumns({
       },
     },
     {
+      accessorKey: "bank",
+      meta: { label: "Bank", width: "5.5rem", skeletonWidth: "50%" },
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Bank" />,
+      cell: ({ row }) => (
+        <span className="block truncate text-parsel-muted" title={row.original.bank ?? undefined}>
+          {row.original.bank || "—"}
+        </span>
+      ),
+    },
+    {
       accessorKey: "payment_method",
       meta: { label: "Method", width: "7rem", skeletonWidth: "60%" },
       header: ({ column }) => <DataTableColumnHeader column={column} title="Method" />,
