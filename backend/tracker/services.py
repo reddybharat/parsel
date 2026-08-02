@@ -7,6 +7,7 @@ import asyncio
 import csv
 import io
 import json
+import re
 from datetime import date, datetime
 from typing import Any, Optional
 import uuid
@@ -26,10 +27,15 @@ from tracker.category_service import (
 from tracker.bank_import import (
     BankStatementParseError,
     BankStatementPasswordError,
+    extract_kotak_pdf_rows,
+    extract_sbi_pdf_rows,
     extract_sbi_rows,
+    extract_slice_pdf_rows,
 )
 from tracker.constants import (
+    BANK_KOTAK,
     BANK_SBI,
+    BANK_SLICE,
     BANKS,
     INVESTMENTS_CATEGORY,
     PAYMENT_METHODS,
@@ -178,6 +184,148 @@ def _parse_amount(raw_amount: str) -> float:
     # Be forgiving about common formatting artifacts.
     s = s.replace(",", "").replace("₹", "")
     return float(s)
+
+
+def _normalize_duplicate_description(description: Optional[str]) -> str:
+    return re.sub(r"\s+", " ", (description or "").strip().lower())
+
+
+def _duplicate_key(
+    *,
+    bank: str,
+    transaction_date: date,
+    amount: float,
+    is_debit: bool,
+    description: Optional[str],
+) -> tuple:
+    return (
+        (bank or "").strip(),
+        transaction_date.isoformat(),
+        round(float(amount), 2),
+        bool(is_debit),
+        _normalize_duplicate_description(description),
+    )
+
+
+async def _load_existing_duplicate_keys(
+    *,
+    user_id: uuid.UUID,
+    start_date: date,
+    end_date: date,
+    banks: set[str],
+) -> set[tuple]:
+    if start_date > end_date:
+        return set()
+    stmt = (
+        select(
+            Transaction.bank,
+            Transaction.transaction_date,
+            Transaction.amount,
+            Transaction.is_debit,
+            Transaction.description,
+        )
+        .where(Transaction.user_id == user_id)
+        .where(Transaction.transaction_date >= start_date)
+        .where(Transaction.transaction_date <= end_date)
+    )
+    if banks:
+        stmt = stmt.where(Transaction.bank.in_(sorted(banks)))
+    async with get_readonly_connection() as session:
+        result = await session.execute(stmt)
+        rows = result.all()
+    keys: set[tuple] = set()
+    for bank, txn_date, amount, is_debit, description in rows:
+        keys.add(
+            _duplicate_key(
+                bank=bank or "",
+                transaction_date=txn_date,
+                amount=float(amount),
+                is_debit=bool(is_debit),
+                description=description,
+            )
+        )
+    return keys
+
+
+def _preview_row_duplicate_key(row: ImportPreviewRow) -> Optional[tuple]:
+    try:
+        txn_date = _parse_transaction_date(row.transaction_date)
+        amount = _parse_amount(row.amount)
+        is_debit = _parse_is_debit(row.is_debit if row.is_debit else "true")
+    except ValueError:
+        return None
+    if amount <= 0:
+        return None
+    return _duplicate_key(
+        bank=row.bank,
+        transaction_date=txn_date,
+        amount=amount,
+        is_debit=is_debit,
+        description=row.description,
+    )
+
+
+async def _annotate_import_duplicates(
+    rows: list[ImportPreviewRow],
+    *,
+    user_id: uuid.UUID,
+) -> list[ImportPreviewRow]:
+    """Flag rows that match an existing transaction or an earlier row in this file."""
+    keyed: list[tuple[ImportPreviewRow, Optional[tuple]]] = [
+        (row, _preview_row_duplicate_key(row)) for row in rows
+    ]
+    dates = [
+        date.fromisoformat(key[1]) for _, key in keyed if key is not None
+    ]
+    if not dates:
+        return rows
+
+    banks = {key[0] for _, key in keyed if key is not None}
+    existing = await _load_existing_duplicate_keys(
+        user_id=user_id,
+        start_date=min(dates),
+        end_date=max(dates),
+        banks=banks,
+    )
+
+    seen_in_file: dict[tuple, int] = {}
+    annotated: list[ImportPreviewRow] = []
+    for row, key in keyed:
+        if key is None:
+            annotated.append(row)
+            continue
+
+        message: Optional[str] = None
+        if key in existing:
+            message = (
+                "Matches an existing transaction. Skipped unless you choose Import anyway."
+            )
+        elif key in seen_in_file:
+            message = (
+                f"Duplicate of row {seen_in_file[key]} in this file. "
+                "Skipped unless you choose Import anyway."
+            )
+        else:
+            seen_in_file[key] = row.source_row
+
+        if not message:
+            annotated.append(row)
+            continue
+
+        issues = [
+            issue for issue in row.issues if issue.code != "duplicate"
+        ]
+        issues.append(
+            ImportFieldIssue(
+                field="duplicate",
+                code="duplicate",
+                message=message,
+            )
+        )
+        annotated.append(
+            row.model_copy(update={"is_duplicate": True, "issues": issues})
+        )
+    return annotated
 
 
 async def export_transactions_csv(
@@ -565,26 +713,18 @@ def _build_import_preview_row(
     )
 
 
-async def _parse_sbi_rows_for_preview(
-    content: bytes,
+async def _preview_from_statement_rows(
+    raw_rows: list,
     *,
     user_id: uuid.UUID,
     bank: str,
-    password: Optional[str],
 ) -> tuple[list[ImportPreviewRow], list[str], list[str]]:
-    try:
-        raw_rows = extract_sbi_rows(content, password=password)
-    except BankStatementPasswordError as exc:
-        return [], [str(exc)], []
-    except BankStatementParseError as exc:
-        return [], [str(exc)], []
-
     known = await known_category_map(user_id)
     preview_rows = [
         _build_import_preview_row(
             source_row=row.source_row,
             raw_date=row.transaction_date,
-            raw_category="",
+            raw_category=getattr(row, "category", "") or "",
             raw_amount=row.amount,
             raw_is_debit=row.is_debit,
             raw_description=row.description,
@@ -598,15 +738,93 @@ async def _parse_sbi_rows_for_preview(
     return preview_rows, [], []
 
 
+async def _parse_sbi_rows_for_preview(
+    content: bytes,
+    *,
+    user_id: uuid.UUID,
+    bank: str,
+    password: Optional[str],
+) -> tuple[list[ImportPreviewRow], list[str], list[str]]:
+    try:
+        raw_rows = extract_sbi_rows(content, password=password)
+    except BankStatementPasswordError as exc:
+        return [], [str(exc)], []
+    except BankStatementParseError as exc:
+        return [], [str(exc)], []
+    return await _preview_from_statement_rows(
+        raw_rows, user_id=user_id, bank=bank
+    )
+
+
+async def _parse_slice_pdf_rows_for_preview(
+    content: bytes,
+    *,
+    user_id: uuid.UUID,
+    bank: str,
+    password: Optional[str],
+) -> tuple[list[ImportPreviewRow], list[str], list[str]]:
+    try:
+        raw_rows = extract_slice_pdf_rows(content, password=password)
+    except BankStatementPasswordError as exc:
+        return [], [str(exc)], []
+    except BankStatementParseError as exc:
+        return [], [str(exc)], []
+    return await _preview_from_statement_rows(
+        raw_rows, user_id=user_id, bank=bank
+    )
+
+
+async def _parse_sbi_pdf_rows_for_preview(
+    content: bytes,
+    *,
+    user_id: uuid.UUID,
+    bank: str,
+    password: Optional[str],
+) -> tuple[list[ImportPreviewRow], list[str], list[str]]:
+    try:
+        raw_rows = extract_sbi_pdf_rows(content, password=password)
+    except BankStatementPasswordError as exc:
+        return [], [str(exc)], []
+    except BankStatementParseError as exc:
+        return [], [str(exc)], []
+    return await _preview_from_statement_rows(
+        raw_rows, user_id=user_id, bank=bank
+    )
+
+
+async def _parse_kotak_pdf_rows_for_preview(
+    content: bytes,
+    *,
+    user_id: uuid.UUID,
+    bank: str,
+    password: Optional[str],
+) -> tuple[list[ImportPreviewRow], list[str], list[str]]:
+    try:
+        raw_rows = extract_kotak_pdf_rows(content, password=password)
+    except BankStatementPasswordError as exc:
+        return [], [str(exc)], []
+    except BankStatementParseError as exc:
+        return [], [str(exc)], []
+    return await _preview_from_statement_rows(
+        raw_rows, user_id=user_id, bank=bank
+    )
+
+
 _OLE_CFB_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+_PDF_MAGIC = b"%PDF"
 
 
 def _detect_import_kind(filename: Optional[str], content: bytes) -> str:
     name = (filename or "").lower()
+    if name.endswith(".pdf"):
+        return "pdf"
     if name.endswith(".xlsx"):
         return "xlsx"
     if name.endswith(".csv"):
         return "csv"
+    stripped = content.lstrip()
+    if stripped.startswith(_PDF_MAGIC):
+        return "pdf"
     # Encrypted Office wrappers use OLE CFB; plain .xlsx is a zip.
     if content.startswith(_OLE_CFB_MAGIC) or content.startswith(b"PK"):
         return "xlsx"
@@ -760,6 +978,46 @@ async def preview_transactions_import(
             bank=bank,
             password=password,
         )
+    elif kind == "pdf":
+        if bank == BANK_SLICE:
+            preview_rows, file_errors, category_names = (
+                await _parse_slice_pdf_rows_for_preview(
+                    content,
+                    user_id=user_id,
+                    bank=bank,
+                    password=password,
+                )
+            )
+        elif bank == BANK_KOTAK:
+            preview_rows, file_errors, category_names = (
+                await _parse_kotak_pdf_rows_for_preview(
+                    content,
+                    user_id=user_id,
+                    bank=bank,
+                    password=password,
+                )
+            )
+        elif bank == BANK_SBI:
+            preview_rows, file_errors, category_names = (
+                await _parse_sbi_pdf_rows_for_preview(
+                    content,
+                    user_id=user_id,
+                    bank=bank,
+                    password=password,
+                )
+            )
+        else:
+            msg = (
+                f"PDF statement import for {bank} is not supported yet. "
+                "Use a CSV template, or choose SBI/Kotak/Slice for their PDF statements."
+            )
+            return ImportPreviewResponse(
+                rows=[],
+                file_errors=[msg],
+                new_categories=[],
+                valid_row_count=0,
+                errors=[msg],
+            )
     else:
         preview_rows, file_errors, category_names = await _parse_csv_rows_for_preview(
             content,
@@ -777,12 +1035,18 @@ async def preview_transactions_import(
         )
 
     new_categories = await list_missing_category_names(user_id, category_names)
-    valid_row_count = sum(1 for row in preview_rows if row.is_ready)
+    preview_rows = await _annotate_import_duplicates(
+        preview_rows, user_id=user_id
+    )
+    valid_row_count = sum(
+        1 for row in preview_rows if row.is_ready and not row.is_duplicate
+    )
+    duplicate_row_count = sum(1 for row in preview_rows if row.is_duplicate)
     row_errors = [
         f"Row {row.source_row}: {issue.message}"
         for row in preview_rows
         for issue in row.issues
-        if issue.code != "unknown_category"
+        if issue.code not in {"unknown_category", "duplicate"}
     ]
 
     return ImportPreviewResponse(
@@ -790,6 +1054,7 @@ async def preview_transactions_import(
         file_errors=[],
         new_categories=new_categories,
         valid_row_count=valid_row_count,
+        duplicate_row_count=duplicate_row_count,
         errors=row_errors,
     )
 
@@ -801,6 +1066,10 @@ async def import_reviewed_transactions(
 ) -> ReviewedImportResponse:
     """
     Insert only the user-reviewed rows atomically.
+
+    Duplicate rows (same bank/date/amount/debit/description as an existing
+    transaction or an earlier row in this batch) are skipped unless
+    ``force_duplicate`` is set on that row.
     """
     approved_keys = {
         category_key(name) for name in payload.approved_new_categories
@@ -826,6 +1095,7 @@ async def import_reviewed_transactions(
         return ReviewedImportResponse(
             inserted=0,
             created_categories=[],
+            skipped_duplicates=0,
             errors=errors,
         )
 
@@ -840,10 +1110,22 @@ async def import_reviewed_transactions(
         return ReviewedImportResponse(
             inserted=0,
             created_categories=[],
+            skipped_duplicates=0,
             errors=[str(exc)],
         )
     created_categories = [category.name for category in registered]
     errors = []
+
+    dates = [row.transaction_date for row in payload.rows]
+    banks = {row.bank for row in payload.rows}
+    existing_keys = await _load_existing_duplicate_keys(
+        user_id=user_id,
+        start_date=min(dates),
+        end_date=max(dates),
+        banks=banks,
+    )
+    seen_in_batch: set[tuple] = set()
+    skipped_duplicates = 0
 
     for row in payload.rows:
         try:
@@ -854,6 +1136,18 @@ async def import_reviewed_transactions(
             )
         except ValueError as exc:
             errors.append(f"Row {row.source_row}: {exc}")
+            continue
+
+        key = _duplicate_key(
+            bank=row.bank,
+            transaction_date=row.transaction_date,
+            amount=float(row.amount),
+            is_debit=bool(row.is_debit),
+            description=row.description,
+        )
+        is_duplicate = key in existing_keys or key in seen_in_batch
+        if is_duplicate and not row.force_duplicate:
+            skipped_duplicates += 1
             continue
 
         rows_to_insert.append(
@@ -868,11 +1162,14 @@ async def import_reviewed_transactions(
                 "description": row.description,
             }
         )
+        seen_in_batch.add(key)
+        existing_keys.add(key)
 
     if errors:
         return ReviewedImportResponse(
             inserted=0,
             created_categories=[],
+            skipped_duplicates=0,
             errors=errors,
         )
 
@@ -885,6 +1182,7 @@ async def import_reviewed_transactions(
     return ReviewedImportResponse(
         inserted=inserted_count,
         created_categories=created_categories,
+        skipped_duplicates=skipped_duplicates,
         errors=[],
     )
 

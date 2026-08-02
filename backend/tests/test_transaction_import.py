@@ -34,6 +34,16 @@ pytestmark = pytest.mark.anyio
 ALICE_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 
 
+@pytest.fixture(autouse=True)
+def _no_existing_duplicates():
+    """Preview/commit tests default to an empty ledger unless they opt into duplicates."""
+    with patch(
+        "tracker.services._load_existing_duplicate_keys",
+        new=AsyncMock(return_value=set()),
+    ):
+        yield
+
+
 def _user() -> User:
     return User(
         id=ALICE_ID,
@@ -350,3 +360,465 @@ async def test_preview_password_required_error():
         )
     assert preview.rows == []
     assert preview.file_errors == ["Password required to open this file."]
+
+
+def _make_text_pdf(lines: list[str], password: str | None = None) -> bytes:
+    """Minimal Helvetica PDF for parser/password tests (no third-party writer)."""
+    from io import BytesIO
+
+    from pypdf import PdfReader, PdfWriter
+
+    ops = ["BT", "/F1 9 Tf", "50 750 Td", "11 TL"]
+    for i, line in enumerate(lines):
+        esc = line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        esc = esc.encode("latin-1", "replace").decode("latin-1")
+        if i:
+            ops.append("T*")
+        ops.append(f"({esc}) Tj")
+    ops.append("ET")
+    stream = ("\n".join(ops)).encode("latin-1")
+
+    pieces: list[bytes] = []
+    offsets: list[int] = []
+
+    def add(data: bytes) -> None:
+        pieces.append(data)
+
+    def add_obj(n: int, body: bytes) -> None:
+        offsets.append(sum(len(p) for p in pieces))
+        add(f"{n} 0 obj\n".encode("ascii"))
+        add(body)
+        add(b"\nendobj\n")
+
+    add(b"%PDF-1.4\n")
+    add_obj(1, b"<< /Type /Catalog /Pages 2 0 R >>")
+    add_obj(2, b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+    add_obj(
+        3,
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    )
+    add_obj(4, b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream")
+    add_obj(5, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+
+    xref_pos = sum(len(p) for p in pieces)
+    add(f"xref\n0 {len(offsets) + 1}\n".encode("ascii"))
+    add(b"0000000000 65535 f \n")
+    for off in offsets:
+        add(f"{off:010d} 00000 n \n".encode("ascii"))
+    add(
+        f"trailer<< /Size {len(offsets) + 1} /Root 1 0 R >>\n"
+        f"startxref\n{xref_pos}\n%%EOF\n".encode("ascii")
+    )
+    data = b"".join(pieces)
+    if not password:
+        return data
+    reader = PdfReader(BytesIO(data))
+    writer = PdfWriter()
+    writer.append(reader)
+    writer.encrypt(password)
+    buf = BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+def _slice_pdf_bytes(password: str | None = None) -> bytes:
+    return _make_text_pdf(
+        [
+            "01 Jul '26 - 31 Jul '26",
+            "Opening balance Total credits Interest earned Total debits Closing balance",
+            "Rs.0.00 Rs.100.00 Rs.5.00 Rs.20.00 Rs.85.00",
+            "DATE DETAILS REF NO. AMOUNT BALANCE",
+            "19 Jul '26 620000158761/Add Funds 202262001947414 Rs.100.00 Rs.100.00",
+            "20 Jul '26 Interest Cr. for 19/Jul/2026 2022620159004 Rs.5.00 Rs.105.00",
+            "21 Jul '26 UPI/Merchant/Payment 2022620252064 Rs.20.00 Rs.85.00",
+            "Need help? Contact our support team",
+        ],
+        password=password,
+    )
+
+
+def _kotak_pdf_bytes(password: str | None = None) -> bytes:
+    return _make_text_pdf(
+        [
+            "Account Statement 01 Jul 2026 - 31 Jul 2026",
+            "Savings Account Transactions",
+            "# Date Description Chq/Ref. No. Withdrawal (Dr.) Deposit (Cr.) Balance",
+            "- - Opening Balance - - - 1,000.00",
+            "1 02 Jul 2026 UPI/Coffee Shop/Payment from",
+            "UPI-111 100.00 900.00",
+            "2 03 Jul 2026 NEFT SALARY CREDIT",
+            "NEFTINW-222 500.00 1,400.00",
+            "3 04 Jul 2026 UPI/GROCER/YESB/333/Payment",
+            "UPI-333 50.00 1,350.00",
+            "Statement Generated on 01 Aug 2026 Page 1 of 2",
+            "End of Statement",
+            "Account Summary Closing Balance 1,350.00",
+            "Important Information ignore this page",
+        ],
+        password=password,
+    )
+
+
+def test_detect_import_kind_pdf():
+    from tracker.services import _detect_import_kind
+
+    assert _detect_import_kind("stmt.pdf", b"%PDF-1.7 anything") == "pdf"
+    assert _detect_import_kind(None, b"  %PDF-1.4") == "pdf"
+    assert _detect_import_kind("stmt.PDF", b"not pdf magic") == "pdf"
+
+
+def test_parse_slice_statement_text_debit_and_credit():
+    from tracker.bank_import.slice_pdf import parse_slice_statement_text
+
+    text = "\n".join(
+        [
+            "Opening balance",
+            "Rs.0.00 Rs.100.00 Rs.5.00 Rs.20.00 Rs.85.00",
+            "DATE DETAILS REF NO. AMOUNT BALANCE",
+            "19 Jul '26 620000158761/Add Funds 202262001947414 Rs.100.00 Rs.100.00",
+            "20 Jul '26 Interest Cr. for 19/Jul/2026 2022620159004 Rs.5.00 Rs.105.00",
+            "21 Jul '26 UPI/Merchant/Payment 2022620252064 Rs.20.00 Rs.85.00",
+            "Need help? Contact our support team",
+        ]
+    )
+    rows = parse_slice_statement_text(text)
+    assert len(rows) == 3
+    assert rows[0].transaction_date == "2026-07-19"
+    assert rows[0].amount == "100.00"
+    assert rows[0].is_debit == "false"
+    assert rows[0].category == ""
+    assert "Add Funds" in rows[0].description
+    assert rows[1].is_debit == "false"
+    assert rows[1].category == "Other Income"
+    assert rows[2].amount == "20.00"
+    assert rows[2].is_debit == "true"
+    assert rows[2].category == ""
+
+
+def test_parse_kotak_statement_text_multiline_and_end_marker():
+    from tracker.bank_import.kotak_pdf import parse_kotak_statement_text
+
+    text = "\n".join(
+        [
+            "# Date Description Chq/Ref. No. Withdrawal (Dr.) Deposit (Cr.) Balance",
+            "- - Opening Balance - - - 1,000.00",
+            "1 02 Jul 2026 UPI/Coffee Shop/Payment from",
+            "UPI-111 100.00 900.00",
+            "2 03 Jul 2026 NEFT SALARY CREDIT",
+            "NEFTINW-222 500.00 1,400.00",
+            "3 04 Jul 2026 UPI/GROCER/YESB/333/Payment",
+            "UPI-333 50.00 1,350.00",
+            "End of Statement",
+            "99 05 Jul 2026 FAKE AFTER END 10.00 1,340.00",
+        ]
+    )
+    rows = parse_kotak_statement_text(text)
+    assert len(rows) == 3
+    assert rows[0].source_row == 1
+    assert rows[0].is_debit == "true"
+    assert rows[0].amount == "100.00"
+    assert "Coffee Shop" in rows[0].description
+    assert rows[1].is_debit == "false"
+    assert rows[1].amount == "500.00"
+    assert rows[2].is_debit == "true"
+    assert all(r.source_row != 99 for r in rows)
+
+
+def test_extract_slice_pdf_rows_password():
+    from tracker.bank_import.errors import BankStatementPasswordError
+    from tracker.bank_import.slice_pdf import extract_slice_pdf_rows
+
+    locked = _slice_pdf_bytes(password="secret")
+    with pytest.raises(BankStatementPasswordError):
+        extract_slice_pdf_rows(locked)
+    with pytest.raises(BankStatementPasswordError):
+        extract_slice_pdf_rows(locked, password="wrong")
+    rows = extract_slice_pdf_rows(locked, password="secret")
+    assert len(rows) == 3
+    assert rows[0].is_debit == "false"
+    assert rows[2].is_debit == "true"
+
+
+def test_extract_kotak_pdf_rows():
+    from tracker.bank_import.kotak_pdf import extract_kotak_pdf_rows
+
+    rows = extract_kotak_pdf_rows(_kotak_pdf_bytes())
+    assert len(rows) == 3
+    assert rows[0].transaction_date == "2026-07-02"
+    assert rows[1].amount == "500.00"
+    assert rows[1].is_debit == "false"
+
+
+async def test_preview_slice_pdf():
+    with patch(
+        "tracker.services.known_category_map",
+        new=AsyncMock(return_value={"other income": "Other Income"}),
+    ), patch(
+        "tracker.services.list_missing_category_names",
+        new=AsyncMock(return_value=[]),
+    ):
+        preview = await preview_transactions_import(
+            _slice_pdf_bytes(),
+            user_id=ALICE_ID,
+            bank="Slice",
+            filename="slice.pdf",
+        )
+    assert len(preview.rows) == 3
+    assert all(row.bank == "Slice" for row in preview.rows)
+    assert preview.rows[0].is_debit == "false"
+    assert preview.rows[0].category == ""
+    assert preview.rows[1].category == "Other Income"
+    assert preview.rows[1].category_is_new is False
+    assert preview.rows[2].is_debit == "true"
+    assert preview.rows[2].category == ""
+    assert any(issue.field == "category" for issue in preview.rows[0].issues)
+    assert not any(issue.field == "category" for issue in preview.rows[1].issues)
+    assert preview.rows[1].is_ready is True
+
+
+async def test_preview_kotak_pdf():
+    with patch(
+        "tracker.services.known_category_map",
+        new=AsyncMock(return_value={}),
+    ), patch(
+        "tracker.services.list_missing_category_names",
+        new=AsyncMock(return_value=[]),
+    ):
+        preview = await preview_transactions_import(
+            _kotak_pdf_bytes(password="bankpw"),
+            user_id=ALICE_ID,
+            bank="Kotak",
+            password="bankpw",
+            filename="kotak.pdf",
+        )
+    assert len(preview.rows) == 3
+    assert all(row.bank == "Kotak" for row in preview.rows)
+
+
+def _sbi_pdf_bytes(password: str | None = None) -> bytes:
+    return _make_text_pdf(
+        [
+            "STATEMENT OF ACCOUNT",
+            "State Bank of India",
+            "Balance",
+            "05/03/2026 05/03/2026",
+            "DIRECT DR   0043997836858 OF",
+            "Mr TEST USER AT 02053",
+            "- 1,500.00 - 1,78,167.47",
+            "09/03/2026 09/03/2026",
+            "DEP TFR",
+            "UPI/CR/643475486685/TEST",
+            "- - 30,000.00 2,08,167.47",
+            "25/03/2026 25/03/2026 INTEREST CREDIT - - 1,279.00 2,09,447.47",
+            "27/03/2026 27/03/2026",
+            "ATM WDL   ATM CASH",
+            "- 5,000.00 - 2,04,447.47",
+            "1Page no.",
+            "Statement Summary : 01-03-2026 To 02-08-2026",
+            "Brought Forward Dr Count Cr Count",
+        ],
+        password=password,
+    )
+
+
+def test_parse_sbi_pdf_statement_text_debit_credit_and_interest():
+    from tracker.bank_import.sbi_pdf import parse_sbi_pdf_statement_text
+
+    text = "\n".join(
+        [
+            "Balance",
+            "05/03/2026 05/03/2026",
+            "DIRECT DR   0043997836858 OF",
+            "Mr TEST USER AT 02053",
+            "- 1,500.00 - 1,78,167.47",
+            "09/03/2026 09/03/2026",
+            "DEP TFR UPI/CR/123/TEST",
+            "- - 30,000.00 2,08,167.47",
+            "25/03/2026 25/03/2026 INTEREST CREDIT - - 1,279.00 2,09,447.47",
+            "Statement Summary : 01-03-2026 To 02-08-2026",
+        ]
+    )
+    rows = parse_sbi_pdf_statement_text(text)
+    assert len(rows) == 3
+    assert rows[0].transaction_date == "2026-03-05"
+    assert rows[0].amount == "1500.00"
+    assert rows[0].is_debit == "true"
+    assert "DIRECT DR" in rows[0].description
+    assert rows[1].is_debit == "false"
+    assert rows[1].amount == "30000.00"
+    assert rows[2].description == "INTEREST CREDIT"
+    assert rows[2].category == "Other Income"
+    assert rows[2].is_debit == "false"
+
+
+def test_extract_sbi_pdf_rows_password():
+    from tracker.bank_import.errors import BankStatementPasswordError
+    from tracker.bank_import.sbi_pdf import extract_sbi_pdf_rows
+
+    locked = _sbi_pdf_bytes(password="secret")
+    with pytest.raises(BankStatementPasswordError):
+        extract_sbi_pdf_rows(locked)
+    rows = extract_sbi_pdf_rows(locked, password="secret")
+    assert len(rows) == 4
+    assert rows[0].is_debit == "true"
+    assert rows[1].is_debit == "false"
+    assert rows[2].category == "Other Income"
+
+
+async def test_preview_sbi_pdf():
+    with patch(
+        "tracker.services.known_category_map",
+        new=AsyncMock(return_value={"other income": "Other Income"}),
+    ), patch(
+        "tracker.services.list_missing_category_names",
+        new=AsyncMock(return_value=[]),
+    ):
+        preview = await preview_transactions_import(
+            _sbi_pdf_bytes(),
+            user_id=ALICE_ID,
+            bank="SBI",
+            filename="sbi.pdf",
+        )
+    assert len(preview.rows) == 4
+    assert all(row.bank == "SBI" for row in preview.rows)
+    assert preview.rows[0].is_debit == "true"
+    assert preview.rows[2].category == "Other Income"
+    assert preview.rows[2].is_ready is True
+
+
+async def test_preview_flags_intra_file_duplicates():
+    csv_bytes = (
+        b"transaction_date,category,amount,is_debit,description\n"
+        b"2026-03-01,Grocery,100,true,Same txn\n"
+        b"2026-03-01,Grocery,100,true,Same txn\n"
+        b"2026-03-02,Grocery,50,true,Other\n"
+    )
+    with patch(
+        "tracker.services.known_category_map",
+        new=AsyncMock(return_value={"grocery": "Grocery"}),
+    ), patch(
+        "tracker.services.list_missing_category_names",
+        new=AsyncMock(return_value=[]),
+    ):
+        preview = await preview_transactions_import(
+            csv_bytes,
+            user_id=ALICE_ID,
+            bank="SBI",
+        )
+
+    assert preview.duplicate_row_count == 1
+    assert preview.rows[0].is_duplicate is False
+    assert preview.rows[1].is_duplicate is True
+    assert any(issue.code == "duplicate" for issue in preview.rows[1].issues)
+    assert preview.rows[2].is_duplicate is False
+    assert preview.valid_row_count == 2
+
+
+async def test_preview_flags_existing_ledger_duplicates():
+    from datetime import date as date_cls
+
+    from tracker.services import _duplicate_key
+
+    existing_key = _duplicate_key(
+        bank="Kotak",
+        transaction_date=date_cls(2026, 3, 1),
+        amount=100.0,
+        is_debit=True,
+        description="Coffee",
+    )
+    csv_bytes = (
+        b"transaction_date,category,amount,is_debit,description\n"
+        b"2026-03-01,Grocery,100,true,Coffee\n"
+        b"2026-03-02,Grocery,50,true,Tea\n"
+    )
+    with patch(
+        "tracker.services.known_category_map",
+        new=AsyncMock(return_value={"grocery": "Grocery"}),
+    ), patch(
+        "tracker.services.list_missing_category_names",
+        new=AsyncMock(return_value=[]),
+    ), patch(
+        "tracker.services._load_existing_duplicate_keys",
+        new=AsyncMock(return_value={existing_key}),
+    ):
+        preview = await preview_transactions_import(
+            csv_bytes,
+            user_id=ALICE_ID,
+            bank="Kotak",
+        )
+
+    assert preview.rows[0].is_duplicate is True
+    assert preview.rows[1].is_duplicate is False
+    assert preview.duplicate_row_count == 1
+
+
+async def test_reviewed_import_skips_duplicates_unless_forced():
+    from datetime import date as date_cls
+
+    from tracker.services import _duplicate_key
+
+    existing_key = _duplicate_key(
+        bank="SBI",
+        transaction_date=date_cls(2026, 3, 1),
+        amount=100.0,
+        is_debit=True,
+        description="Weekly groceries",
+    )
+    payload = ReviewedImportRequest(
+        rows=[
+            ReviewedImportRow(
+                source_row=2,
+                amount=100,
+                category="Grocery",
+                bank="SBI",
+                transaction_date=date_cls(2026, 3, 1),
+                is_debit=True,
+                description="Weekly groceries",
+                force_duplicate=False,
+            ),
+            ReviewedImportRow(
+                source_row=3,
+                amount=50,
+                category="Grocery",
+                bank="SBI",
+                transaction_date=date_cls(2026, 3, 2),
+                is_debit=True,
+                description="Other",
+                force_duplicate=False,
+            ),
+            ReviewedImportRow(
+                source_row=4,
+                amount=100,
+                category="Grocery",
+                bank="SBI",
+                transaction_date=date_cls(2026, 3, 1),
+                is_debit=True,
+                description="Weekly groceries",
+                force_duplicate=True,
+            ),
+        ],
+        approved_new_categories=[],
+    )
+
+    with patch(
+        "tracker.services.resolve_category_name",
+        new=AsyncMock(return_value="Grocery"),
+    ), patch(
+        "tracker.services.known_category_map",
+        new=AsyncMock(return_value={"grocery": "Grocery"}),
+    ), patch(
+        "tracker.services._load_existing_duplicate_keys",
+        new=AsyncMock(return_value={existing_key}),
+    ), patch("tracker.services.get_connection") as mock_conn:
+        session = AsyncMock()
+        mock_conn.return_value.__aenter__.return_value = session
+        result = await import_reviewed_transactions(payload, user_id=ALICE_ID)
+
+    assert result.inserted == 2
+    assert result.skipped_duplicates == 1
+    assert result.errors == []
+    session.execute.assert_awaited_once()
+    rows = session.execute.await_args.args[1]
+    assert len(rows) == 2
+    assert {row["description"] for row in rows} == {"Weekly groceries", "Other"}

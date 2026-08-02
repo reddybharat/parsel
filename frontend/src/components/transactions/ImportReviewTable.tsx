@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import {
   collectApprovedNewCategories,
   isRowSelectable,
+  patchClearsDuplicate,
   recomputeRow,
   type EditableImportRow,
 } from "@/lib/importReview";
@@ -82,7 +83,7 @@ export function ImportReviewTable({
     (sourceRow: number, patch: Partial<EditableImportRow>) => {
       const next = rowsRef.current.map((row) => {
         if (row.source_row !== sourceRow) return row;
-        return recomputeRow({ ...row, ...patch }, categories);
+        return recomputeRow({ ...row, ...patchClearsDuplicate(patch) }, categories);
       });
       onRowsChange(next);
     },
@@ -123,8 +124,11 @@ export function ImportReviewTable({
 
   const importedCount = rows.filter((row) => row.imported).length;
   const pending = rows.filter((row) => !row.imported);
-  const readyCount = pending.filter((row) => row.is_ready).length;
-  const attentionCount = pending.length - readyCount;
+  const duplicateCount = pending.filter((row) => row.is_duplicate && !row.force_duplicate).length;
+  const readyCount = pending.filter((row) => isRowSelectable(row)).length;
+  const attentionCount = pending.filter(
+    (row) => !row.is_ready && !(row.is_duplicate && !row.force_duplicate),
+  ).length;
   const approvedCategories = collectApprovedNewCategories(selectedRows);
 
   return (
@@ -135,6 +139,9 @@ export function ImportReviewTable({
             {attentionCount > 0
               ? `${attentionCount} need a category or fix · ${readyCount} ready · ${selectedRows.length} selected`
               : `${readyCount} ready · ${selectedRows.length} selected`}
+            {duplicateCount > 0
+              ? ` · ${duplicateCount} duplicate${duplicateCount === 1 ? "" : "s"} skipped`
+              : ""}
             {importedCount > 0 ? ` · ${importedCount} already imported` : ""}
           </span>
           {approvedCategories.length > 0 ? (

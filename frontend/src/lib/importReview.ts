@@ -4,15 +4,23 @@ import type { Category } from "./types";
 export type EditableImportRow = ImportPreviewRow & {
   approved_new_category: boolean;
   imported: boolean;
+  force_duplicate: boolean;
 };
 
 /** Imported rows stay on screen for reference but can no longer be edited or selected. */
 export function isRowSelectable(row: EditableImportRow): boolean {
-  return row.is_ready && !row.imported;
+  return row.is_ready && !row.imported && (!row.is_duplicate || row.force_duplicate);
 }
 
 const PAYMENT_METHODS = ["Cash", "UPI", "Bank transfer", "Card", "Wallet", "NEFT", "Other"];
 const BANKS = ["SBI", "Kotak", "Slice"];
+const DUPLICATE_KEY_FIELDS = new Set([
+  "transaction_date",
+  "amount",
+  "is_debit",
+  "bank",
+  "description",
+]);
 
 function normalizeCategory(raw: string): string {
   return raw.trim().replace(/\s+/g, " ");
@@ -51,7 +59,13 @@ function parseDate(raw: string): { valid: boolean; future: boolean } {
 }
 
 export function toEditableRow(row: ImportPreviewRow): EditableImportRow {
-  return { ...row, approved_new_category: false, imported: false };
+  return {
+    ...row,
+    is_duplicate: Boolean(row.is_duplicate),
+    approved_new_category: false,
+    imported: false,
+    force_duplicate: false,
+  };
 }
 
 /**
@@ -79,6 +93,8 @@ export function createManualRow(
     category_is_new: false,
     approved_new_category: false,
     imported: false,
+    is_duplicate: false,
+    force_duplicate: false,
   };
 }
 
@@ -206,8 +222,18 @@ export function validateImportRow(
   return { issues, isReady };
 }
 
-export function recomputeRow(row: EditableImportRow, categories: Category[]): EditableImportRow {
-  const { issues, isReady } = validateImportRow(row, categories);
+export function recomputeRow(
+  row: EditableImportRow,
+  categories: Category[],
+): EditableImportRow {
+  const { issues: validationIssues, isReady } = validateImportRow(row, categories);
+  const duplicateIssue = row.is_duplicate
+    ? row.issues.find((issue) => issue.code === "duplicate")
+    : undefined;
+  const issues = duplicateIssue
+    ? [...validationIssues.filter((issue) => issue.code !== "duplicate"), duplicateIssue]
+    : validationIssues.filter((issue) => issue.code !== "duplicate");
+
   return {
     ...row,
     issues,
@@ -216,6 +242,20 @@ export function recomputeRow(row: EditableImportRow, categories: Category[]): Ed
       normalizeCategory(row.category) &&
         !isCategoryKnown(normalizeCategory(row.category), categories),
     ),
+  };
+}
+
+/** Clear duplicate flag when the user edits fields that define the match key. */
+export function patchClearsDuplicate(
+  patch: Partial<EditableImportRow>,
+): Partial<EditableImportRow> {
+  if (![...DUPLICATE_KEY_FIELDS].some((field) => field in patch)) {
+    return patch;
+  }
+  return {
+    ...patch,
+    is_duplicate: false,
+    force_duplicate: false,
   };
 }
 
@@ -228,6 +268,7 @@ export function toReviewedPayload(row: EditableImportRow): {
   payment_method: string | null;
   transaction_date: string;
   description: string | null;
+  force_duplicate: boolean;
 } | null {
   const amount = parseAmount(row.amount);
   const isDebit = parseIsDebit(row.is_debit);
@@ -241,7 +282,8 @@ export function toReviewedPayload(row: EditableImportRow): {
     !normalizedCategory ||
     !bank ||
     !BANKS.includes(bank) ||
-    !dateCheck.valid
+    !dateCheck.valid ||
+    (row.is_duplicate && !row.force_duplicate)
   ) {
     return null;
   }
@@ -260,6 +302,7 @@ export function toReviewedPayload(row: EditableImportRow): {
     payment_method: row.payment_method?.trim() || null,
     transaction_date: isoDate,
     description: row.description?.trim() || null,
+    force_duplicate: Boolean(row.force_duplicate && row.is_duplicate),
   };
 }
 

@@ -275,6 +275,7 @@ class ImportPreviewRow(BaseModel):
     issues: list[ImportFieldIssue] = Field(default_factory=list)
     is_ready: bool = False
     category_is_new: bool = False
+    is_duplicate: bool = False
 
 
 class ImportPreviewResponse(BaseModel):
@@ -282,6 +283,7 @@ class ImportPreviewResponse(BaseModel):
     file_errors: list[str] = Field(default_factory=list)
     new_categories: list[str] = Field(default_factory=list)
     valid_row_count: int = 0
+    duplicate_row_count: int = 0
     errors: list[str] = Field(default_factory=list)
 
 
@@ -294,6 +296,7 @@ class ReviewedImportRow(BaseModel):
     transaction_date: date
     description: Optional[str] = None
     is_debit: bool = True
+    force_duplicate: bool = False
 
     @field_validator("category", mode="before")
     @classmethod
@@ -349,4 +352,5 @@ class ReviewedImportRequest(BaseModel):
 class ReviewedImportResponse(BaseModel):
     inserted: int
     created_categories: list[str] = Field(default_factory=list)
+    skipped_duplicates: int = 0
     errors: list[str] = Field(default_factory=list)

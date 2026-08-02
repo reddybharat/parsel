@@ -19,8 +19,9 @@ BANKS = [
     "Kotak",
     "Slice",
 ]
-# Only bank with Excel (.xlsx) statement import today.
 BANK_SBI = "SBI"
+BANK_KOTAK = "Kotak"
+BANK_SLICE = "Slice"
 
 # Used in spend aggregates (trend, monthly spend); not treated as consumption.
 INVESTMENTS_CATEGORY = "Investments"

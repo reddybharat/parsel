@@ -12,6 +12,11 @@ import msoffcrypto
 import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
 
+from tracker.bank_import.errors import (
+    BankStatementParseError,
+    BankStatementPasswordError,
+)
+
 # OLE compound-file magic (password-protected Office wrappers).
 _OLE_CFB_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
@@ -27,14 +32,6 @@ SBI_HEADER_ALIASES = {
     "credit": "credit",
     "balance": "balance",
 }
-
-
-class BankStatementPasswordError(ValueError):
-    """Raised when a password is missing or incorrect for an encrypted workbook."""
-
-
-class BankStatementParseError(ValueError):
-    """Raised when the workbook cannot be interpreted as an SBI statement."""
 
 
 @dataclass

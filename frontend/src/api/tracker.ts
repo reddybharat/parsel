@@ -42,12 +42,14 @@ export type ImportPreviewRow = {
   issues: ImportFieldIssue[];
   is_ready: boolean;
   category_is_new: boolean;
+  is_duplicate: boolean;
 };
 
 export type ImportPreviewResult = {
   rows: ImportPreviewRow[];
   file_errors: string[];
   valid_row_count: number;
+  duplicate_row_count: number;
   new_categories: string[];
   errors: string[];
 };
@@ -61,12 +63,14 @@ export type ReviewedImportRow = {
   payment_method: string | null;
   transaction_date: string;
   description: string | null;
+  force_duplicate?: boolean;
 };
 
 export type ImportResult = {
   inserted: number;
   errors: string[];
   created_categories: string[];
+  skipped_duplicates: number;
 };
 
 export function fetchTrackerConfig() {

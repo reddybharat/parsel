@@ -241,6 +241,9 @@ export function AddPage() {
       const createdNote = result.created_categories.length
         ? ` Created ${result.created_categories.length} categor${result.created_categories.length === 1 ? "y" : "ies"}.`
         : "";
+      const skippedNote = result.skipped_duplicates
+        ? ` Skipped ${result.skipped_duplicates} duplicate${result.skipped_duplicates === 1 ? "" : "s"}.`
+        : "";
       const importedRows = new Set(selected.map((row) => row.source_row));
       setReviewRows((current) =>
         current.map((row) =>
@@ -250,7 +253,7 @@ export function AddPage() {
       setBulkFeedback({
         variant: "success",
         title: "Import complete",
-        description: `Imported ${result.inserted} transaction(s).${createdNote} Remaining rows stay here until you leave this screen.`,
+        description: `Imported ${result.inserted} transaction(s).${skippedNote}${createdNote} Remaining rows stay here until you leave this screen.`,
       });
     } catch (err) {
       setBulkStep("preview");
@@ -387,7 +390,7 @@ export function AddPage() {
                     <Field>
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <FieldLabel htmlFor="bulk-csv" className={fieldLabelClass}>
-                          CSV or Excel
+                          CSV, Excel, or PDF
                         </FieldLabel>
                         <Button
                           type="button"
@@ -425,7 +428,7 @@ export function AddPage() {
                         ref={fileInputRef}
                         className="peer sr-only"
                         type="file"
-                        accept=".csv,.xlsx"
+                        accept=".csv,.xlsx,.pdf"
                         disabled={busyBulk || !importBank}
                         onChange={(e) => onFileSelected(e.target.files?.[0] || null)}
                       />
@@ -456,7 +459,7 @@ export function AddPage() {
                           Choose file
                         </span>
                         <span className="min-w-0 truncate text-xs text-parsel-muted">
-                          {fileName ?? "Drop .csv or .xlsx here"}
+                          {fileName ?? "Drop .csv, .xlsx, or .pdf here"}
                         </span>
                       </label>
                       <div className="mt-3">

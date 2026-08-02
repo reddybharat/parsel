@@ -112,6 +112,7 @@ const FIELD_LABELS: Record<string, string> = {
   payment_method: "Method",
   bank: "Bank",
   description: "Description",
+  duplicate: "Duplicate",
   row: "Row",
 };
 
@@ -421,7 +422,7 @@ export function createImportReviewColumns({
     },
     {
       id: "status",
-      meta: { label: "Status", width: "5.5rem", skeletonWidth: "4rem" },
+      meta: { label: "Status", width: "7.5rem", skeletonWidth: "4rem" },
       header: () => (
         <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">Status</span>
       ),
@@ -439,6 +440,34 @@ export function createImportReviewColumns({
             </span>
           );
         }
+        if (row.original.is_duplicate && !row.original.force_duplicate) {
+          const message =
+            row.original.issues.find((issue) => issue.code === "duplicate")?.message ??
+            "Duplicate transaction";
+          return (
+            <div className="space-y-1">
+              <span
+                className={cn(
+                  staticCellClass,
+                  "gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700",
+                )}
+                title={message}
+              >
+                <AlertCircle className="size-3 shrink-0" aria-hidden />
+                Duplicate
+              </span>
+              <button
+                type="button"
+                className="text-[10px] font-semibold uppercase tracking-wide text-parsel-text underline decoration-dotted underline-offset-2"
+                onClick={() =>
+                  onRowChange(row.original.source_row, { force_duplicate: true })
+                }
+              >
+                Import anyway
+              </button>
+            </div>
+          );
+        }
         if (row.original.is_ready) {
           return (
             <span
@@ -447,7 +476,9 @@ export function createImportReviewColumns({
                 "text-[10px] font-semibold uppercase tracking-wide text-parsel-inflow",
               )}
             >
-              Ready
+              {row.original.is_duplicate && row.original.force_duplicate
+                ? "Forced"
+                : "Ready"}
             </span>
           );
         }
