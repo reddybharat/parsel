@@ -7,7 +7,6 @@ import asyncio
 import csv
 import io
 import json
-import re
 from datetime import date, datetime
 from typing import Any, Optional
 import uuid
@@ -187,24 +186,19 @@ def _parse_amount(raw_amount: str) -> float:
     return float(s)
 
 
-def _normalize_duplicate_description(description: Optional[str]) -> str:
-    return re.sub(r"\s+", " ", (description or "").strip().lower())
-
-
 def _duplicate_key(
     *,
     bank: str,
     transaction_date: date,
     amount: float,
     is_debit: bool,
-    description: Optional[str],
 ) -> tuple:
+    # Description is intentionally excluded — manual entries often differ.
     return (
         (bank or "").strip(),
         transaction_date.isoformat(),
         round(float(amount), 2),
         bool(is_debit),
-        _normalize_duplicate_description(description),
     )
 
 
@@ -223,7 +217,6 @@ async def _load_existing_duplicate_keys(
             Transaction.transaction_date,
             Transaction.amount,
             Transaction.is_debit,
-            Transaction.description,
         )
         .where(Transaction.user_id == user_id)
         .where(Transaction.transaction_date >= start_date)
@@ -235,14 +228,13 @@ async def _load_existing_duplicate_keys(
         result = await session.execute(stmt)
         rows = result.all()
     keys: set[tuple] = set()
-    for bank, txn_date, amount, is_debit, description in rows:
+    for bank, txn_date, amount, is_debit in rows:
         keys.add(
             _duplicate_key(
                 bank=bank or "",
                 transaction_date=txn_date,
                 amount=float(amount),
                 is_debit=bool(is_debit),
-                description=description,
             )
         )
     return keys
@@ -262,7 +254,6 @@ def _preview_row_duplicate_key(row: ImportPreviewRow) -> Optional[tuple]:
         transaction_date=txn_date,
         amount=amount,
         is_debit=is_debit,
-        description=row.description,
     )
 
 
@@ -1107,9 +1098,10 @@ async def import_reviewed_transactions(
     """
     Insert only the user-reviewed rows atomically.
 
-    Duplicate rows (same bank/date/amount/debit/description as an existing
-    transaction or an earlier row in this batch) are skipped unless
-    ``force_duplicate`` is set on that row.
+    Duplicate rows (same bank/date/amount/debit as an existing transaction
+    or an earlier row in this batch) are skipped unless ``force_duplicate``
+    is set on that row. Description is ignored so manual wording differences
+    still flag as duplicates.
     """
     approved_keys = {
         category_key(name) for name in payload.approved_new_categories
@@ -1183,7 +1175,6 @@ async def import_reviewed_transactions(
             transaction_date=row.transaction_date,
             amount=float(row.amount),
             is_debit=bool(row.is_debit),
-            description=row.description,
         )
         is_duplicate = key in existing_keys or key in seen_in_batch
         if is_duplicate and not row.force_duplicate:

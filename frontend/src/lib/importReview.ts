@@ -18,7 +18,6 @@ const DUPLICATE_KEY_FIELDS = new Set([
   "amount",
   "is_debit",
   "bank",
-  "description",
 ]);
 
 function normalizeCategory(raw: string): string {

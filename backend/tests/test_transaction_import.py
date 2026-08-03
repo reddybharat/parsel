@@ -691,7 +691,7 @@ async def test_preview_flags_intra_file_duplicates():
     csv_bytes = (
         b"transaction_date,category,amount,is_debit,description\n"
         b"2026-03-01,Grocery,100,true,Same txn\n"
-        b"2026-03-01,Grocery,100,true,Same txn\n"
+        b"2026-03-01,Grocery,100,true,Different wording\n"
         b"2026-03-02,Grocery,50,true,Other\n"
     )
     with patch(
@@ -725,11 +725,10 @@ async def test_preview_flags_existing_ledger_duplicates():
         transaction_date=date_cls(2026, 3, 1),
         amount=100.0,
         is_debit=True,
-        description="Coffee",
     )
     csv_bytes = (
         b"transaction_date,category,amount,is_debit,description\n"
-        b"2026-03-01,Grocery,100,true,Coffee\n"
+        b"2026-03-01,Grocery,100,true,Manual note\n"
         b"2026-03-02,Grocery,50,true,Tea\n"
     )
     with patch(
@@ -763,7 +762,6 @@ async def test_reviewed_import_skips_duplicates_unless_forced():
         transaction_date=date_cls(2026, 3, 1),
         amount=100.0,
         is_debit=True,
-        description="Weekly groceries",
     )
     payload = ReviewedImportRequest(
         rows=[
@@ -774,7 +772,7 @@ async def test_reviewed_import_skips_duplicates_unless_forced():
                 bank="SBI",
                 transaction_date=date_cls(2026, 3, 1),
                 is_debit=True,
-                description="Weekly groceries",
+                description="Imported wording",
                 force_duplicate=False,
             ),
             ReviewedImportRow(
@@ -794,7 +792,7 @@ async def test_reviewed_import_skips_duplicates_unless_forced():
                 bank="SBI",
                 transaction_date=date_cls(2026, 3, 1),
                 is_debit=True,
-                description="Weekly groceries",
+                description="Forced duplicate",
                 force_duplicate=True,
             ),
         ],
@@ -821,7 +819,7 @@ async def test_reviewed_import_skips_duplicates_unless_forced():
     session.execute.assert_awaited_once()
     rows = session.execute.await_args.args[1]
     assert len(rows) == 2
-    assert {row["description"] for row in rows} == {"Weekly groceries", "Other"}
+    assert {row["description"] for row in rows} == {"Forced duplicate", "Other"}
 
 
 def test_csv_template_includes_bank_column():
