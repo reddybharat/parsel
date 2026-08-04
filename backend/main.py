@@ -14,6 +14,7 @@ from auth.router import router as auth_router
 from chat.router.chat import router as chat_router
 from tracker.router.config import router as config_router
 from tracker.router.categories import router as categories_router
+from tracker.router.banks import router as banks_router
 from tracker.router.dashboard import router as dashboard_router
 from tracker.router.transactions import router as transactions_router
 
@@ -57,6 +58,7 @@ _auth_deps = [Depends(get_current_user)]
 app.include_router(auth_router)
 app.include_router(transactions_router, dependencies=_auth_deps)
 app.include_router(categories_router, dependencies=_auth_deps)
+app.include_router(banks_router, dependencies=_auth_deps)
 app.include_router(dashboard_router, dependencies=_auth_deps)
 app.include_router(chat_router, dependencies=_auth_deps)
 app.include_router(config_router, dependencies=_auth_deps)

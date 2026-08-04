@@ -44,6 +44,16 @@ def _no_existing_duplicates():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _all_banks_active():
+    """Treat every catalog bank as an active profile bank for import tests."""
+    with patch(
+        "tracker.bank_service.list_active_bank_names",
+        new=AsyncMock(return_value=["SBI", "Kotak", "Slice"]),
+    ):
+        yield
+
+
 def _user() -> User:
     return User(
         id=ALICE_ID,

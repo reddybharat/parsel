@@ -1,5 +1,12 @@
 import { deleteJson, getBlob, getJson, patchJson, postJson, postMultipart } from "./client";
-import type { Category, SearchResult, TrackerConfig, Transaction } from "../lib/types";
+import type {
+  BankSetup,
+  Category,
+  ProfileBank,
+  SearchResult,
+  TrackerConfig,
+  Transaction,
+} from "../lib/types";
 
 export type SortColumn =
   | "transaction_date"
@@ -88,6 +95,29 @@ export function renameCategory(oldName: string, newName: string) {
 export function deleteCategory(name: string) {
   const query = new URLSearchParams({ name });
   return deleteJson(`/categories?${query.toString()}`);
+}
+
+export function fetchBanks() {
+  return getJson<ProfileBank[]>("/banks");
+}
+
+export function fetchBankSetup() {
+  return getJson<BankSetup>("/banks/setup");
+}
+
+export function createBank(payload: {
+  bank: string;
+  opening_balance: number;
+  opening_month: string;
+}) {
+  return postJson<ProfileBank>("/banks", payload);
+}
+
+export function updateBank(
+  bank: string,
+  payload: { opening_balance?: number; opening_month?: string; is_active?: boolean },
+) {
+  return patchJson<ProfileBank>(`/banks/${encodeURIComponent(bank)}`, payload);
 }
 
 export function searchTransactions(params: SearchParams) {

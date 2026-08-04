@@ -21,6 +21,7 @@ import { localDateIso, monthStartLocal } from "@/components/transactions/LedgerD
 import { LedgerToolbar, type LedgerFilters } from "@/components/transactions/LedgerToolbar";
 import { Button } from "@/components/ui/button";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { banksQueryOptions } from "@/lib/banksQuery";
 import { invalidateDashboardOverview } from "@/lib/dashboardQuery";
 import { formatInrSigned, signedAmount } from "@/lib/format";
 import { trackerConfigQueryOptions } from "@/lib/trackerConfigQuery";
@@ -55,7 +56,10 @@ export function SearchPage() {
   const { data: trackerConfig } = useQuery(trackerConfigQueryOptions());
   const categories = trackerConfig?.categories ?? [];
   const paymentMethods = trackerConfig?.payment_methods ?? [];
-  const banks = trackerConfig?.banks ?? [];
+  // Entry uses active banks; filtering + editing history use all profile banks.
+  const activeBanks = trackerConfig?.banks ?? [];
+  const { data: profileBanks } = useQuery(banksQueryOptions());
+  const allBanks = (profileBanks ?? []).map((b) => b.bank);
 
   const [filters, setFilters] = useState<LedgerFilters>(() => defaultFilters(initialCategory));
   // Idle until the first explicit search; then filter changes refetch live.
@@ -281,7 +285,7 @@ export function SearchPage() {
         invalidRange={invalidRange}
         categories={categories}
         paymentMethods={paymentMethods}
-        banks={banks}
+        banks={allBanks}
         table={table}
         onExport={() => void onExport()}
         canExport={total > 0}
@@ -294,7 +298,7 @@ export function SearchPage() {
         onOpenChange={setAddOpen}
         categories={categories}
         paymentMethods={paymentMethods}
-        banks={banks}
+        banks={activeBanks}
         onSaved={() => {
           void invalidateTransactionSearch();
           setFeedback({ variant: "success", title: "Transaction saved" });
@@ -359,7 +363,7 @@ export function SearchPage() {
         transaction={editing}
         categories={categories}
         paymentMethods={paymentMethods}
-        banks={banks}
+        banks={allBanks}
         loading={submitting}
         onChange={setEditing}
         onSave={() => void onEditSave()}

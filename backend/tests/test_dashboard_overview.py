@@ -14,8 +14,10 @@ from tracker.constants import (
     WALLET_TOP_UP_CATEGORY,
 )
 from tracker.services import (
+    _PORTFOLIO_SQL,
     _dashboard_bounds,
     _get_dashboard_aggregates,
+    _get_portfolio_balance,
     _normalize_banks_filter,
     _parse_focus_month,
     get_dashboard_overview,
@@ -64,7 +66,6 @@ def test_normalize_banks_filter():
 
 def _aggregate_row(**overrides):
     base = {
-        "portfolio_net": 1000.0,
         "current_month_spend": 300.0,
         "previous_month_spend": 250.0,
         "trend_rows": "[]",
@@ -77,7 +78,9 @@ def _aggregate_row(**overrides):
         ),
         "month_label": "Jul 2026",
         "daily_total": 300.0,
-        "daily_points": "[]",
+        "daily_series_rows": (
+            '[{"bank": "SBI", "points": [{"day": 1, "spend": 300.0}]}]'
+        ),
     }
     base.update(overrides)
     return base
@@ -128,11 +131,15 @@ async def test_get_dashboard_aggregates_parses_category_spend_sorted():
     assert items[1] == {"category": "Dining", "spend": 80.0}
     assert all(item["category"] != INVESTMENTS_CATEGORY for item in items)
 
+    # Portfolio net is no longer computed here; daily spend is per-bank series.
+    assert "portfolio_net" not in result["summary"]
+    series = result["daily_spend"]["series"]
+    assert series == [{"bank": "SBI", "points": [{"day": 1, "spend": 300.0}]}]
 
-async def test_get_dashboard_overview_includes_category_spend_and_active_banks():
+
+async def test_get_dashboard_overview_merges_portfolio_and_profile_banks():
     aggregates = {
         "summary": {
-            "portfolio_net": 0.0,
             "current_month_spend": 0.0,
             "previous_month_spend": 0.0,
             "spend_delta_pct": None,
@@ -144,7 +151,7 @@ async def test_get_dashboard_overview_includes_category_spend_and_active_banks()
             "total_outflow": 0.0,
             "current_month_investments": 0.0,
         },
-        "daily_spend": {"month_label": "Jul 2026", "total": 0.0, "points": []},
+        "daily_spend": {"month_label": "Jul 2026", "total": 0.0, "series": []},
         "category_spend": {"items": [{"category": "Grocery", "spend": 42.0}]},
     }
 
@@ -160,10 +167,15 @@ async def test_get_dashboard_overview_includes_category_spend_and_active_banks()
             return_value=[],
         ) as recent_mock,
         patch(
-            "tracker.services._get_active_banks",
+            "tracker.services.bank_service.list_profile_bank_names",
             new_callable=AsyncMock,
-            return_value=["SBI", "Slice"],
+            return_value=["SBI", "Kotak", "Slice"],
         ),
+        patch(
+            "tracker.services._get_portfolio_balance",
+            new_callable=AsyncMock,
+            return_value={"portfolio_net": 145000.0, "missing_opening_banks": ["Slice"]},
+        ) as portfolio_mock,
     ):
         result = await get_dashboard_overview(
             months=12,
@@ -174,12 +186,93 @@ async def test_get_dashboard_overview_includes_category_spend_and_active_banks()
         )
 
     assert result["category_spend"]["items"] == [{"category": "Grocery", "spend": 42.0}]
-    assert result["active_banks"] == ["SBI", "Slice"]
+    # Dashboard picker shows all profile banks (active + inactive).
+    assert result["active_banks"] == ["SBI", "Kotak", "Slice"]
+    # Portfolio net + missing hint merged into summary.
+    assert result["summary"]["portfolio_net"] == 145000.0
+    assert result["summary"]["missing_opening_banks"] == ["Slice"]
     aggregates_mock.assert_awaited_once()
     assert aggregates_mock.await_args.kwargs["banks"] == ["Kotak"]
     assert aggregates_mock.await_args.args[0]["month_now_start"] == date(2026, 7, 1)
     recent_mock.assert_awaited_once()
     assert recent_mock.await_args.kwargs["banks"] == ["Kotak"]
+    portfolio_mock.assert_awaited_once()
+    assert portfolio_mock.await_args.kwargs["banks"] == ["Kotak"]
+
+
+def test_portfolio_sql_sums_closing_balances_per_bank():
+    """Closing = opening + signed txns, summed across covered banks; late-opening
+    banks are reported as missing rather than counted."""
+    sql = " ".join(_PORTFOLIO_SQL.split())
+    # Signed roll-forward per bank.
+    assert "CASE WHEN t.is_debit THEN -t.amount ELSE t.amount END" in sql
+    assert "c.opening_balance" in sql
+    assert "GROUP BY c.bank, c.opening_balance" in sql
+    # Only banks whose opening month is on/before the focus month are covered.
+    assert "WHERE opening_month <= :month_now_start" in sql
+    # Late-opening banks surface as a hint.
+    assert "opening_month > :month_now_start" in sql
+    # Portfolio net is the sum of per-bank closings.
+    assert "SUM(closing)" in sql
+
+
+async def test_get_portfolio_balance_parses_and_binds_bank_filter():
+    mock_result = MagicMock()
+    mock_result.mappings.return_value.first.return_value = {
+        "portfolio_net": 145000.0,
+        "missing_opening_banks": '["Slice"]',
+    }
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__.return_value = mock_session
+    mock_cm.__aexit__.return_value = None
+
+    bounds = {
+        "month_now_start": date(2026, 7, 1),
+        "month_next_start": date(2026, 8, 1),
+    }
+    with patch("tracker.services.get_readonly_connection", return_value=mock_cm):
+        result = await _get_portfolio_balance(
+            bounds,
+            user_id=uuid.UUID("55555555-5555-5555-5555-555555555555"),
+            banks=["SBI", "Kotak"],
+        )
+
+    assert result == {"portfolio_net": 145000.0, "missing_opening_banks": ["Slice"]}
+    _, params = mock_session.execute.await_args.args
+    assert params["filter_banks"] is True
+    assert params["banks_csv"] == "SBI,Kotak"
+    assert params["month_now_start"] == date(2026, 7, 1)
+
+
+async def test_get_portfolio_balance_all_banks_when_unfiltered():
+    mock_result = MagicMock()
+    mock_result.mappings.return_value.first.return_value = {
+        "portfolio_net": 0.0,
+        "missing_opening_banks": "[]",
+    }
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__.return_value = mock_session
+    mock_cm.__aexit__.return_value = None
+
+    bounds = {
+        "month_now_start": date(2026, 7, 1),
+        "month_next_start": date(2026, 8, 1),
+    }
+    with patch("tracker.services.get_readonly_connection", return_value=mock_cm):
+        result = await _get_portfolio_balance(
+            bounds,
+            user_id=uuid.UUID("55555555-5555-5555-5555-555555555555"),
+            banks=None,
+        )
+
+    assert result["missing_opening_banks"] == []
+    _, params = mock_session.execute.await_args.args
+    assert params["filter_banks"] is False
+    assert params["banks_csv"] == ""
 
 
 async def test_get_dashboard_overview_rejects_invalid_bank():

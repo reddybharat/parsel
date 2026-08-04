@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { LogOut, Moon, Pencil, Sun, Trash2 } from "lucide-react";
 
 import { deleteCategory, renameCategory } from "@/api/tracker";
+import { BanksManager } from "@/components/settings/BanksManager";
 import { StatusAlert, type FeedbackMessage } from "@/components/feedback/StatusAlert";
 import { Button } from "@/components/ui/button";
 import {
@@ -260,7 +261,7 @@ export function SettingsPage() {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto border border-parsel-border lg:grid lg:grid-cols-6 lg:grid-rows-[auto_minmax(0,1fr)] lg:overflow-hidden">
+      <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto border border-parsel-border lg:grid lg:grid-cols-6 lg:auto-rows-min">
         <SettingsSection
           className="border-b border-parsel-border lg:col-span-4 lg:border-r"
           title="Profile"
@@ -372,6 +373,14 @@ export function SettingsPage() {
               </span>
             </div>
           </Field>
+        </SettingsSection>
+
+        <SettingsSection
+          className="border-b border-parsel-border lg:col-span-6"
+          title="Banks"
+          description="Banks on your profile. Opening balances drive your Net Portfolio Balance; inactive banks stay in your history but are hidden when adding transactions."
+        >
+          <BanksManager />
         </SettingsSection>
 
         <SettingsSection

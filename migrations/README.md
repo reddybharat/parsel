@@ -10,6 +10,7 @@ Hand-applied SQL scripts (no migration runner). Run them against the same databa
 | [004_user_custom_categories.sql](004_user_custom_categories.sql) | Update `users.preferences` default to include `custom_categories` |
 | [005_non_spend_category_indexes.sql](005_non_spend_category_indexes.sql) | Exclude global non-spend categories from dashboard spend indexes |
 | [006_transaction_bank.sql](006_transaction_bank.sql) | Optional `transactions.bank` label (SBI / Kotak / Slice enforced in app) + `(user_id, bank, transaction_date)` index |
+| [007_user_banks.sql](007_user_banks.sql) | Per-user `user_banks` profile: opening balance seed + opening month + active flag; drives closing-balance portfolio and bank dropdowns |
 
 ## Fresh database
 
@@ -20,6 +21,7 @@ psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/003_search
 psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/004_user_custom_categories.sql
 psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/005_non_spend_category_indexes.sql
 psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/006_transaction_bank.sql
+psql "postgresql://USER:PASSWORD@localhost:5432/parsel" -f migrations/007_user_banks.sql
 ```
 
 Then:
@@ -56,6 +58,10 @@ SELECT column_name, data_type, is_nullable
 FROM information_schema.columns
 WHERE table_schema = 'public' AND table_name = 'transactions' AND column_name = 'bank';
 ```
+
+## User banks (`007`)
+
+Adds `public.user_banks` (one row per `(user_id, bank)`), the per-user bank profile. Each row holds an `opening_balance` (>= 0) as of the 1st of `opening_month`, plus an `is_active` flag. The dashboard "Net Portfolio Balance" is the sum of each covered bank's closing balance (opening + signed transactions through the focus month). Safe to re-run (`CREATE TABLE IF NOT EXISTS`). Existing users are prompted to complete their banks on next login (soft migrate); no rows are auto-created.
 
 ## Check
 

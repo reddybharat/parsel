@@ -31,6 +31,7 @@ from tracker.bank_import import (
     extract_sbi_rows,
     extract_slice_pdf_rows,
 )
+from tracker import bank_service
 from tracker.constants import (
     BANK_KOTAK,
     BANK_SBI,
@@ -979,7 +980,7 @@ async def preview_transactions_import(
     Return every row with field-level issues.
     """
     try:
-        bank = _normalize_bank(bank)
+        bank = await bank_service.assert_bank_writable(user_id, bank)
     except ValueError as exc:
         return ImportPreviewResponse(
             rows=[],
@@ -1150,6 +1151,21 @@ async def import_reviewed_transactions(
 
     dates = [row.transaction_date for row in payload.rows]
     banks = {row.bank for row in payload.rows}
+
+    active_banks = set(await bank_service.list_active_bank_names(user_id))
+    inactive_banks = sorted(b for b in banks if b not in active_banks)
+    if inactive_banks:
+        return ReviewedImportResponse(
+            inserted=0,
+            created_categories=[],
+            skipped_duplicates=0,
+            errors=[
+                f'"{bank_name}" is not an active bank on your profile. '
+                "Add or activate it in Settings before importing."
+                for bank_name in inactive_banks
+            ],
+        )
+
     existing_keys = await _load_existing_duplicate_keys(
         user_id=user_id,
         start_date=min(dates),
@@ -1235,7 +1251,7 @@ async def import_transactions_from_csv(
     Returns (inserted_count, errors, created_categories).
     """
     try:
-        bank = _normalize_bank(bank)
+        bank = await bank_service.assert_bank_writable(user_id, bank)
     except ValueError as exc:
         return 0, [str(exc)], []
 
@@ -1433,7 +1449,6 @@ spend_txns AS (
 ),
 summary AS (
   SELECT
-    COALESCE(SUM(CASE WHEN t.is_debit THEN -t.amount ELSE t.amount END), 0)::float8 AS portfolio_net,
     COALESCE(SUM(CASE
       WHEN t.is_debit = TRUE
        AND t.category NOT IN (
@@ -1493,13 +1508,6 @@ category_spend AS (
   HAVING COALESCE(SUM(st.amount), 0) > 0
   ORDER BY spend DESC
 ),
-daily_agg AS (
-  SELECT
-    st.transaction_date AS day_date,
-    COALESCE(SUM(st.amount), 0)::float8 AS spend
-  FROM spend_txns st
-  GROUP BY st.transaction_date
-),
 daily_series AS (
   SELECT generate_series(
     :month_now_start,
@@ -1507,12 +1515,23 @@ daily_series AS (
     interval '1 day'
   )::date AS day_date
 ),
+daily_bank_agg AS (
+  SELECT
+    st.bank AS bank,
+    st.transaction_date AS day_date,
+    COALESCE(SUM(st.amount), 0)::float8 AS spend
+  FROM spend_txns st
+  WHERE st.bank IS NOT NULL AND btrim(st.bank) <> ''
+  GROUP BY st.bank, st.transaction_date
+),
+daily_banks AS (
+  SELECT DISTINCT bank FROM daily_bank_agg
+),
 daily_spend AS (
   SELECT COALESCE(SUM(st.amount), 0)::float8 AS total
   FROM spend_txns st
 )
 SELECT
-  s.portfolio_net,
   s.current_month_spend,
   s.previous_month_spend,
   COALESCE(
@@ -1533,17 +1552,28 @@ SELECT
   COALESCE(
     (
       SELECT json_agg(
-        json_build_object(
-          'day', EXTRACT(DAY FROM ds.day_date)::int,
-          'spend', COALESCE(da.spend, 0)
-        )
-        ORDER BY ds.day_date
+        json_build_object('bank', bs.bank, 'points', bs.points)
+        ORDER BY bs.bank
       )
-      FROM daily_series ds
-      LEFT JOIN daily_agg da ON da.day_date = ds.day_date
+      FROM (
+        SELECT
+          db.bank AS bank,
+          json_agg(
+            json_build_object(
+              'day', EXTRACT(DAY FROM ds.day_date)::int,
+              'spend', COALESCE(dba.spend, 0)
+            )
+            ORDER BY ds.day_date
+          ) AS points
+        FROM daily_banks db
+        CROSS JOIN daily_series ds
+        LEFT JOIN daily_bank_agg dba
+          ON dba.bank = db.bank AND dba.day_date = ds.day_date
+        GROUP BY db.bank
+      ) bs
     ),
     '[]'::json
-  ) AS daily_points
+  ) AS daily_series_rows
 FROM summary s
 CROSS JOIN highlights h
 """
@@ -1594,9 +1624,27 @@ async def _get_dashboard_aggregates(
         if isinstance(item, dict) and item.get("category")
     ]
 
+    daily_series_rows = _parse_json_value(row.get("daily_series_rows"), [])
+    if not isinstance(daily_series_rows, list):
+        daily_series_rows = []
+    daily_series = [
+        {
+            "bank": str(item.get("bank") or ""),
+            "points": [
+                {
+                    "day": int(point.get("day") or 0),
+                    "spend": float(point.get("spend") or 0),
+                }
+                for point in (item.get("points") or [])
+                if isinstance(point, dict)
+            ],
+        }
+        for item in daily_series_rows
+        if isinstance(item, dict) and item.get("bank")
+    ]
+
     return {
         "summary": {
-            "portfolio_net": float(row.get("portfolio_net") or 0),
             "current_month_spend": current,
             "previous_month_spend": previous,
             "spend_delta_pct": spend_delta_pct,
@@ -1611,7 +1659,7 @@ async def _get_dashboard_aggregates(
         "daily_spend": {
             "month_label": row.get("month_label") or "",
             "total": float(row.get("daily_total") or 0),
-            "points": _parse_json_value(row.get("daily_points"), []),
+            "series": daily_series,
         },
         "category_spend": {"items": category_spend_items},
     }
@@ -1671,19 +1719,70 @@ async def _get_dashboard_recent(
     ]
 
 
-async def _get_active_banks(*, user_id: uuid.UUID) -> list[str]:
-    """Banks that appear on the user's transactions, in product order."""
-    sql = """
-        SELECT DISTINCT bank
-        FROM transactions
-        WHERE user_id = :user_id
-          AND bank IS NOT NULL
-          AND btrim(bank) <> ''
+_PORTFOLIO_SQL = """
+WITH profile AS (
+  SELECT bank, opening_balance, opening_month
+  FROM user_banks
+  WHERE user_id = :user_id
+    AND (NOT :filter_banks OR bank = ANY(string_to_array(:banks_csv, ',')))
+),
+covered AS (
+  SELECT bank, opening_balance, opening_month
+  FROM profile
+  WHERE opening_month <= :month_now_start
+),
+closings AS (
+  SELECT
+    c.bank,
+    c.opening_balance
+      + COALESCE(SUM(CASE WHEN t.is_debit THEN -t.amount ELSE t.amount END), 0) AS closing
+  FROM covered c
+  LEFT JOIN transactions t
+    ON t.user_id = :user_id
+   AND t.bank = c.bank
+   AND t.transaction_date >= c.opening_month
+   AND t.transaction_date < :month_next_start
+  GROUP BY c.bank, c.opening_balance
+)
+SELECT
+  COALESCE((SELECT SUM(closing) FROM closings), 0)::float8 AS portfolio_net,
+  COALESCE(
+    (SELECT json_agg(bank ORDER BY bank) FROM profile WHERE opening_month > :month_now_start),
+    '[]'::json
+  ) AS missing_opening_banks
+"""
+
+
+async def _get_portfolio_balance(
+    bounds: dict[str, date],
+    *,
+    user_id: uuid.UUID,
+    banks: list[str] | None = None,
+) -> dict:
+    """Net portfolio balance = sum of covered banks' closing balances.
+
+    closing(bank) = opening_balance + signed transactions from the bank's opening
+    month through the focus month. Banks whose opening month is after the focus
+    month are excluded and returned in ``missing_opening_banks``.
     """
+    params = {
+        "user_id": user_id,
+        "month_now_start": bounds["month_now_start"],
+        "month_next_start": bounds["month_next_start"],
+        "filter_banks": banks is not None,
+        "banks_csv": ",".join(banks) if banks else "",
+    }
     async with get_readonly_connection() as session:
-        result = await session.execute(text(sql), {"user_id": user_id})
-        found = {str(row[0]) for row in result.fetchall() if row[0]}
-    return [name for name in BANKS if name in found]
+        result = await session.execute(text(_PORTFOLIO_SQL), params)
+        row = result.mappings().first() or {}
+
+    missing = _parse_json_value(row.get("missing_opening_banks"), [])
+    if not isinstance(missing, list):
+        missing = []
+    return {
+        "portfolio_net": float(row.get("portfolio_net") or 0),
+        "missing_opening_banks": [str(b) for b in missing if b],
+    }
 
 
 async def get_dashboard_overview(
@@ -1701,18 +1800,19 @@ async def get_dashboard_overview(
     bank_filter = _normalize_banks_filter(banks)
     bounds = _dashboard_bounds(months, focus_month)
 
-    aggregates, recent_items, active_banks = await asyncio.gather(
+    aggregates, recent_items, profile_banks, portfolio = await asyncio.gather(
         _get_dashboard_aggregates(bounds, months, user_id=user_id, banks=bank_filter),
         _get_dashboard_recent(recent_limit, bounds, user_id=user_id, banks=bank_filter),
-        _get_active_banks(user_id=user_id),
+        bank_service.list_profile_bank_names(user_id),
+        _get_portfolio_balance(bounds, user_id=user_id, banks=bank_filter),
     )
 
     return {
-        "summary": aggregates["summary"],
+        "summary": {**aggregates["summary"], **portfolio},
         "trend": {"months": months, "points": aggregates["trend_points"]},
         "recent": {"items": recent_items},
         "highlights": aggregates["highlights"],
         "daily_spend": aggregates["daily_spend"],
         "category_spend": aggregates["category_spend"],
-        "active_banks": active_banks,
+        "active_banks": profile_banks,
     }

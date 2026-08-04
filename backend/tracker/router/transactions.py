@@ -10,6 +10,7 @@ from auth.deps import get_current_user
 from auth.models import User
 from common.database import get_connection, get_readonly_connection
 from common.logger import get_logger
+from tracker.bank_service import assert_bank_on_profile, assert_bank_writable
 from tracker.category_service import resolve_category_name
 from tracker.models import Transaction
 from tracker.schemas import (
@@ -307,6 +308,7 @@ async def create_transaction(
 ) -> TransactionResponse:
     t0 = time.perf_counter()
     try:
+        await assert_bank_writable(current_user.id, payload.bank)
         canonical_category = await resolve_category_name(
             current_user.id,
             payload.category,
@@ -351,6 +353,14 @@ async def update_transaction(
         raise HTTPException(status_code=400, detail="No fields provided for update")
     if "amount" in payload_dict:
         payload_dict["amount"] = float(payload_dict["amount"])
+    if "bank" in payload_dict and payload_dict["bank"] is not None:
+        try:
+            # Edits may keep a now-inactive (but still on-profile) bank.
+            payload_dict["bank"] = await assert_bank_on_profile(
+                current_user.id, payload_dict["bank"]
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     if "category" in payload_dict and payload_dict["category"] is not None:
         try:
             payload_dict["category"] = await resolve_category_name(

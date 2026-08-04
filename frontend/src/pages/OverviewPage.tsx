@@ -4,7 +4,6 @@ import { Search, Upload } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { ParselMark } from "@/components/brand/ParselMark";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CashFlowTiles } from "@/components/dashboard/CashFlowTiles";
 import { ChartSkeleton } from "@/components/dashboard/ChartSkeleton";
@@ -70,20 +69,6 @@ function ActivityIcon({ label }: { label: string }) {
     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-none bg-parsel-icon-bg text-xs font-semibold text-parsel-secondary">
       {initial}
     </span>
-  );
-}
-
-function DeltaBadge({ value }: { value: number | null }) {
-  if (value === null) return null;
-  const isUp = value >= 0;
-  const label = `${isUp ? "+" : ""}${value.toFixed(1)}%`;
-  return (
-    <Badge
-      className={isUp ? "border-transparent bg-parsel-success-bg text-parsel-success-text hover:bg-parsel-success-bg" : "border-transparent bg-parsel-danger-bg text-parsel-danger-text hover:bg-parsel-danger-bg"}
-      variant="secondary"
-    >
-      {isUp ? "↑" : "↓"} {label}
-    </Badge>
   );
 }
 
@@ -192,14 +177,21 @@ export function OverviewPage() {
           </div>
           <div className="mt-1 flex shrink-0 flex-wrap items-center gap-2">
             {data && (
-              <>
-                <p className="tabular-nums text-xl font-semibold text-parsel-neutral lg:text-2xl">
-                  {formatInrSigned(data.summary.portfolio_net)}
-                </p>
-                <DeltaBadge value={data.summary.spend_delta_pct} />
-              </>
+              <p className="tabular-nums text-xl font-semibold text-parsel-neutral lg:text-2xl">
+                {formatInrSigned(data.summary.portfolio_net)}
+              </p>
             )}
           </div>
+          {data && data.summary.missing_opening_banks.length > 0 && (
+            <p className="mt-1 shrink-0 text-xs text-parsel-muted">
+              Not counted this month:{" "}
+              <span className="font-medium">{data.summary.missing_opening_banks.join(", ")}</span>{" "}
+              (opening month is later).{" "}
+              <Link to="/settings" className="font-semibold text-parsel-primary hover:underline">
+                Edit in Settings
+              </Link>
+            </p>
+          )}
           <div className="mt-2 flex min-h-0 flex-1 flex-col border-t border-parsel-border pt-2">
             {data && (
               <Suspense fallback={<ChartSkeleton />}>
@@ -220,7 +212,7 @@ export function OverviewPage() {
             {data && (
               <Suspense fallback={<ChartSkeleton />}>
                 <DailySpendLineChart
-                  points={data.daily_spend.points}
+                  series={data.daily_spend.series}
                   monthLabel={data.daily_spend.month_label}
                   monthTotal={data.daily_spend.total}
                 />

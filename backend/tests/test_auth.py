@@ -227,6 +227,9 @@ def test_protected_route_accepts_bearer_token():
     with patch(
         "tracker.router.config.list_categories",
         new=AsyncMock(return_value=fake_categories),
+    ), patch(
+        "tracker.router.config.list_active_bank_names",
+        new=AsyncMock(return_value=["SBI"]),
     ):
         response = client.get(
             "/config/tracker",
@@ -236,6 +239,8 @@ def test_protected_route_accepts_bearer_token():
     body = response.json()
     assert "categories" in body
     assert "payment_methods" in body
+    assert body["banks"] == ["SBI"]
+    assert "bank_catalog" in body
     assert body["categories"][0]["name"] == "Grocery"
     assert body["categories"][0]["is_system"] is True
     assert "id" not in body["categories"][0]

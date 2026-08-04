@@ -43,6 +43,33 @@ class CategoryResponse(BaseModel):
     is_system: bool
 
 
+_MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
+
+
+class UserBankResponse(BaseModel):
+    bank: str
+    opening_balance: float
+    opening_month: str  # YYYY-MM
+    is_active: bool
+
+
+class UserBankCreate(BaseModel):
+    bank: str
+    opening_balance: float = Field(..., ge=0, description="Opening balance in INR (>= 0)")
+    opening_month: str = Field(..., pattern=_MONTH_PATTERN, description="Opening month as YYYY-MM")
+
+    @field_validator("bank", mode="before")
+    @classmethod
+    def bank_required(cls, v: object) -> str:
+        return _validate_bank_required(v)
+
+
+class UserBankUpdate(BaseModel):
+    opening_balance: Optional[float] = Field(None, ge=0)
+    opening_month: Optional[str] = Field(None, pattern=_MONTH_PATTERN)
+    is_active: Optional[bool] = None
+
+
 class TransactionCreate(BaseModel):
     amount: float = Field(..., gt=0, description="Amount in INR (must be > 0)")
     category: str = Field(..., min_length=1)
@@ -188,6 +215,9 @@ class DashboardSummaryResponse(BaseModel):
     current_month_spend: float
     previous_month_spend: float
     spend_delta_pct: Optional[float] = None
+    # Selected profile banks whose opening month is after the focus month, so
+    # they are excluded from portfolio_net (surfaced as a hint in the UI).
+    missing_opening_banks: list[str] = Field(default_factory=list)
 
 
 class DashboardTrendPoint(BaseModel):
@@ -232,10 +262,16 @@ class DashboardDailySpendPoint(BaseModel):
     spend: float
 
 
+class DashboardDailySpendSeries(BaseModel):
+    bank: str
+    points: list[DashboardDailySpendPoint]
+
+
 class DashboardDailySpendResponse(BaseModel):
     month_label: str
     total: float
-    points: list[DashboardDailySpendPoint]
+    # One series per bank that has spend in the focus month.
+    series: list[DashboardDailySpendSeries] = Field(default_factory=list)
 
 
 class DashboardCategorySpendItem(BaseModel):
