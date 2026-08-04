@@ -6,12 +6,12 @@ import { createBank, updateBank } from "@/api/tracker";
 import { StatusAlert } from "@/components/feedback/StatusAlert";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Drawer,
+  DrawerContent,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -63,6 +63,12 @@ export function BanksManager() {
     setAddOpen(true);
   }
 
+  function handleAddOpenChange(next: boolean) {
+    if (addBusy) return;
+    setAddOpen(next);
+    if (!next) setAddError(null);
+  }
+
   async function handleAdd() {
     const balance = Number(addForm.opening_balance);
     if (!addForm.bank) {
@@ -102,6 +108,14 @@ export function BanksManager() {
       opening_month: bank.opening_month,
     });
     setEditError(null);
+  }
+
+  function handleEditOpenChange(next: boolean) {
+    if (editBusy) return;
+    if (!next) {
+      setEditing(null);
+      setEditError(null);
+    }
   }
 
   async function handleEdit() {
@@ -210,107 +224,121 @@ export function BanksManager() {
         </ul>
       )}
 
-      <Dialog open={addOpen} onOpenChange={(next) => !addBusy && setAddOpen(next)}>
-        <DialogContent className="max-w-md sm:rounded-none">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-semibold tracking-tight text-parsel-neutral">
+      <Drawer open={addOpen} onOpenChange={handleAddOpenChange}>
+        <DrawerContent className="sm:max-w-md" showCloseButton={!addBusy}>
+          <DrawerHeader>
+            <DrawerTitle className="text-xl font-semibold tracking-tight text-parsel-neutral">
               Add bank
-            </DialogTitle>
-          </DialogHeader>
-          <Field>
-            <FieldLabel htmlFor="add-bank-name">Bank</FieldLabel>
-            <NativeSelect
-              id="add-bank-name"
-              value={addForm.bank}
-              onChange={(e) => setAddForm((prev) => ({ ...prev, bank: e.target.value }))}
+            </DrawerTitle>
+          </DrawerHeader>
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+            <Field>
+              <FieldLabel htmlFor="add-bank-name">Bank</FieldLabel>
+              <NativeSelect
+                id="add-bank-name"
+                value={addForm.bank}
+                onChange={(e) => setAddForm((prev) => ({ ...prev, bank: e.target.value }))}
+                disabled={addBusy}
+              >
+                {available.map((name) => (
+                  <NativeSelectOption key={name} value={name}>
+                    {name}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="add-bank-balance">Opening balance (₹)</FieldLabel>
+              <Input
+                id="add-bank-balance"
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+                value={addForm.opening_balance}
+                onChange={(e) => setAddForm((prev) => ({ ...prev, opening_balance: e.target.value }))}
+                disabled={addBusy}
+                autoFocus
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="add-bank-month">Opening month</FieldLabel>
+              <Input
+                id="add-bank-month"
+                type="month"
+                value={addForm.opening_month}
+                onChange={(e) => setAddForm((prev) => ({ ...prev, opening_month: e.target.value }))}
+                disabled={addBusy}
+              />
+              <FieldDescription>The balance as of the 1st of this month.</FieldDescription>
+            </Field>
+            {addError ? <p className="text-sm text-destructive">{addError}</p> : null}
+          </div>
+          <DrawerFooter className="shrink-0">
+            <Button
+              type="button"
+              variant="ghost"
               disabled={addBusy}
+              onClick={() => handleAddOpenChange(false)}
             >
-              {available.map((name) => (
-                <NativeSelectOption key={name} value={name}>
-                  {name}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="add-bank-balance">Opening balance (₹)</FieldLabel>
-            <Input
-              id="add-bank-balance"
-              type="number"
-              min={0}
-              step="0.01"
-              inputMode="decimal"
-              value={addForm.opening_balance}
-              onChange={(e) => setAddForm((prev) => ({ ...prev, opening_balance: e.target.value }))}
-              disabled={addBusy}
-              autoFocus
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="add-bank-month">Opening month</FieldLabel>
-            <Input
-              id="add-bank-month"
-              type="month"
-              value={addForm.opening_month}
-              onChange={(e) => setAddForm((prev) => ({ ...prev, opening_month: e.target.value }))}
-              disabled={addBusy}
-            />
-            <FieldDescription>The balance as of the 1st of this month.</FieldDescription>
-          </Field>
-          {addError ? <p className="text-sm text-destructive">{addError}</p> : null}
-          <DialogFooter>
-            <Button type="button" variant="ghost" disabled={addBusy} onClick={() => setAddOpen(false)}>
               Cancel
             </Button>
             <Button type="button" disabled={addBusy} onClick={() => void handleAdd()}>
               {addBusy ? "Adding…" : "Add bank"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
 
-      <Dialog open={Boolean(editing)} onOpenChange={(next) => !editBusy && !next && setEditing(null)}>
-        <DialogContent className="max-w-md sm:rounded-none">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-semibold tracking-tight text-parsel-neutral">
+      <Drawer open={Boolean(editing)} onOpenChange={handleEditOpenChange}>
+        <DrawerContent className="sm:max-w-md" showCloseButton={!editBusy}>
+          <DrawerHeader>
+            <DrawerTitle className="text-xl font-semibold tracking-tight text-parsel-neutral">
               Edit {editing?.bank}
-            </DialogTitle>
-          </DialogHeader>
-          <Field>
-            <FieldLabel htmlFor="edit-bank-balance">Opening balance (₹)</FieldLabel>
-            <Input
-              id="edit-bank-balance"
-              type="number"
-              min={0}
-              step="0.01"
-              inputMode="decimal"
-              value={editForm.opening_balance}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, opening_balance: e.target.value }))}
+            </DrawerTitle>
+          </DrawerHeader>
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+            <Field>
+              <FieldLabel htmlFor="edit-bank-balance">Opening balance (₹)</FieldLabel>
+              <Input
+                id="edit-bank-balance"
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+                value={editForm.opening_balance}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, opening_balance: e.target.value }))}
+                disabled={editBusy}
+                autoFocus
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="edit-bank-month">Opening month</FieldLabel>
+              <Input
+                id="edit-bank-month"
+                type="month"
+                value={editForm.opening_month}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, opening_month: e.target.value }))}
+                disabled={editBusy}
+              />
+            </Field>
+            {editError ? <p className="text-sm text-destructive">{editError}</p> : null}
+          </div>
+          <DrawerFooter className="shrink-0">
+            <Button
+              type="button"
+              variant="ghost"
               disabled={editBusy}
-              autoFocus
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="edit-bank-month">Opening month</FieldLabel>
-            <Input
-              id="edit-bank-month"
-              type="month"
-              value={editForm.opening_month}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, opening_month: e.target.value }))}
-              disabled={editBusy}
-            />
-          </Field>
-          {editError ? <p className="text-sm text-destructive">{editError}</p> : null}
-          <DialogFooter>
-            <Button type="button" variant="ghost" disabled={editBusy} onClick={() => setEditing(null)}>
+              onClick={() => handleEditOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="button" disabled={editBusy} onClick={() => void handleEdit()}>
               {editBusy ? "Saving…" : "Save"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
     </>
   );
 }

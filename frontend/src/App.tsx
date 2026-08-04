@@ -14,6 +14,7 @@ import { ChatPage } from "./pages/ChatPage";
 import { LandingPage } from "./pages/LandingPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { SearchPage } from "./pages/SearchPage";
+import { SettingsLayoutsPage } from "./pages/SettingsLayoutsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 function AuthenticatedShell() {
@@ -44,6 +45,7 @@ export default function App() {
                   <Route path="/ledger/add" element={<AddPage />} />
                   <Route path="/chat" element={<ChatPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/settings/lab" element={<SettingsLayoutsPage />} />
                 </Route>
               </Route>
             </Route>

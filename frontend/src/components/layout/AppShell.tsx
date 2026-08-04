@@ -1,7 +1,16 @@
-import { NavLink } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
+import { ChevronsUpDown, KeyRound, LogOut, UserRound } from "lucide-react";
 
 import { ParselMark } from "@/components/brand/ParselMark";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/auth";
 import { prefetchDashboardOverview } from "@/lib/dashboardQuery";
 import { initialsFromProfile } from "@/lib/profile";
@@ -41,15 +50,6 @@ function ImportIcon() {
   );
 }
 
-function SettingsIcon() {
-  return (
-    <svg className={ICON_CLASS} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
 const NAV_ITEMS: ShellNavItem[] = [
   { to: "/overview", label: "Home", icon: <HomeIcon /> },
   { to: "/ledger/search", label: "Ledger", icon: <LedgerIcon /> },
@@ -61,12 +61,90 @@ const NAV_ITEMS: ShellNavItem[] = [
   },
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
-  const { username, email, firstName, lastName } = useAuth();
+function NavUser() {
+  const { username, email, firstName, lastName, logout } = useAuth();
+  const navigate = useNavigate();
   const primaryLabel = firstName?.trim() || username || email || "Signed in";
-  const secondaryLabel = username ?? email ?? "";
+  const secondaryLabel = email ?? username ?? "";
   const initials = initialsFromProfile(firstName, lastName, username ?? email);
+  const fullName = [firstName, lastName].filter(Boolean).join(" ") || primaryLabel;
 
+  function handleLogout() {
+    logout();
+    navigate("/", { replace: true });
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="flex w-full items-center gap-2.5 rounded-none border border-parsel-border bg-parsel-soft p-2.5 text-left transition hover:bg-parsel-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-parsel-primary"
+        >
+          <Avatar className="h-8 w-8 rounded-none" aria-hidden>
+            <AvatarFallback className="rounded-none bg-parsel-avatar-bg text-xs font-semibold text-parsel-secondary">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium leading-tight" title={primaryLabel}>
+              {primaryLabel}
+            </p>
+            {secondaryLabel ? (
+              <p className="truncate text-xs leading-tight text-parsel-muted" title={secondaryLabel}>
+                {secondaryLabel}
+              </p>
+            ) : null}
+          </div>
+          <ChevronsUpDown className="size-4 shrink-0 text-parsel-muted" aria-hidden />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        side="right"
+        align="end"
+        sideOffset={8}
+        className="w-56 min-w-[13.5rem]"
+      >
+        <DropdownMenuLabel className="font-normal normal-case tracking-normal text-parsel-text">
+          <div className="flex items-center gap-2.5 py-0.5">
+            <Avatar className="h-8 w-8 rounded-none">
+              <AvatarFallback className="rounded-none bg-parsel-avatar-bg text-xs font-semibold text-parsel-secondary">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">{fullName}</p>
+              {email ? <p className="truncate text-xs text-parsel-muted">{email}</p> : null}
+            </div>
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/settings#profile">
+            <UserRound />
+            Profile
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/settings#account">
+            <KeyRound />
+            Account
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="text-parsel-danger-text focus:bg-parsel-danger-bg focus:text-parsel-danger-text"
+          onSelect={handleLogout}
+        >
+          <LogOut />
+          Log out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-dvh w-full flex-col bg-parsel-bg text-parsel-text">
       <header className="flex w-full shrink-0 items-center justify-between border-b border-parsel-border px-4 py-2">
@@ -87,7 +165,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   onMouseEnter={item.to === "/overview" ? () => void prefetchDashboardOverview() : undefined}
                   className={({ isActive }) =>
                     `flex items-center gap-2.5 rounded-none px-2.5 py-2 text-sm font-medium transition ${
-                      isActive ? "bg-parsel-nav-active-bg text-parsel-nav-active-text" : "text-parsel-muted hover:bg-parsel-soft hover:text-parsel-text"
+                      isActive
+                        ? "bg-parsel-nav-active-bg text-parsel-nav-active-text"
+                        : "text-parsel-muted hover:bg-parsel-soft hover:text-parsel-text"
                     }`
                   }
                 >
@@ -97,36 +177,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               ))}
             </nav>
             <div className="mt-auto border-t border-parsel-border pt-3">
-              <div className="rounded-none border border-parsel-border bg-parsel-soft p-2.5">
-                <div className="flex items-center gap-2.5 px-0.5 py-0.5">
-                  <Avatar className="h-8 w-8" aria-hidden>
-                    <AvatarFallback className="bg-parsel-avatar-bg text-xs font-semibold text-parsel-secondary">
-                      {initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium leading-tight" title={primaryLabel}>
-                      {primaryLabel}
-                    </p>
-                    {secondaryLabel ? (
-                      <p className="truncate text-xs leading-tight text-parsel-muted" title={secondaryLabel}>
-                        {secondaryLabel}
-                      </p>
-                    ) : null}
-                  </div>
-                  <NavLink
-                    to="/settings"
-                    className={({ isActive }) =>
-                      `shrink-0 rounded-md p-1 transition hover:bg-parsel-surface hover:text-parsel-text ${
-                        isActive ? "text-parsel-primary" : "text-parsel-muted"
-                      }`
-                    }
-                    aria-label="Settings"
-                  >
-                    <SettingsIcon />
-                  </NavLink>
-                </div>
-              </div>
+              <NavUser />
             </div>
           </div>
         </aside>
