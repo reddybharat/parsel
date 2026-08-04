@@ -21,6 +21,7 @@ import { localDateIso, monthStartLocal } from "@/components/transactions/LedgerD
 import { LedgerToolbar, type LedgerFilters } from "@/components/transactions/LedgerToolbar";
 import { Button } from "@/components/ui/button";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { banksQueryOptions } from "@/lib/banksQuery";
 import { invalidateDashboardOverview } from "@/lib/dashboardQuery";
 import { formatInrSigned, signedAmount } from "@/lib/format";
 import { trackerConfigQueryOptions } from "@/lib/trackerConfigQuery";
@@ -44,6 +45,7 @@ function defaultFilters(category = ""): LedgerFilters {
     query: "",
     category,
     paymentMethod: "",
+    bank: "",
     direction: "",
   };
 }
@@ -54,6 +56,10 @@ export function SearchPage() {
   const { data: trackerConfig } = useQuery(trackerConfigQueryOptions());
   const categories = trackerConfig?.categories ?? [];
   const paymentMethods = trackerConfig?.payment_methods ?? [];
+  // Entry uses active banks; filtering + editing history use all profile banks.
+  const activeBanks = trackerConfig?.banks ?? [];
+  const { data: profileBanks } = useQuery(banksQueryOptions());
+  const allBanks = (profileBanks ?? []).map((b) => b.bank);
 
   const [filters, setFilters] = useState<LedgerFilters>(() => defaultFilters(initialCategory));
   // Idle until the first explicit search; then filter changes refetch live.
@@ -90,6 +96,7 @@ export function SearchPage() {
       q: debouncedQuery.trim() || undefined,
       category: filters.category || undefined,
       payment_method: filters.paymentMethod || undefined,
+      bank: filters.bank || undefined,
       is_debit: filters.direction === "" ? undefined : filters.direction === "debit",
       sort_column: (sorting[0]?.id ?? "transaction_date") as SortColumn,
       sort_desc: sorting[0]?.desc ?? true,
@@ -101,6 +108,7 @@ export function SearchPage() {
       filters.endDate,
       filters.category,
       filters.paymentMethod,
+      filters.bank,
       filters.direction,
       debouncedQuery,
       sorting,
@@ -124,12 +132,17 @@ export function SearchPage() {
       filters.query !== "" ||
       filters.category !== "" ||
       filters.paymentMethod !== "" ||
+      filters.bank !== "" ||
       filters.direction !== ""
     );
   }, [filters]);
 
   const hasNarrowingFilters =
-    filters.query !== "" || filters.category !== "" || filters.paymentMethod !== "" || filters.direction !== "";
+    filters.query !== "" ||
+    filters.category !== "" ||
+    filters.paymentMethod !== "" ||
+    filters.bank !== "" ||
+    filters.direction !== "";
 
   const resetPage = useCallback(() => {
     setPagination((current) => (current.pageIndex === 0 ? current : { ...current, pageIndex: 0 }));
@@ -223,6 +236,7 @@ export function SearchPage() {
         q: searchParams.q,
         category: searchParams.category,
         payment_method: searchParams.payment_method,
+        bank: searchParams.bank,
         is_debit: searchParams.is_debit,
       });
       const url = URL.createObjectURL(blob);
@@ -271,6 +285,7 @@ export function SearchPage() {
         invalidRange={invalidRange}
         categories={categories}
         paymentMethods={paymentMethods}
+        banks={allBanks}
         table={table}
         onExport={() => void onExport()}
         canExport={total > 0}
@@ -283,6 +298,7 @@ export function SearchPage() {
         onOpenChange={setAddOpen}
         categories={categories}
         paymentMethods={paymentMethods}
+        banks={activeBanks}
         onSaved={() => {
           void invalidateTransactionSearch();
           setFeedback({ variant: "success", title: "Transaction saved" });
@@ -347,6 +363,7 @@ export function SearchPage() {
         transaction={editing}
         categories={categories}
         paymentMethods={paymentMethods}
+        banks={allBanks}
         loading={submitting}
         onChange={setEditing}
         onSave={() => void onEditSave()}

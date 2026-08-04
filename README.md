@@ -1,15 +1,15 @@
 # Parsel
 
-Parsel is an INR-focused personal finance tracker: log and search transactions, view spending dashboards, import/export CSV, and ask questions about your data through a conversational assistant.
+Parsel is an INR-focused personal finance tracker: log and search transactions tagged by bank, view spending dashboards, import statements or CSV, export CSV, and ask questions about your data through a conversational assistant.
 
 ## Features
 
-- **Dashboard** — monthly spend, category breakdowns, and recent activity (overview at `/overview`).
-- **Ledger** — search, filter, sort, create, edit, and delete transactions; export filtered results to CSV.
-- **Bulk import** — download a CSV template, fill it in, and upload via the add-transaction flow.
-- **Chat assistant** — natural-language questions over your transaction data (read-only SQL via Groq + LangGraph).
+- **Dashboard** — monthly spend, category breakdowns, and recent activity; filter by month and bank (overview at `/overview`).
+- **Ledger** — search, filter, sort, create, edit, and delete transactions (including by bank); export filtered results to CSV.
+- **Bulk import** — CSV template (includes `bank`), plus bank statement import for **SBI** (Excel/PDF), **Kotak** (PDF), and **Slice** (PDF) via the add-transaction flow with review before save.
+- **Chat assistant** — natural-language questions over your transaction data, including bank-scoped spend (read-only SQL via Groq + LangGraph).
 
-All amounts are stored and displayed in Indian Rupees (₹).
+All amounts are stored and displayed in Indian Rupees (₹). Bank is a label on each transaction (not Open Banking / account aggregation).
 
 ## Prerequisites
 
@@ -78,10 +78,11 @@ Schema SQL lives in [`migrations/`](migrations/). There is no migration runner; 
 |---|---|
 | [`migrations/001_initial_transactions.sql`](migrations/001_initial_transactions.sql) | Fresh DB — original `transactions` table (pre-auth baseline) |
 | [`migrations/002_users_and_transaction_user_id.sql`](migrations/002_users_and_transaction_user_id.sql) | Add `users` + `transactions.user_id` (multi-user auth) |
+| [`migrations/003_search_indexes.sql`](migrations/003_search_indexes.sql) … [`006_transaction_bank.sql`](migrations/006_transaction_bank.sql) | Search indexes, category prefs, non-spend indexes, `transactions.bank` |
 
 See [`migrations/README.md`](migrations/README.md) for the exact order, backfill steps, and verification queries.
 
-Allowed `payment_method` values are enforced by the API and match `backend/tracker/constants.py`. Categories are system defaults from that file plus up to 10 custom labels stored in each user's preferences (no categories table).
+Allowed `payment_method` and `bank` values are enforced by the API and match `backend/tracker/constants.py` (banks: SBI, Kotak, Slice). Categories are system defaults from that file plus up to 10 custom labels stored in each user's preferences (no categories table). CSV export/import columns include `bank`; a per-row CSV `bank` overrides the form-selected bank when present.
 
 ## Auth
 
@@ -99,7 +100,7 @@ Allowed `payment_method` values are enforced by the API and match `backend/track
 | `/register` | Create account |
 | `/overview` | Dashboard |
 | `/ledger/search` | Transaction search and management |
-| `/ledger/add` | Add transaction and CSV import |
+| `/ledger/add` | Add / import transactions (CSV or bank statement) |
 | `/chat` | Finance chat assistant |
 
 ## API documentation

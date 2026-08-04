@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import {
   collectApprovedNewCategories,
   isRowSelectable,
+  patchClearsDuplicate,
   recomputeRow,
   type EditableImportRow,
 } from "@/lib/importReview";
@@ -24,6 +25,7 @@ function eligibleKeys(source: EditableImportRow[]): Set<string> {
 export function ImportReviewTable({
   rows,
   categories,
+  banks,
   paymentMethods,
   onRowsChange,
   onImport,
@@ -32,6 +34,7 @@ export function ImportReviewTable({
 }: {
   rows: EditableImportRow[];
   categories: Category[];
+  banks: string[];
   paymentMethods: string[];
   onRowsChange: (rows: EditableImportRow[]) => void;
   onImport: (selected: EditableImportRow[]) => void;
@@ -82,11 +85,11 @@ export function ImportReviewTable({
     (sourceRow: number, patch: Partial<EditableImportRow>) => {
       const next = rowsRef.current.map((row) => {
         if (row.source_row !== sourceRow) return row;
-        return recomputeRow({ ...row, ...patch }, categories);
+        return recomputeRow({ ...row, ...patchClearsDuplicate(patch) }, categories, banks);
       });
       onRowsChange(next);
     },
-    [categories, onRowsChange],
+    [banks, categories, onRowsChange],
   );
 
   const approveNewCategory = useCallback(
@@ -123,8 +126,11 @@ export function ImportReviewTable({
 
   const importedCount = rows.filter((row) => row.imported).length;
   const pending = rows.filter((row) => !row.imported);
-  const readyCount = pending.filter((row) => row.is_ready).length;
-  const attentionCount = pending.length - readyCount;
+  const duplicateCount = pending.filter((row) => row.is_duplicate && !row.force_duplicate).length;
+  const readyCount = pending.filter((row) => isRowSelectable(row)).length;
+  const attentionCount = pending.filter(
+    (row) => !row.is_ready && !(row.is_duplicate && !row.force_duplicate),
+  ).length;
   const approvedCategories = collectApprovedNewCategories(selectedRows);
 
   return (
@@ -132,13 +138,19 @@ export function ImportReviewTable({
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-col gap-0.5 text-xs text-parsel-muted">
           <span>
-            {rows.length} row{rows.length === 1 ? "" : "s"} · {readyCount} ready · {attentionCount}{" "}
-            need attention · {selectedRows.length} selected
-            {importedCount > 0 ? ` · ${importedCount} imported` : ""}
+            {attentionCount > 0
+              ? `${attentionCount} need a category or fix · ${readyCount} ready · ${selectedRows.length} selected`
+              : `${readyCount} ready · ${selectedRows.length} selected`}
+            {duplicateCount > 0
+              ? ` · ${duplicateCount} duplicate${duplicateCount === 1 ? "" : "s"} skipped`
+              : ""}
+            {importedCount > 0 ? ` · ${importedCount} already imported` : ""}
           </span>
-          <span className="truncate">
-            New categories to create: {approvedCategories.join(", ") || "none"}
-          </span>
+          {approvedCategories.length > 0 ? (
+            <span className="truncate">
+              Will create categories: {approvedCategories.join(", ")}
+            </span>
+          ) : null}
         </div>
         <Button
           type="button"

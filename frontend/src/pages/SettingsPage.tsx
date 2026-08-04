@@ -1,62 +1,98 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
-import { LogOut, Moon, Pencil, Sun, Trash2 } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { Moon, Pencil, Sun, Trash2 } from "lucide-react";
 
 import { deleteCategory, renameCategory } from "@/api/tracker";
+import { BanksManager } from "@/components/settings/BanksManager";
 import { StatusAlert, type FeedbackMessage } from "@/components/feedback/StatusAlert";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+  Drawer,
+  DrawerContent,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAuth } from "@/lib/auth";
 import { PASSWORD_HINT, passwordStrengthError } from "@/lib/password";
+import { initialsFromProfile } from "@/lib/profile";
 import {
   setTrackerConfigCategories,
   trackerConfigQueryOptions,
 } from "@/lib/trackerConfigQuery";
 import { useTheme, type Theme } from "@/lib/theme";
 import type { Category } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 const MAX_CUSTOM_CATEGORIES = 10;
 
-const PANEL_HEADER = "shrink-0 border-b border-parsel-border px-6 py-4";
-const PANEL_TITLE = "text-sm font-semibold uppercase tracking-wide text-parsel-neutral";
-const PANEL_SUBTITLE = "mt-1 text-xs text-parsel-muted";
-const PANEL_BODY = "min-h-0 flex-1 overflow-y-auto p-6 md:p-8";
-const PANEL_FOOTER =
-  "shrink-0 flex items-center justify-end gap-2 border-t border-parsel-border bg-parsel-soft/40 px-6 py-3";
+const SETTINGS_SECTIONS = [
+  "profile",
+  "appearance",
+  "account",
+  "password",
+  "banks",
+  "categories",
+] as const;
+type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
-function SettingsSection({
+function parseSettingsSection(hash: string): SettingsSection | null {
+  const raw = hash.replace(/^#/, "").toLowerCase();
+  if (raw === "other") return "banks";
+  return (SETTINGS_SECTIONS as readonly string[]).includes(raw)
+    ? (raw as SettingsSection)
+    : null;
+}
+
+function SettingsGroup({
   title,
   description,
   children,
-  footer,
-  className,
 }: {
   title: string;
   description: string;
   children: React.ReactNode;
-  footer?: React.ReactNode;
-  className?: string;
 }) {
   return (
-    <section className={cn("flex min-h-0 flex-col bg-parsel-surface", className)}>
-      <header className={PANEL_HEADER}>
-        <h2 className={PANEL_TITLE}>{title}</h2>
-        <p className={PANEL_SUBTITLE}>{description}</p>
+    <section className="border border-parsel-border bg-parsel-surface">
+      <header className="border-b border-parsel-border px-4 py-2.5">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-parsel-neutral">{title}</h2>
+        <p className="mt-0.5 text-xs text-parsel-muted">{description}</p>
       </header>
-      <div className={PANEL_BODY}>{children}</div>
-      {footer ? <div className={PANEL_FOOTER}>{footer}</div> : null}
+      <div className="p-4">{children}</div>
     </section>
+  );
+}
+
+function SettingsCell({
+  id,
+  title,
+  description,
+  children,
+}: {
+  id: SettingsSection;
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div id={id} className="scroll-mt-3 border border-parsel-border p-3">
+      <div className="mb-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-parsel-neutral">{title}</h3>
+        <p className="mt-0.5 text-xs text-parsel-muted">{description}</p>
+      </div>
+      {children}
+    </div>
   );
 }
 
@@ -69,12 +105,14 @@ export function SettingsPage() {
     preferences,
     updateProfile,
     changePassword,
-    logout,
   } = useAuth();
   const { theme, setTheme } = useTheme();
-  const navigate = useNavigate();
+  const location = useLocation();
+  const scrollRootRef = useRef<HTMLDivElement>(null);
 
-  const [profileForm, setProfileForm] = useState({ firstName: "", lastName: "", username: "" });
+  const [nameForm, setNameForm] = useState({ firstName: "", lastName: "" });
+  const [usernameDraft, setUsernameDraft] = useState("");
+  const [defaultTheme, setDefaultTheme] = useState<Theme>("light");
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileFeedback, setProfileFeedback] = useState<FeedbackMessage | null>(null);
 
@@ -85,10 +123,7 @@ export function SettingsPage() {
   });
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordFeedback, setPasswordFeedback] = useState<FeedbackMessage | null>(null);
-
-  const [defaultTheme, setDefaultTheme] = useState<Theme>("light");
-  const [themeSaving, setThemeSaving] = useState(false);
-  const [themeFeedback, setThemeFeedback] = useState<FeedbackMessage | null>(null);
+  const [passwordDrawerOpen, setPasswordDrawerOpen] = useState(false);
 
   const {
     data: trackerConfig,
@@ -106,12 +141,22 @@ export function SettingsPage() {
   const [deleting, setDeleting] = useState<Category | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
 
+  const initials = initialsFromProfile(firstName, lastName, username ?? email);
+  const summaryName =
+    [firstName, lastName].filter(Boolean).join(" ") || username || email || "Signed in";
+
   useEffect(() => {
-    setProfileForm({
-      firstName: firstName ?? "",
-      lastName: lastName ?? "",
-      username: username ?? "",
-    });
+    const section = parseSettingsSection(location.hash);
+    if (!section) return;
+    const root = scrollRootRef.current;
+    const target = root?.querySelector(`#${section}`);
+    if (!(target instanceof HTMLElement) || !root) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [location.hash]);
+
+  useEffect(() => {
+    setNameForm({ firstName: firstName ?? "", lastName: lastName ?? "" });
+    setUsernameDraft(username ?? "");
   }, [firstName, lastName, username]);
 
   useEffect(() => {
@@ -130,11 +175,13 @@ export function SettingsPage() {
     setProfileFeedback(null);
     try {
       await updateProfile({
-        username: profileForm.username.trim(),
-        first_name: profileForm.firstName.trim() || null,
-        last_name: profileForm.lastName.trim() || null,
+        first_name: nameForm.firstName.trim() || null,
+        last_name: nameForm.lastName.trim() || null,
+        username: usernameDraft.trim(),
+        preferences: { theme: defaultTheme },
       });
-      setProfileFeedback({ variant: "success", title: "Profile updated." });
+      setTheme(defaultTheme);
+      setProfileFeedback({ variant: "success", title: "Profile saved." });
     } catch (err) {
       setProfileFeedback({
         variant: "error",
@@ -145,21 +192,15 @@ export function SettingsPage() {
     }
   }
 
-  async function handleSaveTheme() {
-    setThemeSaving(true);
-    setThemeFeedback(null);
-    try {
-      await updateProfile({ preferences: { theme: defaultTheme } });
-      setTheme(defaultTheme);
-      setThemeFeedback({ variant: "success", title: "Default theme updated." });
-    } catch (err) {
-      setThemeFeedback({
-        variant: "error",
-        title: err instanceof Error ? err.message : "Could not save default theme.",
-      });
-    } finally {
-      setThemeSaving(false);
-    }
+  function resetPasswordForm() {
+    setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    setPasswordFeedback(null);
+  }
+
+  function handlePasswordDrawerOpenChange(next: boolean) {
+    if (passwordSaving) return;
+    if (!next) resetPasswordForm();
+    setPasswordDrawerOpen(next);
   }
 
   async function handleChangePassword() {
@@ -188,8 +229,8 @@ export function SettingsPage() {
         new_password: passwordForm.newPassword,
         confirm_password: passwordForm.confirmPassword,
       });
-      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
-      setPasswordFeedback({ variant: "success", title: "Password updated." });
+      resetPasswordForm();
+      setPasswordDrawerOpen(false);
     } catch (err) {
       setPasswordFeedback({
         variant: "error",
@@ -253,42 +294,17 @@ export function SettingsPage() {
     }
   }
 
-  async function handleLogout() {
-    logout();
-    navigate("/", { replace: true });
-  }
-
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto border border-parsel-border lg:grid lg:grid-cols-6 lg:grid-rows-[auto_minmax(0,1fr)] lg:overflow-hidden">
-        <SettingsSection
-          className="border-b border-parsel-border lg:col-span-4 lg:border-r"
-          title="Profile"
-          description="Your name and sign-in details."
-          footer={
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                className="mr-auto gap-2 border-parsel-border text-parsel-muted shadow-none hover:border-parsel-danger/40 hover:bg-parsel-danger-bg hover:text-parsel-danger-text"
-                onClick={handleLogout}
-                disabled={profileSaving}
-              >
-                <LogOut className="size-4" aria-hidden />
-                Log out
-              </Button>
-              <Button
-                type="button"
-                onClick={() => void handleSaveProfile()}
-                disabled={profileSaving}
-              >
-                {profileSaving ? "Saving…" : "Save profile"}
-              </Button>
-            </>
-          }
-        >
+      <div className="mb-3 shrink-0">
+        <h1 className="text-base font-semibold tracking-wide">Settings</h1>
+        <p className="text-xs text-parsel-muted">Manage your Parsel identity and ledger preferences.</p>
+      </div>
+
+      <div ref={scrollRootRef} className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pb-4">
+        <SettingsGroup title="Profile" description="Identity, sign-in, and appearance.">
           {profileFeedback ? (
-            <div className="mb-4">
+            <div className="mb-3">
               <StatusAlert
                 variant={profileFeedback.variant}
                 title={profileFeedback.title}
@@ -296,185 +312,238 @@ export function SettingsPage() {
               />
             </div>
           ) : null}
-          <FieldGroup className="grid gap-4 md:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="settings-first-name">First name</FieldLabel>
-              <Input
-                id="settings-first-name"
-                value={profileForm.firstName}
-                onChange={(e) =>
-                  setProfileForm((prev) => ({ ...prev, firstName: e.target.value }))
-                }
-                disabled={profileSaving}
-                autoComplete="given-name"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="settings-last-name">Last name</FieldLabel>
-              <Input
-                id="settings-last-name"
-                value={profileForm.lastName}
-                onChange={(e) => setProfileForm((prev) => ({ ...prev, lastName: e.target.value }))}
-                disabled={profileSaving}
-                autoComplete="family-name"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="settings-username">Username</FieldLabel>
-              <Input
-                id="settings-username"
-                value={profileForm.username}
-                onChange={(e) => setProfileForm((prev) => ({ ...prev, username: e.target.value }))}
-                disabled={profileSaving}
-                autoComplete="username"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="settings-email">Email</FieldLabel>
-              <Input id="settings-email" value={email ?? ""} disabled readOnly />
-              <FieldDescription>Email cannot be changed.</FieldDescription>
-            </Field>
-          </FieldGroup>
-        </SettingsSection>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <SettingsCell
+              id="profile"
+              title="Profile"
+              description="Your display name."
+            >
+              <div className="flex flex-wrap items-start gap-5">
+                <div className="flex min-w-[5.5rem] max-w-[8rem] shrink-0 flex-col items-center gap-1">
+                  <Avatar className="h-12 w-12 rounded-none border border-parsel-border" aria-hidden>
+                    <AvatarFallback className="rounded-none bg-parsel-avatar-bg text-sm font-semibold text-parsel-secondary">
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
+                  <p className="w-full truncate text-center text-xs text-parsel-muted" title={summaryName}>
+                    {summaryName}
+                  </p>
+                </div>
+                <div className="grid w-full max-w-sm grid-cols-2 gap-2">
+                  <Field>
+                    <FieldLabel htmlFor="settings-first-name">First name</FieldLabel>
+                    <Input
+                      id="settings-first-name"
+                      value={nameForm.firstName}
+                      onChange={(e) =>
+                        setNameForm((prev) => ({ ...prev, firstName: e.target.value }))
+                      }
+                      disabled={profileSaving}
+                      autoComplete="given-name"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="settings-last-name">Last name</FieldLabel>
+                    <Input
+                      id="settings-last-name"
+                      value={nameForm.lastName}
+                      onChange={(e) =>
+                        setNameForm((prev) => ({ ...prev, lastName: e.target.value }))
+                      }
+                      disabled={profileSaving}
+                      autoComplete="family-name"
+                    />
+                  </Field>
+                </div>
+              </div>
+            </SettingsCell>
 
-        <SettingsSection
-          className="border-b border-parsel-border lg:col-span-2"
-          title="Appearance"
-          description="The theme applied when you sign in on a new device."
-          footer={
-            <Button type="button" onClick={() => void handleSaveTheme()} disabled={themeSaving}>
-              {themeSaving ? "Saving…" : "Save default"}
-            </Button>
-          }
-        >
-          {themeFeedback ? (
-            <div className="mb-4">
-              <StatusAlert
-                variant={themeFeedback.variant}
-                title={themeFeedback.title}
-                onDismiss={() => setThemeFeedback(null)}
-              />
-            </div>
-          ) : null}
-          <Field>
-            <FieldLabel>Default theme</FieldLabel>
-            <div className="flex items-center gap-3 border border-parsel-border bg-parsel-soft px-3 py-2">
-              <Sun className="size-4 text-parsel-muted" aria-hidden />
-              <Switch
-                checked={defaultTheme === "dark"}
-                onCheckedChange={(checked) => setDefaultTheme(checked ? "dark" : "light")}
-                disabled={themeSaving}
-                aria-label="Default dark mode"
-              />
-              <Moon className="size-4 text-parsel-muted" aria-hidden />
-              <span className="text-sm text-parsel-muted">
-                {defaultTheme === "dark" ? "Dark" : "Light"}
-              </span>
-            </div>
-          </Field>
-        </SettingsSection>
+            <SettingsCell
+              id="account"
+              title="Account"
+              description="Username and email for this Parsel login."
+            >
+              <div className="grid w-full max-w-sm grid-cols-2 gap-2">
+                <Field>
+                  <FieldLabel htmlFor="settings-username">Username</FieldLabel>
+                  <Input
+                    id="settings-username"
+                    value={usernameDraft}
+                    onChange={(e) => setUsernameDraft(e.target.value)}
+                    disabled={profileSaving}
+                    autoComplete="username"
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="settings-email">Email</FieldLabel>
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="block w-full cursor-default">
+                          <Input
+                            id="settings-email"
+                            className="pointer-events-none"
+                            value={email ?? ""}
+                            disabled
+                            readOnly
+                          />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">Email cannot be changed.</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </Field>
+              </div>
+            </SettingsCell>
 
-        <SettingsSection
-          className="border-b border-parsel-border lg:col-span-3 lg:border-b-0 lg:border-r"
-          title="Custom categories"
-          description={`Saved to your account. Up to ${MAX_CUSTOM_CATEGORIES} custom categories.`}
-        >
-          <div className="mb-3 flex justify-end">
-            <span className="text-xs text-parsel-muted">
-              {customCategories.length}/{MAX_CUSTOM_CATEGORIES}
-            </span>
-          </div>
-          {categoryError ? (
-            <div className="mb-3">
-              <StatusAlert
-                variant="error"
-                title={categoryError}
-                action={
-                  categoryErrorLedgerName ? (
-                    <Button asChild size="sm" variant="outline" className="rounded-none shadow-none">
-                      <Link
-                        to={`/ledger/search?category=${encodeURIComponent(categoryErrorLedgerName)}`}
-                      >
-                        Go to ledger
-                      </Link>
-                    </Button>
-                  ) : undefined
-                }
-              />
-            </div>
-          ) : null}
-          {categoriesLoading ? (
-            <p className="text-sm text-parsel-muted">Loading categories…</p>
-          ) : customCategories.length === 0 ? (
-            <p className="text-sm text-parsel-muted">
-              No custom categories yet. Create one when adding a transaction.
-            </p>
-          ) : (
-            <ul className="divide-y divide-parsel-border border border-parsel-border">
-              {customCategories.map((item) => (
-                <li key={item.name} className="flex items-center justify-between gap-2 px-3 py-2">
-                  <span className="min-w-0 truncate text-sm text-parsel-neutral" title={item.name}>
-                    {item.name}
+            <SettingsCell
+              id="appearance"
+              title="Appearance"
+              description="Default theme for new devices."
+            >
+              <div className="flex w-fit items-center gap-2 border border-parsel-border bg-parsel-soft px-2 py-1.5">
+                  <span className="flex items-center gap-1 text-[11px] text-parsel-muted">
+                    <Sun className="size-3 shrink-0" aria-hidden />
+                    Light
                   </span>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={categoryBusyName === item.name}
-                      onClick={() => {
-                        setRenaming(item);
-                        setRenameDraft(item.name);
-                        setCategoryError(null);
-                        setCategoryErrorLedgerName(null);
-                      }}
-                    >
-                      <Pencil className="size-3.5" />
-                      Rename
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-parsel-danger-text hover:bg-parsel-danger-bg hover:text-parsel-danger-text"
-                      disabled={categoryBusyName === item.name}
-                      onClick={() => {
-                        setDeleting(item);
-                        setCategoryError(null);
-                        setCategoryErrorLedgerName(null);
-                      }}
-                    >
-                      <Trash2 className="size-3.5" />
-                      Delete
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </SettingsSection>
+                  <Switch
+                    checked={defaultTheme === "dark"}
+                    onCheckedChange={(checked) => setDefaultTheme(checked ? "dark" : "light")}
+                    disabled={profileSaving}
+                    aria-label="Default dark mode"
+                    className="h-3.5 w-6 [&>span]:h-2.5 [&>span]:w-2.5 [&>span]:data-[state=checked]:translate-x-2.5 [&>span]:data-[state=unchecked]:translate-x-0"
+                  />
+                  <span className="flex items-center gap-1 text-[11px] text-parsel-muted">
+                    <Moon className="size-3 shrink-0" aria-hidden />
+                    Dark
+                  </span>
+                </div>
+            </SettingsCell>
 
-        <SettingsSection
-          className="lg:col-span-3"
-          title="Password"
-          description="Change the password used to sign in."
-          footer={
+            <SettingsCell
+              id="password"
+              title="Password"
+              description="Change the password used to sign in."
+            >
+              <Button type="button" className="w-fit" onClick={() => setPasswordDrawerOpen(true)}>
+                Update password
+              </Button>
+            </SettingsCell>
+          </div>
+          <div className="mt-4 flex justify-start border-t border-parsel-border pt-4">
             <Button
               type="button"
-              onClick={() => void handleChangePassword()}
-              disabled={
-                passwordSaving ||
-                !passwordForm.currentPassword ||
-                !passwordForm.newPassword ||
-                !passwordForm.confirmPassword
-              }
+              className="w-fit"
+              onClick={() => void handleSaveProfile()}
+              disabled={profileSaving}
             >
-              {passwordSaving ? "Updating…" : "Update password"}
+              {profileSaving ? "Saving…" : "Save"}
             </Button>
-          }
-        >
+          </div>
+        </SettingsGroup>
+
+        <SettingsGroup title="Other" description="Ledger preferences.">
+          <div className="grid gap-3 lg:grid-cols-2">
+            <SettingsCell
+              id="banks"
+              title="Banks"
+              description="Opening balances drive Net Portfolio Balance. Inactive banks stay in history but hide when adding transactions."
+            >
+              <BanksManager />
+            </SettingsCell>
+
+            <SettingsCell
+              id="categories"
+              title="Categories"
+              description={`Custom categories on your account. Up to ${MAX_CUSTOM_CATEGORIES}.`}
+            >
+              <div className="mb-3 flex justify-end">
+                <span className="text-xs text-parsel-muted">
+                  {customCategories.length}/{MAX_CUSTOM_CATEGORIES}
+                </span>
+              </div>
+              {categoryError ? (
+                <div className="mb-3">
+                  <StatusAlert
+                    variant="error"
+                    title={categoryError}
+                    action={
+                      categoryErrorLedgerName ? (
+                        <Button asChild size="sm" variant="outline" className="rounded-none shadow-none">
+                          <Link
+                            to={`/ledger/search?category=${encodeURIComponent(categoryErrorLedgerName)}`}
+                          >
+                            Go to ledger
+                          </Link>
+                        </Button>
+                      ) : undefined
+                    }
+                  />
+                </div>
+              ) : null}
+              {categoriesLoading ? (
+                <p className="text-sm text-parsel-muted">Loading categories…</p>
+              ) : customCategories.length === 0 ? (
+                <p className="text-sm text-parsel-muted">
+                  No custom categories yet. Create one when adding a transaction.
+                </p>
+              ) : (
+                <ul className="max-w-md divide-y divide-parsel-border border border-parsel-border">
+                  {customCategories.map((item) => (
+                    <li key={item.name} className="flex items-center justify-between gap-2 px-3 py-1.5">
+                      <span className="min-w-0 truncate text-sm text-parsel-neutral" title={item.name}>
+                        {item.name}
+                      </span>
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={categoryBusyName === item.name}
+                          onClick={() => {
+                            setRenaming(item);
+                            setRenameDraft(item.name);
+                            setCategoryError(null);
+                            setCategoryErrorLedgerName(null);
+                          }}
+                        >
+                          <Pencil className="size-3.5" />
+                          Rename
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-parsel-danger-text hover:bg-parsel-danger-bg hover:text-parsel-danger-text"
+                          disabled={categoryBusyName === item.name}
+                          onClick={() => {
+                            setDeleting(item);
+                            setCategoryError(null);
+                            setCategoryErrorLedgerName(null);
+                          }}
+                        >
+                          <Trash2 className="size-3.5" />
+                          Delete
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SettingsCell>
+          </div>
+        </SettingsGroup>
+      </div>
+
+      <Drawer open={passwordDrawerOpen} onOpenChange={handlePasswordDrawerOpenChange}>
+        <DrawerContent className="sm:max-w-md" showCloseButton={!passwordSaving}>
+          <DrawerHeader>
+            <DrawerTitle className="text-xl font-semibold tracking-tight text-parsel-neutral">
+              Update password
+            </DrawerTitle>
+          </DrawerHeader>
           {passwordFeedback ? (
-            <div className="mb-4">
+            <div className="shrink-0">
               <StatusAlert
                 variant={passwordFeedback.variant}
                 title={passwordFeedback.title}
@@ -482,8 +551,8 @@ export function SettingsPage() {
               />
             </div>
           ) : null}
-          <FieldGroup className="grid gap-4 sm:grid-cols-2">
-            <Field className="sm:col-span-2 sm:max-w-[calc(50%-0.5rem)]">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+            <Field>
               <FieldLabel htmlFor="settings-current-password">Current password</FieldLabel>
               <Input
                 id="settings-current-password"
@@ -523,39 +592,63 @@ export function SettingsPage() {
                 autoComplete="new-password"
               />
             </Field>
-          </FieldGroup>
-        </SettingsSection>
-      </div>
+          </div>
+          <DrawerFooter className="shrink-0">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={passwordSaving}
+              onClick={() => handlePasswordDrawerOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleChangePassword()}
+              disabled={
+                passwordSaving ||
+                !passwordForm.currentPassword ||
+                !passwordForm.newPassword ||
+                !passwordForm.confirmPassword
+              }
+            >
+              {passwordSaving ? "Updating…" : "Update password"}
+            </Button>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
 
-      <Dialog
+      <Drawer
         open={Boolean(renaming)}
         onOpenChange={(next) => !categoryBusyName && !next && setRenaming(null)}
       >
-        <DialogContent className="max-w-md sm:rounded-none">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-semibold tracking-tight text-parsel-neutral">
+        <DrawerContent className="sm:max-w-md" showCloseButton={!categoryBusyName}>
+          <DrawerHeader>
+            <DrawerTitle className="text-xl font-semibold tracking-tight text-parsel-neutral">
               Rename category
-            </DialogTitle>
-          </DialogHeader>
-          <Field>
-            <FieldLabel htmlFor="settings-rename-category">Name</FieldLabel>
-            <Input
-              id="settings-rename-category"
-              value={renameDraft}
-              onChange={(e) => setRenameDraft(e.target.value)}
-              maxLength={40}
-              disabled={Boolean(categoryBusyName)}
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void handleRename();
-                }
-              }}
-            />
-            {categoryError ? <p className="text-sm text-destructive">{categoryError}</p> : null}
-          </Field>
-          <DialogFooter>
+            </DrawerTitle>
+          </DrawerHeader>
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+            <Field>
+              <FieldLabel htmlFor="settings-rename-category">Name</FieldLabel>
+              <Input
+                id="settings-rename-category"
+                value={renameDraft}
+                onChange={(e) => setRenameDraft(e.target.value)}
+                maxLength={40}
+                disabled={Boolean(categoryBusyName)}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleRename();
+                  }
+                }}
+              />
+              {categoryError ? <p className="text-sm text-destructive">{categoryError}</p> : null}
+            </Field>
+          </div>
+          <DrawerFooter className="shrink-0">
             <Button
               type="button"
               variant="ghost"
@@ -571,25 +664,25 @@ export function SettingsPage() {
             >
               {categoryBusyName ? "Saving…" : "Save"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
 
-      <Dialog
+      <Drawer
         open={Boolean(deleting)}
         onOpenChange={(next) => !categoryBusyName && !next && setDeleting(null)}
       >
-        <DialogContent className="max-w-md sm:rounded-none">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-semibold tracking-tight text-parsel-neutral">
+        <DrawerContent className="sm:max-w-md" showCloseButton={!categoryBusyName}>
+          <DrawerHeader>
+            <DrawerTitle className="text-xl font-semibold tracking-tight text-parsel-neutral">
               Delete category
-            </DialogTitle>
-          </DialogHeader>
+            </DrawerTitle>
+          </DrawerHeader>
           <p className="text-sm leading-relaxed text-parsel-muted">
             Delete <span className="font-semibold text-parsel-neutral">{deleting?.name}</span>?
             This is only allowed when no transactions use this category.
           </p>
-          <DialogFooter>
+          <DrawerFooter className="shrink-0">
             <Button
               type="button"
               variant="ghost"
@@ -606,9 +699,9 @@ export function SettingsPage() {
             >
               {categoryBusyName ? "Deleting…" : "Delete category"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 }

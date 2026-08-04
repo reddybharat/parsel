@@ -13,6 +13,16 @@ PAYMENT_METHODS = [
     "Other",
 ]
 
+# Bank / account source (exact values stored in DB)
+BANKS = [
+    "SBI",
+    "Kotak",
+    "Slice",
+]
+BANK_SBI = "SBI"
+BANK_KOTAK = "Kotak"
+BANK_SLICE = "Slice"
+
 # Used in spend aggregates (trend, monthly spend); not treated as consumption.
 INVESTMENTS_CATEGORY = "Investments"
 SELF_TRANSFER_CATEGORY = "Self Transfer"

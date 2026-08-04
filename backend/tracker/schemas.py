@@ -8,8 +8,25 @@ from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 from pydantic.config import ConfigDict
 
-from tracker.constants import CATEGORY_NAME_MAX_LENGTH, PAYMENT_METHODS
+from tracker.constants import BANKS, CATEGORY_NAME_MAX_LENGTH, PAYMENT_METHODS
 from tracker.category_service import normalize_category_name
+
+
+def _validate_bank_required(v: object) -> str:
+    if v is None or (isinstance(v, str) and not str(v).strip()):
+        raise ValueError("Please select a bank.")
+    s = str(v).strip()
+    if s not in BANKS:
+        raise ValueError(f"Invalid bank. Must be one of: {', '.join(BANKS)}")
+    return s
+
+
+def _validate_bank_optional(v: object) -> Optional[str]:
+    if v is None:
+        return None
+    if isinstance(v, str) and not v.strip():
+        raise ValueError("Please select a bank.")
+    return _validate_bank_required(v)
 
 
 class CategoryCreate(BaseModel):
@@ -26,9 +43,37 @@ class CategoryResponse(BaseModel):
     is_system: bool
 
 
+_MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
+
+
+class UserBankResponse(BaseModel):
+    bank: str
+    opening_balance: float
+    opening_month: str  # YYYY-MM
+    is_active: bool
+
+
+class UserBankCreate(BaseModel):
+    bank: str
+    opening_balance: float = Field(..., ge=0, description="Opening balance in INR (>= 0)")
+    opening_month: str = Field(..., pattern=_MONTH_PATTERN, description="Opening month as YYYY-MM")
+
+    @field_validator("bank", mode="before")
+    @classmethod
+    def bank_required(cls, v: object) -> str:
+        return _validate_bank_required(v)
+
+
+class UserBankUpdate(BaseModel):
+    opening_balance: Optional[float] = Field(None, ge=0)
+    opening_month: Optional[str] = Field(None, pattern=_MONTH_PATTERN)
+    is_active: Optional[bool] = None
+
+
 class TransactionCreate(BaseModel):
     amount: float = Field(..., gt=0, description="Amount in INR (must be > 0)")
     category: str = Field(..., min_length=1)
+    bank: str
     # Omitted or blank/null in JSON is stored as NULL when the column allows it.
     payment_method: Optional[str] = None
     transaction_date: date = Field(default_factory=date.today)
@@ -50,6 +95,11 @@ class TransactionCreate(BaseModel):
                 f"Category name must be at most {CATEGORY_NAME_MAX_LENGTH} characters."
             )
         return s
+
+    @field_validator("bank", mode="before")
+    @classmethod
+    def bank_required(cls, v: object) -> str:
+        return _validate_bank_required(v)
 
     @field_validator("amount")
     @classmethod
@@ -83,6 +133,7 @@ class TransactionUpdate(BaseModel):
 
     amount: Optional[float] = Field(None, gt=0, description="Amount in INR (must be > 0)")
     category: Optional[str] = None
+    bank: Optional[str] = None
     payment_method: Optional[str] = None
     transaction_date: Optional[date] = None
     description: Optional[str] = None
@@ -103,6 +154,11 @@ class TransactionUpdate(BaseModel):
                 f"Category name must be at most {CATEGORY_NAME_MAX_LENGTH} characters."
             )
         return s
+
+    @field_validator("bank", mode="before")
+    @classmethod
+    def bank_if_present(cls, v: object) -> Optional[str]:
+        return _validate_bank_optional(v)
 
     @field_validator("payment_method")
     @classmethod
@@ -136,6 +192,7 @@ class TransactionResponse(BaseModel):
     amount: float
     is_debit: bool
     category: str
+    bank: Optional[str] = None
     payment_method: Optional[str] = None
     transaction_date: date
     description: Optional[str] = None
@@ -158,6 +215,9 @@ class DashboardSummaryResponse(BaseModel):
     current_month_spend: float
     previous_month_spend: float
     spend_delta_pct: Optional[float] = None
+    # Selected profile banks whose opening month is after the focus month, so
+    # they are excluded from portfolio_net (surfaced as a hint in the UI).
+    missing_opening_banks: list[str] = Field(default_factory=list)
 
 
 class DashboardTrendPoint(BaseModel):
@@ -174,6 +234,7 @@ class DashboardRecentItem(BaseModel):
     id: str
     transaction_date: date
     category: str
+    bank: Optional[str] = None
     payment_method: Optional[str] = None
     amount: float
     is_debit: bool
@@ -201,10 +262,16 @@ class DashboardDailySpendPoint(BaseModel):
     spend: float
 
 
+class DashboardDailySpendSeries(BaseModel):
+    bank: str
+    points: list[DashboardDailySpendPoint]
+
+
 class DashboardDailySpendResponse(BaseModel):
     month_label: str
     total: float
-    points: list[DashboardDailySpendPoint]
+    # One series per bank that has spend in the focus month.
+    series: list[DashboardDailySpendSeries] = Field(default_factory=list)
 
 
 class DashboardCategorySpendItem(BaseModel):
@@ -223,6 +290,7 @@ class DashboardOverviewResponse(BaseModel):
     highlights: DashboardHighlightsResponse
     daily_spend: DashboardDailySpendResponse
     category_spend: DashboardCategorySpendResponse
+    active_banks: list[str] = Field(default_factory=list)
 
 
 class ImportFieldIssue(BaseModel):
@@ -237,11 +305,13 @@ class ImportPreviewRow(BaseModel):
     category: str
     amount: str
     is_debit: str
+    bank: str
     description: Optional[str] = None
     payment_method: Optional[str] = None
     issues: list[ImportFieldIssue] = Field(default_factory=list)
     is_ready: bool = False
     category_is_new: bool = False
+    is_duplicate: bool = False
 
 
 class ImportPreviewResponse(BaseModel):
@@ -249,6 +319,7 @@ class ImportPreviewResponse(BaseModel):
     file_errors: list[str] = Field(default_factory=list)
     new_categories: list[str] = Field(default_factory=list)
     valid_row_count: int = 0
+    duplicate_row_count: int = 0
     errors: list[str] = Field(default_factory=list)
 
 
@@ -256,10 +327,12 @@ class ReviewedImportRow(BaseModel):
     source_row: int
     amount: float = Field(..., gt=0)
     category: str = Field(..., min_length=1)
+    bank: str
     payment_method: Optional[str] = None
     transaction_date: date
     description: Optional[str] = None
     is_debit: bool = True
+    force_duplicate: bool = False
 
     @field_validator("category", mode="before")
     @classmethod
@@ -274,6 +347,11 @@ class ReviewedImportRow(BaseModel):
                 f"Category name must be at most {CATEGORY_NAME_MAX_LENGTH} characters."
             )
         return s
+
+    @field_validator("bank", mode="before")
+    @classmethod
+    def bank_required(cls, v: object) -> str:
+        return _validate_bank_required(v)
 
     @field_validator("amount")
     @classmethod
@@ -310,4 +388,5 @@ class ReviewedImportRequest(BaseModel):
 class ReviewedImportResponse(BaseModel):
     inserted: int
     created_categories: list[str] = Field(default_factory=list)
+    skipped_duplicates: int = 0
     errors: list[str] = Field(default_factory=list)

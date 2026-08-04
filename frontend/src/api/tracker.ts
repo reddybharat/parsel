@@ -1,15 +1,29 @@
 import { deleteJson, getBlob, getJson, patchJson, postJson, postMultipart } from "./client";
-import type { Category, SearchResult, TrackerConfig, Transaction } from "../lib/types";
+import type {
+  BankSetup,
+  Category,
+  ProfileBank,
+  SearchResult,
+  TrackerConfig,
+  Transaction,
+} from "../lib/types";
 
-export type SortColumn = "transaction_date" | "amount" | "category" | "payment_method" | "description";
+export type SortColumn =
+  | "transaction_date"
+  | "amount"
+  | "category"
+  | "payment_method"
+  | "bank"
+  | "description";
 
 export type SearchParams = {
   start_date: string;
   end_date: string;
-  /** Free-text contains-match over description, category and payment method. */
+  /** Free-text contains-match over description, category, payment method, and bank. */
   q?: string;
   category?: string;
   payment_method?: string;
+  bank?: string;
   is_debit?: boolean;
   sort_column: SortColumn;
   sort_desc: boolean;
@@ -29,17 +43,20 @@ export type ImportPreviewRow = {
   category: string;
   amount: string;
   is_debit: string;
+  bank: string;
   description: string | null;
   payment_method: string | null;
   issues: ImportFieldIssue[];
   is_ready: boolean;
   category_is_new: boolean;
+  is_duplicate: boolean;
 };
 
 export type ImportPreviewResult = {
   rows: ImportPreviewRow[];
   file_errors: string[];
   valid_row_count: number;
+  duplicate_row_count: number;
   new_categories: string[];
   errors: string[];
 };
@@ -49,15 +66,18 @@ export type ReviewedImportRow = {
   amount: number;
   is_debit: boolean;
   category: string;
+  bank: string;
   payment_method: string | null;
   transaction_date: string;
   description: string | null;
+  force_duplicate?: boolean;
 };
 
 export type ImportResult = {
   inserted: number;
   errors: string[];
   created_categories: string[];
+  skipped_duplicates: number;
 };
 
 export function fetchTrackerConfig() {
@@ -75,6 +95,29 @@ export function renameCategory(oldName: string, newName: string) {
 export function deleteCategory(name: string) {
   const query = new URLSearchParams({ name });
   return deleteJson(`/categories?${query.toString()}`);
+}
+
+export function fetchBanks() {
+  return getJson<ProfileBank[]>("/banks");
+}
+
+export function fetchBankSetup() {
+  return getJson<BankSetup>("/banks/setup");
+}
+
+export function createBank(payload: {
+  bank: string;
+  opening_balance: number;
+  opening_month: string;
+}) {
+  return postJson<ProfileBank>("/banks", payload);
+}
+
+export function updateBank(
+  bank: string,
+  payload: { opening_balance?: number; opening_month?: string; is_active?: boolean },
+) {
+  return patchJson<ProfileBank>(`/banks/${encodeURIComponent(bank)}`, payload);
 }
 
 export function searchTransactions(params: SearchParams) {
@@ -99,14 +142,22 @@ export function exportTransactions(params: {
   q?: string;
   category?: string;
   payment_method?: string;
+  bank?: string;
   is_debit?: boolean;
 }) {
   return getBlob("/transactions/export", params);
 }
 
-export function previewImportTransactions(file: File) {
+export function previewImportTransactions(
+  file: File,
+  options: { bank: string; password?: string },
+) {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("bank", options.bank);
+  if (options.password?.trim()) {
+    formData.append("password", options.password.trim());
+  }
   return postMultipart<ImportPreviewResult>("/transactions/import/preview", formData);
 }
 
@@ -117,10 +168,14 @@ export function importReviewedTransactions(payload: {
   return postJson<ImportResult>("/transactions/import/reviewed", payload);
 }
 
-export function importTransactions(file: File, options?: { createMissingCategories?: boolean }) {
+export function importTransactions(
+  file: File,
+  options: { bank: string; createMissingCategories?: boolean },
+) {
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("create_missing_categories", options?.createMissingCategories ? "true" : "false");
+  formData.append("bank", options.bank);
+  formData.append("create_missing_categories", options.createMissingCategories ? "true" : "false");
   return postMultipart<ImportResult>("/transactions/import", formData);
 }
 

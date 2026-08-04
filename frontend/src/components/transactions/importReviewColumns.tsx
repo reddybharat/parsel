@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { AlertCircle, Check, Plus, X } from "lucide-react";
 
@@ -7,11 +7,62 @@ import { CategorySelect } from "@/components/transactions/CategorySelect";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { isCategoryKnown, isRowSelectable, type EditableImportRow } from "@/lib/importReview";
 import type { Category } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+const DESCRIPTION_MIN_PX = 28; // matches h-7
+
+function ImportDescriptionField({
+  value,
+  expanded,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  expanded: boolean;
+  disabled: boolean;
+  onChange: (next: string | null) => void;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    if (!expanded) return;
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${Math.max(el.scrollHeight, DESCRIPTION_MIN_PX)}px`;
+  }, [expanded, value]);
+
+  if (!expanded) {
+    return (
+      <Input
+        value={value}
+        title={value || undefined}
+        disabled={disabled}
+        placeholder="—"
+        onChange={(e) => onChange(e.target.value || null)}
+        className="h-7 min-w-0 truncate rounded-none border-input px-2 text-xs shadow-none"
+      />
+    );
+  }
+
+  return (
+    <Textarea
+      ref={ref}
+      value={value}
+      title={value || undefined}
+      disabled={disabled}
+      placeholder="—"
+      rows={1}
+      onChange={(e: ChangeEvent<HTMLTextAreaElement>) => onChange(e.target.value || null)}
+      className="min-h-7 resize-none overflow-hidden rounded-none border-input px-2 py-1.5 text-xs leading-snug shadow-none"
+    />
+  );
+}
 
 function fieldIssue(row: EditableImportRow, field: string): ImportFieldIssue | undefined {
   if (row.imported) return undefined;
@@ -59,7 +110,9 @@ const FIELD_LABELS: Record<string, string> = {
   category: "Category",
   amount: "Amount",
   payment_method: "Method",
+  bank: "Bank",
   description: "Description",
+  duplicate: "Duplicate",
   row: "Row",
 };
 
@@ -307,6 +360,18 @@ export function createImportReviewColumns({
       },
     },
     {
+      accessorKey: "bank",
+      meta: { label: "Bank", width: "5.5rem", skeletonWidth: "50%" },
+      header: () => (
+        <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">Bank</span>
+      ),
+      cell: ({ row }) => (
+        <span className={cn(staticCellClass, "text-xs text-parsel-neutral")}>
+          {row.original.bank || "—"}
+        </span>
+      ),
+    },
+    {
       accessorKey: "payment_method",
       meta: { label: "Method", width: "7.5rem", skeletonWidth: "60%" },
       header: () => (
@@ -340,27 +405,24 @@ export function createImportReviewColumns({
     },
     {
       accessorKey: "description",
-      meta: { label: "Description", width: "11rem", skeletonWidth: "80%" },
+      meta: { label: "Description", width: "18rem", skeletonWidth: "85%" },
       header: () => (
         <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">Description</span>
       ),
       cell: ({ row }) => (
-        <Input
+        <ImportDescriptionField
           value={row.original.description ?? ""}
-          onChange={(e) =>
-            onRowChange(row.original.source_row, {
-              description: e.target.value || null,
-            })
-          }
+          expanded={!row.original.imported && !row.original.is_ready}
           disabled={row.original.imported}
-          className="h-7 rounded-none border-input px-2 text-xs shadow-none"
-          placeholder="—"
+          onChange={(next) =>
+            onRowChange(row.original.source_row, { description: next })
+          }
         />
       ),
     },
     {
       id: "status",
-      meta: { label: "Status", width: "5.5rem", skeletonWidth: "4rem" },
+      meta: { label: "Status", width: "7.5rem", skeletonWidth: "4rem" },
       header: () => (
         <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">Status</span>
       ),
@@ -378,6 +440,34 @@ export function createImportReviewColumns({
             </span>
           );
         }
+        if (row.original.is_duplicate && !row.original.force_duplicate) {
+          const message =
+            row.original.issues.find((issue) => issue.code === "duplicate")?.message ??
+            "Duplicate transaction";
+          return (
+            <div className="space-y-1">
+              <span
+                className={cn(
+                  staticCellClass,
+                  "gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700",
+                )}
+                title={message}
+              >
+                <AlertCircle className="size-3 shrink-0" aria-hidden />
+                Duplicate
+              </span>
+              <button
+                type="button"
+                className="text-[10px] font-semibold uppercase tracking-wide text-parsel-text underline decoration-dotted underline-offset-2"
+                onClick={() =>
+                  onRowChange(row.original.source_row, { force_duplicate: true })
+                }
+              >
+                Import anyway
+              </button>
+            </div>
+          );
+        }
         if (row.original.is_ready) {
           return (
             <span
@@ -386,7 +476,9 @@ export function createImportReviewColumns({
                 "text-[10px] font-semibold uppercase tracking-wide text-parsel-inflow",
               )}
             >
-              Ready
+              {row.original.is_duplicate && row.original.force_duplicate
+                ? "Forced"
+                : "Ready"}
             </span>
           );
         }

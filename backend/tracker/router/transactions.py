@@ -10,6 +10,7 @@ from auth.deps import get_current_user
 from auth.models import User
 from common.database import get_connection, get_readonly_connection
 from common.logger import get_logger
+from tracker.bank_service import assert_bank_on_profile, assert_bank_writable
 from tracker.category_service import resolve_category_name
 from tracker.models import Transaction
 from tracker.schemas import (
@@ -40,6 +41,7 @@ def _to_response(tx: Transaction) -> TransactionResponse:
         amount=float(tx.amount),
         is_debit=bool(tx.is_debit),
         category=tx.category,
+        bank=tx.bank,
         payment_method=tx.payment_method,
         transaction_date=tx.transaction_date,
         description=tx.description,
@@ -56,6 +58,7 @@ async def search_transactions(
     q: Optional[str] = Query(None, max_length=200),
     category: Optional[str] = Query(None),
     payment_method: Optional[str] = Query(None),
+    bank: Optional[str] = Query(None),
     is_debit: Optional[bool] = Query(None),
     sort_column: str = Query("transaction_date"),
     sort_desc: bool = Query(True),
@@ -67,7 +70,14 @@ async def search_transactions(
     if start_date > end_date:
         raise HTTPException(status_code=400, detail="start_date must be on or before end_date")
 
-    allowed_sort_columns = {"transaction_date", "amount", "category", "payment_method", "description"}
+    allowed_sort_columns = {
+        "transaction_date",
+        "amount",
+        "category",
+        "payment_method",
+        "bank",
+        "description",
+    }
     if sort_column not in allowed_sort_columns:
         raise HTTPException(
             status_code=400,
@@ -85,6 +95,8 @@ async def search_transactions(
         where_parts.append(Transaction.category == category)
     if payment_method and payment_method != "All":
         where_parts.append(Transaction.payment_method == payment_method)
+    if bank and bank != "All":
+        where_parts.append(Transaction.bank == bank)
     if is_debit is not None:
         where_parts.append(Transaction.is_debit == bool(is_debit))
 
@@ -107,6 +119,8 @@ async def search_transactions(
         order_by = func.lower(Transaction.category)
     elif sort_column == "payment_method":
         order_by = func.lower(func.coalesce(Transaction.payment_method, ""))
+    elif sort_column == "bank":
+        order_by = func.lower(func.coalesce(Transaction.bank, ""))
     elif sort_column == "description":
         order_by = func.lower(func.coalesce(Transaction.description, ""))
     else:
@@ -142,13 +156,14 @@ async def search_transactions(
     items = [_to_response(row[0]) for row in result]
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
-        "search_transactions completed in %.1f ms (total=%d, page=%d, page_size=%d, q=%s, category=%s, sort=%s %s)",
+        "search_transactions completed in %.1f ms (total=%d, page=%d, page_size=%d, q=%s, category=%s, bank=%s, sort=%s %s)",
         elapsed_ms,
         total_count,
         page,
         page_size,
         term or "-",
         category or "All",
+        bank or "All",
         sort_column,
         "DESC" if sort_desc else "ASC",
     )
@@ -162,6 +177,7 @@ async def export_transactions(
     q: Optional[str] = Query(None, max_length=200),
     category: Optional[str] = Query(None),
     payment_method: Optional[str] = Query(None),
+    bank: Optional[str] = Query(None),
     is_debit: Optional[bool] = Query(None),
     current_user: User = Depends(get_current_user),
 ) -> Response:
@@ -174,12 +190,14 @@ async def export_transactions(
         user_id=current_user.id,
         q=q,
         is_debit=is_debit,
+        bank=bank,
     )
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
-        "export_transactions completed in %.1f ms (category=%s, range=%s..%s)",
+        "export_transactions completed in %.1f ms (category=%s, bank=%s, range=%s..%s)",
         elapsed_ms,
         category or "All",
+        bank or "All",
         start_date.isoformat(),
         end_date.isoformat(),
     )
@@ -195,19 +213,28 @@ async def export_transactions(
 @router.post("/import/preview", response_model=ImportPreviewResponse)
 async def import_transactions_preview(
     file: UploadFile = File(...),
+    bank: str = Form(...),
+    password: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
 ) -> ImportPreviewResponse:
     t0 = time.perf_counter()
     content = await file.read()
-    result = await preview_transactions_import(content, user_id=current_user.id)
+    result = await preview_transactions_import(
+        content,
+        user_id=current_user.id,
+        bank=bank,
+        password=password,
+        filename=file.filename,
+    )
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
-        "import_transactions_preview completed in %.1f ms (rows=%d, ready=%d, new_categories=%d, errors=%d)",
+        "import_transactions_preview completed in %.1f ms (rows=%d, ready=%d, new_categories=%d, errors=%d, bank=%s)",
         elapsed_ms,
         len(result.rows),
         result.valid_row_count,
         len(result.new_categories),
         len(result.errors),
+        bank,
     )
     return result
 
@@ -233,6 +260,7 @@ async def import_reviewed_transactions_endpoint(
 @router.post("/import")
 async def import_transactions(
     file: UploadFile = File(...),
+    bank: str = Form(...),
     create_missing_categories: bool = Form(False),
     current_user: User = Depends(get_current_user),
 ) -> dict:
@@ -241,15 +269,17 @@ async def import_transactions(
     inserted, errors, created_categories = await import_transactions_from_csv(
         content,
         user_id=current_user.id,
+        bank=bank,
         create_missing_categories=create_missing_categories,
     )
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
-        "import_transactions completed in %.1f ms (inserted=%d, errors=%d, created_categories=%d)",
+        "import_transactions completed in %.1f ms (inserted=%d, errors=%d, created_categories=%d, bank=%s)",
         elapsed_ms,
         inserted,
         len(errors),
         len(created_categories),
+        bank,
     )
     return {
         "inserted": inserted,
@@ -278,6 +308,7 @@ async def create_transaction(
 ) -> TransactionResponse:
     t0 = time.perf_counter()
     try:
+        await assert_bank_writable(current_user.id, payload.bank)
         canonical_category = await resolve_category_name(
             current_user.id,
             payload.category,
@@ -293,6 +324,7 @@ async def create_transaction(
             amount=float(payload.amount),
             is_debit=bool(payload.is_debit),
             category=canonical_category,
+            bank=payload.bank,
             payment_method=payload.payment_method.strip() if payload.payment_method else None,
             transaction_date=payload.transaction_date,
             description=payload.description,
@@ -321,6 +353,14 @@ async def update_transaction(
         raise HTTPException(status_code=400, detail="No fields provided for update")
     if "amount" in payload_dict:
         payload_dict["amount"] = float(payload_dict["amount"])
+    if "bank" in payload_dict and payload_dict["bank"] is not None:
+        try:
+            # Edits may keep a now-inactive (but still on-profile) bank.
+            payload_dict["bank"] = await assert_bank_on_profile(
+                current_user.id, payload_dict["bank"]
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     if "category" in payload_dict and payload_dict["category"] is not None:
         try:
             payload_dict["category"] = await resolve_category_name(
