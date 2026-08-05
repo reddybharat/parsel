@@ -72,11 +72,12 @@ export async function getJson<T>(path: string, query?: Query): Promise<T> {
   return handleResponse<T>(response);
 }
 
-export async function postJson<T>(path: string, body?: unknown): Promise<T> {
+export async function postJson<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: body ? JSON.stringify(body) : undefined,
+    signal,
   });
   return handleResponse<T>(response);
 }

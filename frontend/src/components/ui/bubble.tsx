@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 function Bubble({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      className={cn("rounded-none border border-parsel-border bg-parsel-soft text-sm text-parsel-text", className)}
+      className={cn("rounded-none border border-parsel-border bg-transparent text-sm text-parsel-text", className)}
       {...props}
     />
   )

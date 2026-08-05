@@ -1,12 +1,12 @@
 import { postJson } from "./client";
 import type { ChatReply } from "../lib/types";
 
-export function invokeChat(message: string) {
-  return postJson<ChatReply>("/chat/invoke", { message });
+export function invokeChat(message: string, signal?: AbortSignal) {
+  return postJson<ChatReply>("/chat/invoke", { message }, signal);
 }
 
-export function resumeChat(threadId: string, message: string) {
-  return postJson<ChatReply>("/chat/resume", { thread_id: threadId, message });
+export function resumeChat(threadId: string, message: string, signal?: AbortSignal) {
+  return postJson<ChatReply>("/chat/resume", { thread_id: threadId, message }, signal);
 }
 
 export function exitChat(threadId: string) {
