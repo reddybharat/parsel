@@ -1,4 +1,4 @@
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { ChevronsUpDown, KeyRound, LogOut, UserRound } from "lucide-react";
 
 import { ParselMark } from "@/components/brand/ParselMark";
@@ -14,6 +14,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { prefetchDashboardOverview } from "@/lib/dashboardQuery";
 import { initialsFromProfile } from "@/lib/profile";
+import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./ThemeToggle";
 
 type ShellNavItem = {
@@ -145,6 +146,10 @@ function NavUser() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation();
+  // Chat is a full-bleed main pane; other Operate screens keep canvas gutters.
+  const flushMain = pathname === "/chat";
+
   return (
     <div className="flex h-dvh w-full flex-col bg-parsel-bg text-parsel-text">
       <header className="flex w-full shrink-0 items-center justify-between border-b border-parsel-border px-4 py-2">
@@ -182,7 +187,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </aside>
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-parsel-canvas">
-          <div className="flex h-full w-full min-h-0 flex-col overflow-hidden px-4 py-3">{children}</div>
+          <div
+            className={cn(
+              "flex h-full w-full min-h-0 flex-col overflow-hidden",
+              flushMain ? "p-0" : "px-4 py-3",
+            )}
+          >
+            {children}
+          </div>
         </main>
       </div>
     </div>

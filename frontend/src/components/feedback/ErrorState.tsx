@@ -1,6 +1,6 @@
 import { AlertCircle } from "lucide-react";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
@@ -8,7 +8,6 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
     <Alert variant="destructive" className="flex items-start justify-between gap-3">
       <div className="min-w-0 flex-1">
         <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Something went wrong</AlertTitle>
         <AlertDescription className="whitespace-pre-line">{message}</AlertDescription>
       </div>
       {onRetry ? (
