@@ -1506,9 +1506,27 @@ top_category AS (
   ORDER BY spend DESC
   LIMIT 1
 ),
+prev_category_spend AS (
+  SELECT t.category, COALESCE(SUM(t.amount), 0)::float8 AS spend
+  FROM transactions t
+  WHERE t.user_id = :user_id
+    AND t.is_debit = TRUE
+    AND t.category NOT IN (
+      :investments_category, :self_transfer_category, :wallet_top_up_category
+    )
+    AND t.transaction_date >= :prev_month_start
+    AND t.transaction_date < :month_now_start
+    AND (NOT :filter_banks OR t.bank = ANY(string_to_array(:banks_csv, ',')))
+  GROUP BY t.category
+),
 category_spend AS (
-  SELECT st.category, COALESCE(SUM(st.amount), 0)::float8 AS spend
+  SELECT
+    st.category,
+    COALESCE(SUM(st.amount), 0)::float8 AS spend,
+    COALESCE(MAX(pcs.spend), 0)::float8 AS prev_spend,
+    COUNT(*)::int AS txn_count
   FROM spend_txns st
+  LEFT JOIN prev_category_spend pcs ON pcs.category = st.category
   GROUP BY st.category
   HAVING COALESCE(SUM(st.amount), 0) > 0
   ORDER BY spend DESC
@@ -1548,7 +1566,15 @@ SELECT
   h.current_month_investments,
   (SELECT json_build_object('category', tc.category, 'spend', tc.spend) FROM top_category tc) AS top_category,
   COALESCE(
-    (SELECT json_agg(json_build_object('category', cs.category, 'spend', cs.spend) ORDER BY cs.spend DESC)
+    (SELECT json_agg(
+       json_build_object(
+         'category', cs.category,
+         'spend', cs.spend,
+         'prev_spend', cs.prev_spend,
+         'txn_count', cs.txn_count
+       )
+       ORDER BY cs.spend DESC
+     )
      FROM category_spend cs),
     '[]'::json
   ) AS category_spend_rows,
@@ -1624,6 +1650,8 @@ async def _get_dashboard_aggregates(
         {
             "category": str(item.get("category") or ""),
             "spend": float(item.get("spend") or 0),
+            "prev_spend": float(item.get("prev_spend") or 0),
+            "txn_count": int(item.get("txn_count") or 0),
         }
         for item in category_spend_rows
         if isinstance(item, dict) and item.get("category")
@@ -1790,6 +1818,34 @@ async def _get_portfolio_balance(
     }
 
 
+_BANK_FRESHNESS_SQL = """
+SELECT
+  ub.bank AS bank,
+  MAX(t.transaction_date) AS last_transaction_date,
+  MAX(t.created_at) AS last_added_at
+FROM user_banks ub
+LEFT JOIN transactions t ON t.user_id = ub.user_id AND t.bank = ub.bank
+WHERE ub.user_id = :user_id
+GROUP BY ub.bank
+ORDER BY ub.bank
+"""
+
+
+async def _get_bank_freshness(*, user_id: uuid.UUID) -> list[dict]:
+    """Latest transaction date and latest insert time per profile bank (all months)."""
+    async with get_readonly_connection() as session:
+        result = await session.execute(text(_BANK_FRESHNESS_SQL), {"user_id": user_id})
+        rows = result.mappings().all()
+    return [
+        {
+            "bank": str(row["bank"]),
+            "last_transaction_date": row["last_transaction_date"],
+            "last_added_at": row["last_added_at"],
+        }
+        for row in rows
+    ]
+
+
 async def get_dashboard_overview(
     months: int = 12,
     recent_limit: int = 5,
@@ -1805,11 +1861,12 @@ async def get_dashboard_overview(
     bank_filter = _normalize_banks_filter(banks)
     bounds = _dashboard_bounds(months, focus_month)
 
-    aggregates, recent_items, profile_banks, portfolio = await asyncio.gather(
+    aggregates, recent_items, profile_banks, portfolio, freshness = await asyncio.gather(
         _get_dashboard_aggregates(bounds, months, user_id=user_id, banks=bank_filter),
         _get_dashboard_recent(recent_limit, bounds, user_id=user_id, banks=bank_filter),
         bank_service.list_profile_bank_names(user_id),
         _get_portfolio_balance(bounds, user_id=user_id, banks=bank_filter),
+        _get_bank_freshness(user_id=user_id),
     )
 
     return {
@@ -1820,4 +1877,5 @@ async def get_dashboard_overview(
         "daily_spend": aggregates["daily_spend"],
         "category_spend": aggregates["category_spend"],
         "active_banks": profile_banks,
+        "freshness": freshness,
     }

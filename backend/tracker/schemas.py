@@ -282,10 +282,18 @@ class DashboardDailySpendResponse(BaseModel):
 class DashboardCategorySpendItem(BaseModel):
     category: str
     spend: float
+    prev_spend: float = 0.0
+    txn_count: int = 0
 
 
 class DashboardCategorySpendResponse(BaseModel):
     items: list[DashboardCategorySpendItem]
+
+
+class BankFreshness(BaseModel):
+    bank: str
+    last_transaction_date: Optional[date] = None
+    last_added_at: Optional[datetime] = None
 
 
 class DashboardOverviewResponse(BaseModel):
@@ -296,6 +304,7 @@ class DashboardOverviewResponse(BaseModel):
     daily_spend: DashboardDailySpendResponse
     category_spend: DashboardCategorySpendResponse
     active_banks: list[str] = Field(default_factory=list)
+    freshness: list[BankFreshness] = Field(default_factory=list)
 
 
 class ImportFieldIssue(BaseModel):

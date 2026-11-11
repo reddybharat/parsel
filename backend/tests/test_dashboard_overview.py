@@ -1,6 +1,6 @@
 """Tests for dashboard overview aggregates."""
 
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
@@ -13,9 +13,11 @@ from tracker.constants import (
     SYSTEM_CATEGORIES,
     WALLET_TOP_UP_CATEGORY,
 )
+from tracker.schemas import DashboardOverviewResponse
 from tracker.services import (
     _PORTFOLIO_SQL,
     _dashboard_bounds,
+    _get_bank_freshness,
     _get_dashboard_aggregates,
     _get_portfolio_balance,
     _normalize_banks_filter,
@@ -74,7 +76,8 @@ def _aggregate_row(**overrides):
         "current_month_investments": 800.0,
         "top_category": '{"category": "Grocery", "spend": 150.0}',
         "category_spend_rows": (
-            '[{"category": "Grocery", "spend": 150.0}, {"category": "Dining", "spend": 80.0}]'
+            '[{"category": "Grocery", "spend": 150.0, "prev_spend": 100.0, "txn_count": 4},'
+            ' {"category": "Dining", "spend": 80.0, "prev_spend": 0, "txn_count": 2}]'
         ),
         "month_label": "Jul 2026",
         "daily_total": 300.0,
@@ -116,9 +119,9 @@ async def test_get_dashboard_aggregates_parses_category_spend_sorted():
     assert sql.count(
         "category NOT IN ( :investments_category, :self_transfer_category, "
         ":wallet_top_up_category )"
-    ) == 4
+    ) == 5
     assert "cm.category = :investments_category" in sql
-    assert sql.count("NOT :filter_banks OR") == 3
+    assert sql.count("NOT :filter_banks OR") == 4
     assert params["investments_category"] == INVESTMENTS_CATEGORY
     assert params["self_transfer_category"] == SELF_TRANSFER_CATEGORY
     assert params["wallet_top_up_category"] == WALLET_TOP_UP_CATEGORY
@@ -127,8 +130,18 @@ async def test_get_dashboard_aggregates_parses_category_spend_sorted():
 
     items = result["category_spend"]["items"]
     assert len(items) == 2
-    assert items[0] == {"category": "Grocery", "spend": 150.0}
-    assert items[1] == {"category": "Dining", "spend": 80.0}
+    assert items[0] == {
+        "category": "Grocery",
+        "spend": 150.0,
+        "prev_spend": 100.0,
+        "txn_count": 4,
+    }
+    assert items[1] == {
+        "category": "Dining",
+        "spend": 80.0,
+        "prev_spend": 0.0,
+        "txn_count": 2,
+    }
     assert all(item["category"] != INVESTMENTS_CATEGORY for item in items)
 
     # Portfolio net is no longer computed here; daily spend is per-bank series.
@@ -176,6 +189,17 @@ async def test_get_dashboard_overview_merges_portfolio_and_profile_banks():
             new_callable=AsyncMock,
             return_value={"portfolio_net": 145000.0, "missing_opening_banks": ["Slice"]},
         ) as portfolio_mock,
+        patch(
+            "tracker.services._get_bank_freshness",
+            new_callable=AsyncMock,
+            return_value=[
+                {
+                    "bank": "SBI",
+                    "last_transaction_date": date(2026, 7, 30),
+                    "last_added_at": None,
+                }
+            ],
+        ) as freshness_mock,
     ):
         result = await get_dashboard_overview(
             months=12,
@@ -198,6 +222,41 @@ async def test_get_dashboard_overview_merges_portfolio_and_profile_banks():
     assert recent_mock.await_args.kwargs["banks"] == ["Kotak"]
     portfolio_mock.assert_awaited_once()
     assert portfolio_mock.await_args.kwargs["banks"] == ["Kotak"]
+    # Freshness is never bank- or month-filtered.
+    freshness_mock.assert_awaited_once_with(
+        user_id=uuid.UUID("55555555-5555-5555-5555-555555555555")
+    )
+    assert result["freshness"][0]["bank"] == "SBI"
+    DashboardOverviewResponse.model_validate(result)
+
+
+async def test_get_bank_freshness_maps_rows():
+    mock_result = MagicMock()
+    mock_result.mappings.return_value.all.return_value = [
+        {
+            "bank": "SBI",
+            "last_transaction_date": date(2026, 7, 30),
+            "last_added_at": datetime(2026, 8, 2, 9, 0),
+        },
+        {"bank": "Slice", "last_transaction_date": None, "last_added_at": None},
+    ]
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__.return_value = mock_session
+    mock_cm.__aexit__.return_value = None
+
+    with patch("tracker.services.get_readonly_connection", return_value=mock_cm):
+        rows = await _get_bank_freshness(user_id=uuid.UUID(int=1))
+
+    sql = " ".join(str(mock_session.execute.await_args.args[0]).split())
+    assert "FROM user_banks ub LEFT JOIN transactions t" in sql
+    assert rows[1] == {
+        "bank": "Slice",
+        "last_transaction_date": None,
+        "last_added_at": None,
+    }
+    assert rows[0]["last_added_at"] == datetime(2026, 8, 2, 9, 0)
 
 
 def test_portfolio_sql_sums_closing_balances_per_bank():
