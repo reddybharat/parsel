@@ -26,10 +26,15 @@ export function DailySpendLineChart({
   series,
   monthLabel,
   monthTotal,
+  compact = false,
+  onDayClick,
 }: {
   series: DailySpendSeries[];
   monthLabel: string;
   monthTotal: number;
+  /** Chart only: no title, legend or footer, for the Overview balance strip. */
+  compact?: boolean;
+  onDayClick?: (day: number) => void;
 }) {
   const hasData = series.length > 0 && series.some((s) => s.points.length > 0);
 
@@ -76,13 +81,27 @@ export function DailySpendLineChart({
 
   return (
     <Card className="flex h-full min-h-0 flex-col border-0 shadow-none">
-      <CardHeader className="shrink-0 p-0 pb-2">
-        <CardTitle className="text-sm font-semibold">Daily Spending Trends</CardTitle>
-        <CardDescription>{monthLabel} — day-by-day spending per bank</CardDescription>
-      </CardHeader>
+      {compact ? null : (
+        <CardHeader className="shrink-0 p-0 pb-2">
+          <CardTitle className="text-sm font-semibold">Daily Spending Trends</CardTitle>
+          <CardDescription>{monthLabel} — day-by-day spending per bank</CardDescription>
+        </CardHeader>
+      )}
       <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-0">
-        <ChartContainer config={chartConfig} className="aspect-auto h-full min-h-[7rem] w-full">
-          <LineChart accessibilityLayer data={chartData} margin={{ left: 12, right: 12 }}>
+        <ChartContainer
+          config={chartConfig}
+          className={compact ? "aspect-auto h-full min-h-0 w-full" : "aspect-auto h-full min-h-[7rem] w-full"}
+        >
+          <LineChart
+            accessibilityLayer
+            data={chartData}
+            margin={{ left: 12, right: 12 }}
+            className={onDayClick ? "cursor-pointer" : undefined}
+            onClick={(state) => {
+              const day = Number(state?.activeLabel);
+              if (day) onDayClick?.(day);
+            }}
+          >
             <CartesianGrid vertical={false} />
             <XAxis
               dataKey="day"
@@ -104,7 +123,7 @@ export function DailySpendLineChart({
                 />
               }
             />
-            <ChartLegend content={<ChartLegendContent />} />
+            {compact ? null : <ChartLegend content={<ChartLegendContent />} />}
             {series.map((item) => (
               <Line
                 key={item.bank}
@@ -118,12 +137,14 @@ export function DailySpendLineChart({
           </LineChart>
         </ChartContainer>
       </CardContent>
-      <CardFooter className="mt-auto shrink-0 flex-col items-start gap-1 p-0 pt-3 text-sm">
-        <div className="flex gap-2 font-medium leading-none">
-          {formatInrAmount(monthTotal)} spent this month <TrendingUp className="h-4 w-4" />
-        </div>
-        <div className="text-xs leading-none text-muted-foreground">Spending by day this month</div>
-      </CardFooter>
+      {compact ? null : (
+        <CardFooter className="mt-auto shrink-0 flex-col items-start gap-1 p-0 pt-3 text-sm">
+          <div className="flex gap-2 font-medium leading-none">
+            {formatInrAmount(monthTotal)} spent this month <TrendingUp className="h-4 w-4" />
+          </div>
+          <div className="text-xs leading-none text-muted-foreground">Spending by day this month</div>
+        </CardFooter>
+      )}
     </Card>
   );
 }

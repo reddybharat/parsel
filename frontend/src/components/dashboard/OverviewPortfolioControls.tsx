@@ -23,7 +23,16 @@ import { cn } from "@/lib/utils";
 
 const COLLAPSED_AVATAR_LIMIT = 3;
 
+export type SpendChartKind = "daily" | "monthly";
+
+const CHART_OPTIONS: Array<{ value: SpendChartKind; label: string }> = [
+  { value: "daily", label: "Daily" },
+  { value: "monthly", label: "Monthly" },
+];
+
 type OverviewPortfolioControlsProps = {
+  chart: SpendChartKind;
+  onChartChange: (chart: SpendChartKind) => void;
   month: string;
   onMonthChange: (month: string) => void;
   activeBanks: string[];
@@ -45,6 +54,8 @@ function monthOptions(latest: string): Array<{ value: string; label: string }> {
 }
 
 export function OverviewPortfolioControls({
+  chart,
+  onChartChange,
   month,
   onMonthChange,
   activeBanks,
@@ -94,6 +105,24 @@ export function OverviewPortfolioControls({
 
   return (
     <div ref={rootRef} className="flex shrink-0 items-center gap-2">
+      <div role="group" aria-label="Spend chart" className="flex h-8 border border-parsel-border">
+        {CHART_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={chart === option.value}
+            onClick={() => onChartChange(option.value)}
+            className={cn(
+              "px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              chart === option.value
+                ? "bg-parsel-soft text-parsel-neutral"
+                : "text-parsel-muted hover:text-parsel-neutral",
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
       <Select value={month} onValueChange={onMonthChange}>
         <SelectTrigger
           aria-label="Focus month"

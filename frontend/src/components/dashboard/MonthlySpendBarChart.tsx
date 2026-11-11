@@ -18,9 +18,14 @@ const chartConfig = {
 export function MonthlySpendBarChart({
   points,
   spendDeltaPct,
+  compact = false,
+  onBarClick,
 }: {
   points: TrendPoint[];
   spendDeltaPct: number | null;
+  /** Chart only: no title or footer, for the Overview balance strip. */
+  compact?: boolean;
+  onBarClick?: (index: number) => void;
 }) {
   if (points.length === 0) {
     return (
@@ -42,14 +47,16 @@ export function MonthlySpendBarChart({
 
   return (
     <Card className="flex h-full min-h-0 flex-col border-0 shadow-none">
-      <CardHeader className="shrink-0 p-0 pb-2">
-        <CardTitle className="text-sm font-semibold">Monthly Spending Trend</CardTitle>
-        <CardDescription>
-          {firstMonth} – {lastMonth}
-        </CardDescription>
-      </CardHeader>
+      {compact ? null : (
+        <CardHeader className="shrink-0 p-0 pb-2">
+          <CardTitle className="text-sm font-semibold">Monthly Spending Trend</CardTitle>
+          <CardDescription>
+            {firstMonth} – {lastMonth}
+          </CardDescription>
+        </CardHeader>
+      )}
       <CardContent className="flex min-h-0 flex-1 flex-col px-0 pb-0">
-        <ChartContainer config={chartConfig} className="aspect-auto h-full min-h-[7rem] w-full">
+        <ChartContainer config={chartConfig} className={compact ? "aspect-auto h-full min-h-0 w-full" : "aspect-auto h-full min-h-[7rem] w-full"}>
           <BarChart accessibilityLayer data={chartData}>
             <CartesianGrid vertical={false} />
             <XAxis
@@ -68,11 +75,17 @@ export function MonthlySpendBarChart({
                 />
               }
             />
-            <Bar dataKey="spend" fill="var(--color-spend)" radius={8} />
+            <Bar
+              dataKey="spend"
+              fill="var(--color-spend)"
+              radius={8}
+              className={onBarClick ? "cursor-pointer" : undefined}
+              onClick={(_, index) => onBarClick?.(index)}
+            />
           </BarChart>
         </ChartContainer>
       </CardContent>
-      {spendDeltaPct !== null ? (
+      {spendDeltaPct !== null && !compact ? (
         <CardFooter className="mt-auto shrink-0 flex-col items-start gap-1 p-0 pt-3 text-sm">
           <div className="flex gap-2 font-medium leading-none">
             {deltaUp ? "Trending up" : "Trending down"} by {Math.abs(spendDeltaPct).toFixed(1)}% vs last month
