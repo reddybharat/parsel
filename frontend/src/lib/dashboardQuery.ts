@@ -65,6 +65,7 @@ export function monthlyInsightQueryOptions(month: string) {
   return {
     queryKey: ["dashboard", "insight", month] as const,
     queryFn: () => fetchMonthlyInsight(month),
+    retry: false,
     staleTime: 5 * 60_000,
     gcTime: 10 * 60_000,
   };

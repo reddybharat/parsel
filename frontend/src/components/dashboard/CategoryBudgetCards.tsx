@@ -5,7 +5,7 @@ import { ledgerHref, monthRange } from "@/components/transactions/LedgerDateRang
 import { formatInrAmount } from "@/lib/format";
 import type { Category, DashboardOverview } from "@/lib/types";
 
-const MAX_CARDS = 6;
+const MAX_CARDS = 8;
 const NEAR_LIMIT_PCT = 90;
 
 type SpendItem = DashboardOverview["category_spend"]["items"][number];
@@ -81,7 +81,7 @@ export function CategoryBudgetCards({
   const cards = buildCards(items, categories);
   if (cards.length === 0) {
     return (
-      <div className={`${className} border border-parsel-border bg-parsel-surface p-3`}>
+      <div className={`${className} col-span-full row-span-full border border-parsel-border bg-parsel-surface p-3`}>
         <EmptyState title="No spending this month" detail="Spend by category shows here once you add transactions." />
       </div>
     );

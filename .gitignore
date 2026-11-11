@@ -11,3 +11,7 @@ frontend/dist
 *.tsbuildinfo
 
 .impeccable
+
+.playwright-cli/
+playwright-report/
+test-results/

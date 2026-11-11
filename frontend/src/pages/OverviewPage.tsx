@@ -307,7 +307,7 @@ export function OverviewPage() {
 
       {data ? (
         <CategoryBudgetCards
-          className="ov-budgets grid grid-cols-1 gap-1.5 sm:grid-cols-2"
+          className="ov-budgets"
           items={data.category_spend.items}
           categories={categories}
           month={month}
