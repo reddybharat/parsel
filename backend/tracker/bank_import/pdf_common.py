@@ -141,7 +141,7 @@ def parse_mon_date(text: str) -> Optional[str]:
     """
     text = (text or "").strip()
     match = re.match(
-        r"^(\d{1,2})\s+([A-Za-z]{3})\s+'?(\d{2}|\d{4})$",
+        r"^(\d{1,2})\s+([A-Za-z]{3})\s+['’]?(\d{2}|\d{4})$",
         text,
     )
     if not match:

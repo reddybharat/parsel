@@ -506,6 +506,49 @@ def test_parse_slice_statement_text_debit_and_credit():
     assert rows[2].category == ""
 
 
+def test_parse_slice_statement_text_multi_page_wrapped_and_mismatch():
+    from tracker.bank_import.slice_pdf import parse_slice_statement_text
+
+    text = "\n".join(
+        [
+            "01 Sep '26 - 30 Sep '26",
+            "1/2",
+            "Opening balance",
+            "₹100.00 ₹8,000.00 ₹5.00 ₹0.00 ₹8,105.00",
+            "DATE DETAILS REF NO. AMOUNT BALANCE",
+            "02 Sep '26 UPI-Credit-624528738839-BORA BHARAT RED",
+            "DY-KKBK0000333-7002681900@slc-SR6d6948",
+            "20260902359555301 ₹8,000.00 ₹8,100.00",
+            "03 Sep '26 Interest Cr. for 02-Sep-2026 20226246159824 ₹5.00 ₹8,105.00",
+            "Need help? Contact our support team at help@slice.bank.in slice small finance bank",
+            "01 Sep '26 - 30 Sep '26",
+            "2/2",
+            "04 Sep '26 Unexplained 2026090400001 ₹1.00 ₹9,999.00",
+            "05 Sep '26 UPI/Merchant/Payment 2026090500001 ₹99.00 ₹9,900.00",
+            "Generated on 02 Oct '26",
+            "Need help? Contact our support team at help@slice.bank.in slice small finance bank",
+        ]
+    )
+    rows = parse_slice_statement_text(text)
+    assert [r.transaction_date for r in rows] == [
+        "2026-09-02",
+        "2026-09-03",
+        "2026-09-04",
+        "2026-09-05",
+    ]
+    assert rows[0].amount == "8000.00"
+    assert rows[0].is_debit == "false"
+    assert rows[0].description == (
+        "UPI-Credit-624528738839-BORA BHARAT RED DY-KKBK0000333-7002681900@slc-SR6d6948"
+    )
+    assert rows[1].category == "Other Income"
+    # Balance does not reconcile: kept for review with direction blank, not dropped.
+    assert rows[2].is_debit == ""
+    # Later rows resync on the printed balance instead of cascading into skips.
+    assert rows[3].is_debit == "true"
+    assert rows[3].amount == "99.00"
+
+
 def test_parse_kotak_statement_text_multiline_and_end_marker():
     from tracker.bank_import.kotak_pdf import parse_kotak_statement_text
 
