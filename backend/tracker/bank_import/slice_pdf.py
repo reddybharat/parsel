@@ -16,8 +16,14 @@ from tracker.bank_import.pdf_common import (
     parse_mon_date,
 )
 
-_DATE_START = re.compile(r"^(\d{1,2}\s+[A-Za-z]{3}\s+'\d{2})\b")
+# Some PDF fonts extract the year apostrophe as a curly quote.
+_DATE_START = re.compile(r"^(\d{1,2}\s+[A-Za-z]{3}\s+['’]\d{2})\b")
 _TXN_HEADER = re.compile(r"DATE\s+DETAILS.*AMOUNT\s+BALANCE", re.IGNORECASE)
+# Repeated at the top of every page: "01 Sep '26 - 30 Sep '26" then "2/2".
+_PAGE_RANGE = re.compile(
+    r"^\d{1,2}\s+[A-Za-z]{3}\s+['’]\d{2}\s*-\s*\d{1,2}\s+[A-Za-z]{3}\s+['’]\d{2}$"
+)
+_PAGE_NUMBER = re.compile(r"^\d+/\d+$")
 _FOOTER_MARKERS = (
     "need help?",
     "generated on",
@@ -63,28 +69,41 @@ def parse_slice_statement_text(text: str) -> list[StatementRawRow]:
         )
 
     opening = _parse_opening_balance(lines[: header_idx + 1])
+
+    # Footers repeat on every page, so skip page chrome rather than stopping.
+    # Long details wrap onto following lines, so group lines into one block per date.
+    blocks: list[tuple[str, list[str]]] = []
+    for line in lines[header_idx + 1 :]:
+        if (
+            _is_footer(line)
+            or _PAGE_RANGE.match(line)
+            or _PAGE_NUMBER.match(line)
+            or _TXN_HEADER.search(line)
+        ):
+            continue
+        date_match = _DATE_START.match(line)
+        if date_match:
+            blocks.append((date_match.group(1), [line[date_match.end() :]]))
+        elif blocks:
+            blocks[-1][1].append(line)
+
     rows: list[StatementRawRow] = []
     prev_balance = opening
     source_row = 0
 
-    for line in lines[header_idx + 1 :]:
-        if _is_footer(line):
-            break
-        date_match = _DATE_START.match(line)
-        if not date_match:
-            continue
-
-        iso_date = parse_mon_date(date_match.group(1))
+    for date_text, parts in blocks:
+        iso_date = parse_mon_date(date_text)
         if not iso_date:
             continue
 
-        amounts = find_money_amounts(line)
+        blob = " ".join(parts)
+        amounts = find_money_amounts(blob)
         if len(amounts) < 2:
             continue
 
         amount, balance = amounts[-2], amounts[-1]
         # Description is between date and the trailing amount/balance tokens.
-        rest = line[date_match.end() :].strip()
+        rest = blob.strip()
         # Strip trailing money tokens (with optional currency) from description.
         rest = re.sub(
             r"(?:₹|Rs\.?\s*|INR\s*)?[\d,]+\.\d{2}\s*$",
@@ -108,10 +127,10 @@ def parse_slice_statement_text(text: str) -> list[StatementRawRow]:
             prev_balance = balance - amount
 
         try:
-            is_debit = infer_is_debit(prev_balance, amount, balance)
+            is_debit_value = "true" if infer_is_debit(prev_balance, amount, balance) else "false"
         except ValueError:
-            # Skip mismatched rows rather than aborting the whole statement.
-            continue
+            # Keep the row with direction blank so review flags it, instead of dropping it.
+            is_debit_value = ""
 
         source_row += 1
         category = (
@@ -125,7 +144,7 @@ def parse_slice_statement_text(text: str) -> list[StatementRawRow]:
                 transaction_date=iso_date,
                 description=description,
                 amount=format_amount(amount),
-                is_debit="true" if is_debit else "false",
+                is_debit=is_debit_value,
                 category=category,
             )
         )

@@ -132,6 +132,7 @@ export function ImportReviewTable({
     (row) => !row.is_ready && !(row.is_duplicate && !row.force_duplicate),
   ).length;
   const approvedCategories = collectApprovedNewCategories(selectedRows);
+  const hasRememberedCategories = pending.some((row) => row.category_from_history);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
@@ -146,6 +147,9 @@ export function ImportReviewTable({
               : ""}
             {importedCount > 0 ? ` · ${importedCount} already imported` : ""}
           </span>
+          {hasRememberedCategories ? (
+            <span>Some categories were filled in from your past transactions. Check them before importing.</span>
+          ) : null}
           {approvedCategories.length > 0 ? (
             <span className="truncate">
               Will create categories: {approvedCategories.join(", ")}

@@ -50,6 +50,7 @@ export type ImportPreviewRow = {
   is_ready: boolean;
   category_is_new: boolean;
   is_duplicate: boolean;
+  category_from_history: boolean;
 };
 
 export type ImportPreviewResult = {

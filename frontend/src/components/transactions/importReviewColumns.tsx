@@ -312,6 +312,7 @@ export function createImportReviewColumns({
               onChange={(next) =>
                 onRowChange(row.original.source_row, {
                   category: next,
+                  category_from_history: false,
                   approved_new_category: !isCategoryKnown(next, categories),
                 })
               }

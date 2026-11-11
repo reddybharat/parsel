@@ -6,7 +6,7 @@ Parsel is an INR-focused personal finance tracker: log and search transactions t
 
 - **Dashboard** — monthly spend, category breakdowns, and recent activity; filter by month and bank (overview at `/overview`).
 - **Ledger** — search, filter, sort, create, edit, and delete transactions (including by bank); export filtered results to CSV.
-- **Bulk import** — CSV template (includes `bank`), plus bank statement import for **SBI** (Excel/PDF), **Kotak** (PDF), and **Slice** (PDF) via the add-transaction flow with review before save.
+- **Bulk import** — CSV template (includes `bank`), plus bank statement import for **SBI** (Excel/PDF), **Kotak** (PDF), and **Slice** (PDF) via the add-transaction flow with review before save. Blank statement categories are pre-filled from your past transactions (see [Category suggestions](#category-suggestions)).
 - **Chat assistant** — natural-language questions over your transaction data, including bank-scoped spend (read-only SQL via Groq + LangGraph).
 
 All amounts are stored and displayed in Indian Rupees (₹). Bank is a label on each transaction (not Open Banking / account aggregation).
@@ -120,6 +120,15 @@ JWT_SECRET=replace-with-a-long-random-string
 GROQ_API_KEY=your_groq_key_here
 ```
 
+## Category suggestions
+
+Statement imports (SBI, Kotak, Slice) arrive with a blank category. The preview pre-fills it from what you have already saved, and you still review and edit every row before saving. Nothing is stored until you commit; CSV imports are unchanged.
+
+1. **Merchant name:** the bank text (`UPI/DR/4123/SWIGGY/YESB/swiggy@ybl`) is reduced to its merchant words (`SWIGGY`).
+2. **History:** your saved transactions are read live. If one category covers at least 60% of past transactions for that merchant, it is filled in. Merchants with no history, or a split history, stay blank.
+
+The review table shows a single note under the row counts when any category was filled this way; editing a category removes it from that count. Committing an import or fixing a category in the ledger improves the next import automatically; there is nothing to run or schedule, and no AI service is involved.
+
 ## Database
 
 Schema SQL lives in [`migrations/`](migrations/). There is no migration runner; apply scripts with `psql`. The app connects as `parsel` (owns the database, not a superuser); the chat assistant connects as `parsel_agent` (`SELECT` on `transactions` only, read-only).
@@ -179,7 +188,7 @@ python -m pytest -q
 
 Use `python -m pytest`, not bare `pytest`: it puts `backend` on the import path.
 
-Most tests mock the database and the LLM. [`tests/test_chat_agent_role.py`](backend/tests/test_chat_agent_role.py) runs against the real database through `CHAT_DATABASE_URL` and checks that the chat agent can read `transactions` but cannot write or read `users`; it is skipped when `CHAT_DATABASE_URL` is unset.
+Most tests mock the database and the LLM. [`tests/test_category_suggest.py`](backend/tests/test_category_suggest.py) also runs one real-ledger test (a temporary user, removed afterwards); it is skipped without `DATABASE_URL` in the shell environment (the tests do not read `backend/.env`). [`tests/test_chat_agent_role.py`](backend/tests/test_chat_agent_role.py) runs against the real database through `CHAT_DATABASE_URL` and checks that the chat agent can read `transactions` but cannot write or read `users`; it is skipped when `CHAT_DATABASE_URL` is unset.
 
 ## Further reading
 

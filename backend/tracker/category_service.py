@@ -2,22 +2,43 @@
 
 from __future__ import annotations
 
+import re
 import uuid
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Sequence
 
 from fastapi import HTTPException
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 
 from auth.models import User
 from common.database import get_connection, get_readonly_connection
+from common.logger import get_logger
 from tracker.constants import (
     CATEGORY_NAME_MAX_LENGTH,
     MAX_CUSTOM_CATEGORIES,
     SYSTEM_CATEGORIES,
 )
 from tracker.models import Transaction
+
+logger = get_logger(__name__)
+
+HISTORY_SCAN_LIMIT = 5000
+HISTORY_MIN_SHARE = 0.6
+MIN_MERCHANT_TOKEN_LENGTH = 3
+
+_MERCHANT_NOISE_TOKENS = frozenset(
+    {
+        "UPI", "DR", "CR", "IMPS", "NEFT", "RTGS", "P2A", "P2M", "TRANSFER",
+        "PAYMENT", "TO", "FROM", "BY", "CREDIT", "DEBIT", "PAY", "COLLECT",
+        "REQUEST",
+        "YESB", "HDFC", "ICIC", "SBIN", "UTIB", "KKBK",
+        "YBL", "IBL", "AXL", "APL", "SLC", "OKAXIS", "OKSBI", "OKICICI",
+        "OKHDFCBANK",
+    }
+)
+_NON_ALNUM = re.compile(r"[^A-Z0-9]+")
 
 
 @dataclass(frozen=True)
@@ -354,3 +375,77 @@ async def list_missing_category_names(
         if key not in known:
             missing.append(name)
     return missing
+
+
+def merchant_key(description: str) -> str:
+    """Reduce a raw bank description to its merchant tokens ("" when nothing is left)."""
+    tokens: list[str] = []
+    for token in _NON_ALNUM.split((description or "").upper()):
+        if (
+            len(token) < MIN_MERCHANT_TOKEN_LENGTH
+            or any(ch.isdigit() for ch in token)
+            or token in _MERCHANT_NOISE_TOKENS
+            or token in tokens
+        ):
+            continue
+        tokens.append(token)
+    return " ".join(tokens)
+
+
+async def _load_history(user_id: uuid.UUID) -> list[tuple[str, str]]:
+    """Recent (description, category) pairs from the user's ledger."""
+    # shortcut: scans last HISTORY_SCAN_LIMIT txns in Python on every statement preview; add a stored, indexed merchant_key column if ledgers get large.
+    async with get_readonly_connection() as session:
+        rows = await session.execute(
+            text(
+                "SELECT description, category FROM transactions "
+                "WHERE user_id = :user_id AND description IS NOT NULL "
+                "ORDER BY transaction_date DESC LIMIT :limit"
+            ),
+            {"user_id": user_id, "limit": HISTORY_SCAN_LIMIT},
+        )
+        return [(row[0], row[1]) for row in rows]
+
+
+def _history_by_merchant(
+    history: Sequence[tuple[str, str]], known: dict[str, str]
+) -> dict[str, str]:
+    """merchant key -> category, only where one category has >= HISTORY_MIN_SHARE of that merchant's rows."""
+    counts: dict[str, Counter[str]] = {}
+    for description, category in history:
+        key = merchant_key(description)
+        canonical = known.get(category_key(category))
+        if key and canonical:
+            counts.setdefault(key, Counter())[canonical] += 1
+    decided: dict[str, str] = {}
+    for key, counter in counts.items():
+        category, top = counter.most_common(1)[0]
+        if top / sum(counter.values()) >= HISTORY_MIN_SHARE:
+            decided[key] = category
+    return decided
+
+
+async def suggest_categories(
+    user_id: uuid.UUID,
+    rows: Sequence[Any],
+    known: dict[str, str],
+) -> dict[int, str]:
+    """Suggest categories for statement rows with a blank category, keyed by source_row.
+
+    Exact merchant-key match against the user's own ledger. Never raises: a failed
+    lookup just means no suggestions.
+    """
+    blank = [row for row in rows if not getattr(row, "category", "") and merchant_key(row.description)]
+    if not blank:
+        return {}
+    try:
+        history = await _load_history(user_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("category history lookup failed for user %s: %s", user_id, exc)
+        return {}
+    decided = _history_by_merchant(history, known)
+    return {
+        row.source_row: decided[key]
+        for row in blank
+        if (key := merchant_key(row.description)) in decided
+    }

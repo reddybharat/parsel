@@ -45,6 +45,17 @@ def _no_existing_duplicates():
 
 
 @pytest.fixture(autouse=True)
+def _no_category_history(monkeypatch):
+    """Statement previews default to no ledger history and no Groq, so categories stay blank."""
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    with patch(
+        "tracker.category_service._load_history",
+        new=AsyncMock(return_value=[]),
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _all_banks_active():
     """Treat every catalog bank as an active profile bank for import tests."""
     with patch(
@@ -506,6 +517,49 @@ def test_parse_slice_statement_text_debit_and_credit():
     assert rows[2].category == ""
 
 
+def test_parse_slice_statement_text_multi_page_wrapped_and_mismatch():
+    from tracker.bank_import.slice_pdf import parse_slice_statement_text
+
+    text = "\n".join(
+        [
+            "01 Sep '26 - 30 Sep '26",
+            "1/2",
+            "Opening balance",
+            "₹100.00 ₹8,000.00 ₹5.00 ₹0.00 ₹8,105.00",
+            "DATE DETAILS REF NO. AMOUNT BALANCE",
+            "02 Sep '26 UPI-Credit-624528738839-BORA BHARAT RED",
+            "DY-KKBK0000333-7002681900@slc-SR6d6948",
+            "20260902359555301 ₹8,000.00 ₹8,100.00",
+            "03 Sep '26 Interest Cr. for 02-Sep-2026 20226246159824 ₹5.00 ₹8,105.00",
+            "Need help? Contact our support team at help@slice.bank.in slice small finance bank",
+            "01 Sep '26 - 30 Sep '26",
+            "2/2",
+            "04 Sep '26 Unexplained 2026090400001 ₹1.00 ₹9,999.00",
+            "05 Sep '26 UPI/Merchant/Payment 2026090500001 ₹99.00 ₹9,900.00",
+            "Generated on 02 Oct '26",
+            "Need help? Contact our support team at help@slice.bank.in slice small finance bank",
+        ]
+    )
+    rows = parse_slice_statement_text(text)
+    assert [r.transaction_date for r in rows] == [
+        "2026-09-02",
+        "2026-09-03",
+        "2026-09-04",
+        "2026-09-05",
+    ]
+    assert rows[0].amount == "8000.00"
+    assert rows[0].is_debit == "false"
+    assert rows[0].description == (
+        "UPI-Credit-624528738839-BORA BHARAT RED DY-KKBK0000333-7002681900@slc-SR6d6948"
+    )
+    assert rows[1].category == "Other Income"
+    # Balance does not reconcile: kept for review with direction blank, not dropped.
+    assert rows[2].is_debit == ""
+    # Later rows resync on the printed balance instead of cascading into skips.
+    assert rows[3].is_debit == "true"
+    assert rows[3].amount == "99.00"
+
+
 def test_parse_kotak_statement_text_multiline_and_end_marker():
     from tracker.bank_import.kotak_pdf import parse_kotak_statement_text
 
@@ -952,3 +1006,31 @@ async def test_legacy_csv_import_uses_per_row_bank():
     session.execute.assert_awaited_once()
     rows = session.execute.await_args.args[1]
     assert [row["bank"] for row in rows] == ["Kotak", "SBI"]
+
+
+async def test_preview_sbi_xlsx_fills_category_from_history():
+    known = {"food": "Food"}
+    content = _sbi_xlsx_bytes()
+    raw_rows = extract_sbi_rows(content)
+    history = [(raw_rows[0].description, "Food")]
+    with patch(
+        "tracker.services.known_category_map",
+        new=AsyncMock(return_value=known),
+    ), patch(
+        "tracker.services.list_missing_category_names",
+        new=AsyncMock(return_value=[]),
+    ), patch(
+        "tracker.category_service._load_history",
+        new=AsyncMock(return_value=history),
+    ):
+        preview = await preview_transactions_import(
+            content,
+            user_id=ALICE_ID,
+            bank="SBI",
+            filename="statement.xlsx",
+        )
+
+    first = preview.rows[0]
+    assert first.category == "Food"
+    assert first.category_from_history
+    assert first.is_ready

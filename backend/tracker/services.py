@@ -22,6 +22,7 @@ from tracker.category_service import (
     normalize_category_name,
     register_category_names,
     resolve_category_name,
+    suggest_categories,
 )
 from tracker.bank_import import (
     BankStatementParseError,
@@ -520,6 +521,7 @@ def _build_import_preview_row(
     bank: str,
     known: dict[str, str],
     has_is_debit_column: bool = True,
+    category_from_history: bool = False,
 ) -> ImportPreviewRow:
     issues: list[ImportFieldIssue] = []
     parsed_date: date | None = None
@@ -736,6 +738,7 @@ def _build_import_preview_row(
         issues=issues,
         is_ready=is_ready,
         category_is_new=category_is_new,
+        category_from_history=category_from_history,
     )
 
 
@@ -746,11 +749,12 @@ async def _preview_from_statement_rows(
     bank: str,
 ) -> tuple[list[ImportPreviewRow], list[str], list[str]]:
     known = await known_category_map(user_id)
+    suggestions = await suggest_categories(user_id, raw_rows, known)
     preview_rows = [
         _build_import_preview_row(
             source_row=row.source_row,
             raw_date=row.transaction_date,
-            raw_category=getattr(row, "category", "") or "",
+            raw_category=(getattr(row, "category", "") or suggestions.get(row.source_row, "")),
             raw_amount=row.amount,
             raw_is_debit=row.is_debit,
             raw_description=row.description,
@@ -758,6 +762,7 @@ async def _preview_from_statement_rows(
             bank=bank,
             known=known,
             has_is_debit_column=True,
+            category_from_history=row.source_row in suggestions,
         )
         for row in raw_rows
     ]
