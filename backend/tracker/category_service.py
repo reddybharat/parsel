@@ -17,6 +17,7 @@ from common.database import get_connection, get_readonly_connection
 from common.logger import get_logger
 from tracker.constants import (
     CATEGORY_NAME_MAX_LENGTH,
+    MAX_CATEGORY_MONTHLY_LIMIT,
     MAX_CUSTOM_CATEGORIES,
     SYSTEM_CATEGORIES,
 )
@@ -45,6 +46,7 @@ _NON_ALNUM = re.compile(r"[^A-Z0-9]+")
 class CategoryInfo:
     name: str
     is_system: bool
+    monthly_limit: float | None = None
 
 
 def normalize_category_name(raw: str) -> str:
@@ -101,6 +103,20 @@ def _custom_categories_from_preferences(
     return categories
 
 
+def _limits_from_preferences(preferences: dict[str, Any] | None) -> dict[str, float]:
+    """casefold category key -> monthly limit, skipping malformed entries."""
+    raw_limits = (
+        preferences.get("category_limits", {}) if isinstance(preferences, dict) else {}
+    )
+    if not isinstance(raw_limits, dict):
+        return {}
+    limits: dict[str, float] = {}
+    for name, value in raw_limits.items():
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+            limits[category_key(str(name))] = float(value)
+    return limits
+
+
 async def _load_custom_categories(user_id: uuid.UUID) -> list[str]:
     async with get_readonly_connection() as session:
         preferences = (
@@ -122,11 +138,22 @@ async def known_category_map(user_id: uuid.UUID) -> dict[str, str]:
 
 
 async def list_categories(user_id: uuid.UUID) -> list[CategoryInfo]:
+    async with get_readonly_connection() as session:
+        preferences = (
+            await session.execute(
+                select(User.preferences).where(User.id == user_id)
+            )
+        ).scalar_one_or_none()
     system_keys = set(_system_key_map())
-    known = await known_category_map(user_id)
+    names = [*SYSTEM_CATEGORIES, *_custom_categories_from_preferences(preferences)]
+    limits = _limits_from_preferences(preferences)
     items = [
-        CategoryInfo(name=name, is_system=(category_key(name) in system_keys))
-        for name in known.values()
+        CategoryInfo(
+            name=name,
+            is_system=(category_key(name) in system_keys),
+            monthly_limit=limits.get(category_key(name)),
+        )
+        for name in names
     ]
     items.sort(key=lambda item: (not item.is_system, item.name.casefold()))
     return items
@@ -279,6 +306,11 @@ async def rename_category(
         ]
         preferences = dict(user.preferences or {})
         preferences["custom_categories"] = custom_categories
+        moved_limit = _limits_from_preferences(preferences).get(old_key)
+        limits = _without_limit(preferences, old_key)
+        if moved_limit is not None:
+            limits[display_new] = moved_limit
+        preferences["category_limits"] = limits
         user.preferences = preferences
         user.updated_at = datetime.now(timezone.utc)
         user.version_no = int(user.version_no or 0) + 1
@@ -296,7 +328,7 @@ async def rename_category(
             )
         )
 
-    return CategoryInfo(name=display_new, is_system=False)
+    return CategoryInfo(name=display_new, is_system=False, monthly_limit=moved_limit)
 
 
 async def delete_category(user_id: uuid.UUID, raw_name: str) -> None:
@@ -350,9 +382,60 @@ async def delete_category(user_id: uuid.UUID, raw_name: str) -> None:
             for category in custom_categories
             if category_key(category) != key
         ]
+        preferences["category_limits"] = _without_limit(preferences, key)
         user.preferences = preferences
         user.updated_at = datetime.now(timezone.utc)
         user.version_no = int(user.version_no or 0) + 1
+
+
+def _without_limit(preferences: dict[str, Any], key: str) -> dict[str, Any]:
+    raw = preferences.get("category_limits")
+    if not isinstance(raw, dict):
+        return {}
+    return {name: value for name, value in raw.items() if category_key(str(name)) != key}
+
+
+async def set_category_limit(
+    user_id: uuid.UUID,
+    raw_name: str,
+    limit: float | None,
+) -> CategoryInfo:
+    """Set or clear (None) the monthly limit of a system or custom category."""
+    if limit is not None and not 0 < limit <= MAX_CATEGORY_MONTHLY_LIMIT:
+        raise ValueError(
+            f"Monthly limit must be above 0 and at most {MAX_CATEGORY_MONTHLY_LIMIT:,}."
+        )
+    key = category_key(validate_category_name(raw_name))
+
+    async with get_connection() as session:
+        user = (
+            await session.execute(
+                select(User).where(User.id == user_id).with_for_update()
+            )
+        ).scalar_one_or_none()
+        if user is None:
+            raise ValueError("Account not found.")
+
+        known = _system_key_map()
+        known.update(
+            {category_key(c): c for c in _custom_categories_from_preferences(user.preferences)}
+        )
+        canonical = known.get(key)
+        if canonical is None:
+            raise ValueError(f'Unknown category "{raw_name}".')
+
+        preferences = dict(user.preferences or {})
+        limits = _without_limit(preferences, key)
+        if limit is not None:
+            limits[canonical] = limit
+        preferences["category_limits"] = limits
+        user.preferences = preferences
+        user.updated_at = datetime.now(timezone.utc)
+        user.version_no = int(user.version_no or 0) + 1
+
+    return CategoryInfo(
+        name=canonical, is_system=key in _system_key_map(), monthly_limit=limit
+    )
 
 
 async def list_missing_category_names(

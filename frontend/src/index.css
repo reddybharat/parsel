@@ -50,10 +50,10 @@
   --radius: 0rem;
   /* Cyan chart ramp (Precision accent) */
   --chart-1: 190 100% 38%;
-  --chart-2: 190 90% 48%;
-  --chart-3: 190 85% 32%;
-  --chart-4: 190 80% 26%;
-  --chart-5: 190 75% 20%;
+  --chart-2: 32 95% 44%;
+  --chart-3: 0 0% 22%;
+  --chart-4: 225 70% 52%;
+  --chart-5: 0 0% 58%;
   --chart-6: 190 70% 62%;
   --chart-7: 195 45% 50%;
   --chart-8: 195 35% 42%;
@@ -104,10 +104,10 @@
   --input: 0 0% 16%;
   --ring: 191 85% 57%;
   --chart-1: 191 85% 57%;
-  --chart-2: 191 80% 68%;
-  --chart-3: 191 75% 48%;
-  --chart-4: 191 70% 40%;
-  --chart-5: 191 65% 34%;
+  --chart-2: 38 92% 58%;
+  --chart-3: 0 0% 85%;
+  --chart-4: 225 85% 70%;
+  --chart-5: 0 0% 55%;
   --chart-6: 191 70% 76%;
   --chart-7: 195 40% 58%;
   --chart-8: 195 30% 48%;
@@ -329,5 +329,129 @@ body,
   .landing-hero,
   .landing-band {
     animation: none;
+  }
+}
+
+/* Overview: single scrolling column by default, fixed no-scroll dashboard on large, tall-enough windows. */
+.ov-link {
+  transition: border-color 150ms ease-out, transform 150ms ease-out;
+}
+
+.ov-link:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.ov-link:active {
+  transform: scale(0.99);
+}
+
+.ov-arrow {
+  opacity: 0;
+}
+
+@media (hover: hover) {
+  .ov-link:hover {
+    border-color: var(--parsel-primary);
+  }
+
+  .ov-link:hover .ov-arrow {
+    opacity: 1;
+  }
+}
+
+.ov-budgets {
+  display: grid;
+  gap: 0.375rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 640px) {
+  .ov-budgets {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.ov-lt130,
+.ov-lt105 {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-link {
+    transition: none;
+  }
+
+  .ov-link:active {
+    transform: none;
+  }
+}
+
+@media (min-width: 1024px) and (min-height: 560px) {
+  .ov-grid {
+    overflow: hidden;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) 20rem;
+    grid-template-rows: auto auto minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .ov-kpis,
+  .ov-fresh {
+    grid-column: 1 / -1;
+  }
+
+  .ov-balance {
+    grid-column: 1 / 4;
+    flex-direction: row;
+  }
+
+  .ov-balance-chart {
+    min-height: 0;
+  }
+
+  .ov-budgets {
+    grid-column: 1 / 4;
+    grid-row: 4 / 6;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+
+  .ov-side {
+    grid-column: 4;
+    grid-row: 3 / 6;
+    grid-template-rows: minmax(8rem, 1fr) minmax(0, auto);
+  }
+
+  .ov-side > article:last-child {
+    min-height: 0;
+  }
+
+  .ov-recent {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .ov-cell {
+    container-type: size;
+  }
+
+  @container (max-height: 130px) {
+    .ov-full {
+      display: none;
+    }
+
+    .ov-lt130 {
+      display: inline;
+    }
+  }
+
+  @container (max-height: 105px) {
+    .ov-mid {
+      display: none;
+    }
+
+    .ov-lt105 {
+      display: inline;
+    }
   }
 }

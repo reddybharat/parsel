@@ -60,11 +60,14 @@ flowchart LR
 - Tracker (Bearer JWT required; data scoped to current user)
   - `/config/tracker` — categories, payment methods, banks allowlist
   - `/transactions/*` — CRUD, search, CSV export, import preview/commit (CSV + statements)
-  - `/dashboard/overview` — optional `banks=` filter; returns `active_banks`
+  - `/dashboard/overview` — optional `banks=` filter; returns `active_banks`, per-category `prev_spend`/`txn_count` and per-bank `freshness`
+  - `/dashboard/insight?month=YYYY-MM` — insight of the month. Facts come from SQL, the LLM (same model as Chat) only phrases them, and numbers it invents are rejected in favour of a template sentence. Cached per user and month in `monthly_insights` (migration 009); the cache is reused until the month's transactions change. Separate from the overview so the LLM never slows the dashboard
+  - `PUT /categories/{name}/limit` — monthly category limit, stored in `users.preferences.category_limits` (no table)
 - Chat (Bearer JWT required; threads and SQL scoped to current user)
   - `/chat/invoke`
   - `/chat/resume`
   - `/chat/exit`
+  - If the LLM or a tool fails partway through a turn (e.g. a Groq 429), the call returns 200 with a technical-error reply as the assistant message, and the thread can still be resumed
 
 ## Stitch integration notes
 

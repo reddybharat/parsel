@@ -1,22 +1,28 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Upload } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
-import { ParselMark } from "@/components/brand/ParselMark";
-import { Button } from "@/components/ui/button";
-import { CashFlowTiles } from "@/components/dashboard/CashFlowTiles";
+import { BankBalanceLegend } from "@/components/dashboard/BankBalanceLegend";
+import { MonthlyInsightCard } from "@/components/dashboard/MonthlyInsightCard";
+import { CategoryBudgetCards } from "@/components/dashboard/CategoryBudgetCards";
 import { ChartSkeleton } from "@/components/dashboard/ChartSkeleton";
+import { DataFreshnessStrip } from "@/components/dashboard/DataFreshnessStrip";
 import { OverviewLoading } from "@/components/dashboard/OverviewLoading";
-import { OverviewPortfolioControls } from "@/components/dashboard/OverviewPortfolioControls";
+import {
+  OverviewPortfolioControls,
+  type SpendChartKind,
+} from "@/components/dashboard/OverviewPortfolioControls";
+import { RecentActivityList } from "@/components/dashboard/RecentActivityList";
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { ErrorState } from "@/components/feedback/ErrorState";
+import { ledgerHref, monthRange } from "@/components/transactions/LedgerDateRange";
 import {
   currentMonthValue,
   dashboardOverviewQueryOptions,
   TREND_MONTHS,
 } from "@/lib/dashboardQuery";
-import { formatInrAmount, formatInrSigned, formatRelativeDate } from "@/lib/format";
+import { formatInrAmount, formatInrSigned } from "@/lib/format";
+import { trackerConfigQueryOptions } from "@/lib/trackerConfigQuery";
 import type { DashboardOverview } from "@/lib/types";
 
 const MonthlySpendBarChart = lazy(() =>
@@ -29,17 +35,29 @@ const DailySpendLineChart = lazy(() =>
     default: m.DailySpendLineChart,
   })),
 );
-const CategorySpendBarChart = lazy(() =>
-  import("@/components/dashboard/CategorySpendBarChart").then((m) => ({
-    default: m.CategorySpendBarChart,
-  })),
-);
 
+const SPEND_CHART_STORAGE_KEY = "parsel.overview.spendChart";
 const SECTION_LABEL = "text-[11px] font-semibold uppercase tracking-wide text-parsel-secondary";
-const TILE = "flex min-h-0 flex-col overflow-hidden rounded-none border border-parsel-border bg-parsel-surface p-3 shadow-none";
-const TILE_FILL = `${TILE} lg:h-full`;
+const TILE = "flex min-h-0 flex-col overflow-hidden border border-parsel-border bg-parsel-surface p-3";
+const INVESTMENTS_CATEGORY = "Investments";
 
 type TrendPoint = DashboardOverview["trend"]["points"][number];
+
+function readSpendChart(): SpendChartKind {
+  try {
+    return localStorage.getItem(SPEND_CHART_STORAGE_KEY) === "daily" ? "daily" : "monthly";
+  } catch {
+    return "monthly";
+  }
+}
+
+function writeSpendChart(chart: SpendChartKind) {
+  try {
+    localStorage.setItem(SPEND_CHART_STORAGE_KEY, chart);
+  } catch {
+    // Storage blocked (private window): the choice just isn't remembered.
+  }
+}
 
 function ensureFocusMonthPoint(
   points: TrendPoint[],
@@ -63,66 +81,67 @@ function sameBankSet(a: string[], b: string[]): boolean {
   return b.every((item) => set.has(item));
 }
 
-function ActivityIcon({ label }: { label: string }) {
-  const initial = (label.trim()[0] ?? "?").toUpperCase();
-  return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-none bg-parsel-icon-bg text-xs font-semibold text-parsel-secondary">
-      {initial}
-    </span>
-  );
+/** "YYYY-MM" shifted by a whole number of months. */
+function shiftMonth(month: string, delta: number): string {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const shifted = new Date(year, monthNumber - 1 + delta, 1);
+  return `${shifted.getFullYear()}-${String(shifted.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function QuickActionsBlock() {
-  return (
-    <div className="grid min-h-0 gap-1.5 lg:grid-rows-2 lg:h-full lg:overflow-hidden">
-      <article className={`${TILE} flex min-h-0 flex-col !p-3 lg:h-full`}>
-        <p className={`${SECTION_LABEL} mb-2 shrink-0`}>Quick Actions</p>
-        <div className="flex min-h-0 flex-1 flex-col justify-center gap-2">
-          <Button asChild className="w-full rounded-none shadow-none">
-            <Link to="/ledger/add">
-              <Upload />
-              Import Data
-            </Link>
-          </Button>
-          <Button asChild variant="outline" className="w-full rounded-none shadow-none">
-            <Link to="/ledger/search">
-              <Search />
-              Search
-            </Link>
-          </Button>
-        </div>
-      </article>
+function daysInMonth(month: string): number {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Date(year, monthNumber, 0).getDate();
+}
 
-      <article className="flex min-h-0 flex-col justify-between rounded-none bg-parsel-primary p-3 text-primary-foreground shadow-none lg:h-full">
-        <div className="space-y-2">
-          <p className="flex items-center gap-1.5 text-sm font-semibold leading-tight">
-            <ParselMark fit="fitted" className="h-2.5 w-3" />
-            Parsel AI
-          </p>
-          <p className="text-xs leading-relaxed opacity-90">
-            See where your money went this month, or ask about categories and recent transactions.
-            Clear answers from your ledger, in plain language.
-          </p>
-        </div>
-        <Button
-          asChild
-          variant="outline"
-          className="mt-2 w-full rounded-none border-primary-foreground/40 bg-parsel-surface text-parsel-primary shadow-none hover:bg-parsel-surface/90 hover:text-parsel-primary"
-        >
-          <Link to="/chat">Ask a question</Link>
-        </Button>
-      </article>
-    </div>
+function KpiTile({
+  label,
+  value,
+  valueClassName = "text-parsel-neutral",
+  sub,
+  to,
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+  sub?: string;
+  to?: string;
+}) {
+  const body = (
+    <>
+      <span className="flex items-center justify-between">
+        <span className={SECTION_LABEL}>{label}</span>
+        {to ? (
+          <span aria-hidden="true" className="ov-arrow text-xs text-parsel-primary">
+            ↗
+          </span>
+        ) : null}
+      </span>
+      <span className={`mt-0.5 block truncate tabular-nums text-lg font-semibold ${valueClassName}`}>
+        {value}
+      </span>
+      <span className="block h-4 truncate text-[11px] text-parsel-muted">{sub}</span>
+    </>
+  );
+  const className = "block min-w-0 border border-parsel-border bg-parsel-surface px-3 py-2";
+  return to ? (
+    <Link to={to} className={`ov-link ${className}`}>
+      {body}
+    </Link>
+  ) : (
+    <div className={className}>{body}</div>
   );
 }
 
 export function OverviewPage() {
   const [month, setMonth] = useState(currentMonthValue);
   const [selectedBanks, setSelectedBanks] = useState<string[] | null>(null);
+  const [chart, setChart] = useState<SpendChartKind>(readSpendChart);
+  const navigate = useNavigate();
 
   const { data, isPending, isError, error, refetch, isFetching } = useQuery(
     dashboardOverviewQueryOptions({ month, banks: selectedBanks }),
   );
+  const { data: trackerConfig } = useQuery(trackerConfigQueryOptions());
 
   const activeBanks = data?.active_banks ?? [];
   const displaySelectedBanks = selectedBanks ?? activeBanks;
@@ -143,6 +162,11 @@ export function OverviewPage() {
     setSelectedBanks(activeBanks.length > 0 && sameBankSet(banks, activeBanks) ? null : banks);
   }
 
+  function handleChartChange(next: SpendChartKind) {
+    setChart(next);
+    writeSpendChart(next);
+  }
+
   if (isError) {
     return (
       <ErrorState
@@ -152,102 +176,179 @@ export function OverviewPage() {
     );
   }
 
-  const showLoading = isPending && !data;
-  const trendPoints = data
-    ? ensureFocusMonthPoint(data.trend.points, TREND_MONTHS, data.daily_spend.month_label)
-    : [];
-
-  if (showLoading) {
+  if (isPending && !data) {
     return <OverviewLoading />;
   }
 
+  const trendPoints = data
+    ? ensureFocusMonthPoint(data.trend.points, TREND_MONTHS, data.daily_spend.month_label)
+    : [];
+  const categories = trackerConfig?.categories ?? [];
+  const importedBanks = trackerConfig?.banks;
+  const freshness = (data?.freshness ?? []).filter(
+    (item) => !importedBanks || importedBanks.includes(item.bank),
+  );
+
+  const monthDays = daysInMonth(month);
+  const daysElapsed = month === currentMonthValue() ? new Date().getDate() : monthDays;
+  const linkBank = displaySelectedBanks.length === 1 ? displaySelectedBanks[0] : undefined;
+  const { start, end } = monthRange(month);
+  const monthLink = { start, end, bank: linkBank };
+
+  const spend = data?.summary.current_month_spend ?? 0;
+  const inflow = data?.highlights.total_inflow ?? 0;
+  const outflow = data?.highlights.total_outflow ?? 0;
+  const spendDelta = data?.summary.spend_delta_pct ?? null;
+  // shortcut: straight-line pace (spend so far / days elapsed); ignores rent-style lump payments.
+  const projectedSpend = daysElapsed < monthDays && spend > 0 ? (spend / daysElapsed) * monthDays : null;
+  const limitsTotal = categories.reduce((sum, item) => sum + (item.monthly_limit ?? 0), 0);
+
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 gap-1.5 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_minmax(260px,300px)_minmax(280px,340px)] lg:grid-rows-1 lg:overflow-hidden">
-      <div className="grid min-h-0 gap-1.5 lg:grid-rows-2 lg:overflow-hidden lg:h-full">
-        <article className={TILE_FILL}>
-          <div className="flex shrink-0 items-start justify-between gap-2">
-            <p className={SECTION_LABEL}>Net Portfolio Balance</p>
-            <OverviewPortfolioControls
-              month={month}
-              onMonthChange={setMonth}
-              activeBanks={activeBanks}
-              selectedBanks={displaySelectedBanks}
-              onSelectedBanksChange={handleSelectedBanksChange}
-            />
-          </div>
-          <div className="mt-1 flex shrink-0 flex-wrap items-center gap-2">
-            {data && (
-              <p className="tabular-nums text-xl font-semibold text-parsel-neutral lg:text-2xl">
-                {formatInrSigned(data.summary.portfolio_net)}
-              </p>
-            )}
-          </div>
-          {data && data.summary.missing_opening_banks.length > 0 && (
-            <p className="mt-1 shrink-0 text-xs text-parsel-muted">
-              Not counted this month:{" "}
-              <span className="font-medium">{data.summary.missing_opening_banks.join(", ")}</span>{" "}
-              (opening month is later).{" "}
-              <Link to="/settings" className="font-semibold text-parsel-primary hover:underline">
-                Edit in Settings
+    <div className="ov-grid grid h-full min-h-0 grid-cols-1 content-start gap-1.5 overflow-y-auto">
+      <div className="ov-kpis grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
+        <KpiTile
+          label="Spent"
+          value={formatInrAmount(spend)}
+          sub={
+            spendDelta === null
+              ? undefined
+              : `${spendDelta >= 0 ? "▲" : "▼"} ${Math.abs(spendDelta).toFixed(0)}% vs prev month`
+          }
+          to={ledgerHref({ ...monthLink, direction: "debit" })}
+        />
+        <KpiTile
+          label="Inflow"
+          value={formatInrAmount(inflow)}
+          valueClassName="text-parsel-inflow"
+          to={ledgerHref({ ...monthLink, direction: "credit" })}
+        />
+        <KpiTile
+          label="Outflow"
+          value={formatInrAmount(outflow)}
+          valueClassName="text-parsel-outflow"
+          to={ledgerHref({ ...monthLink, direction: "debit" })}
+        />
+        <KpiTile
+          label="Invested"
+          value={formatInrAmount(data?.highlights.current_month_investments ?? 0)}
+          to={ledgerHref({ ...monthLink, category: INVESTMENTS_CATEGORY })}
+        />
+        <KpiTile
+          label="Savings rate"
+          value={inflow > 0 ? `${(((inflow - outflow) / inflow) * 100).toFixed(0)}%` : "—"}
+          sub={inflow > 0 ? undefined : "No inflow this month"}
+        />
+        <KpiTile
+          label="Per day"
+          value={formatInrAmount(spend / daysElapsed)}
+          sub={limitsTotal > 0 ? `budget pace ${formatInrAmount(limitsTotal / monthDays)}` : undefined}
+        />
+      </div>
+
+      <div className="ov-fresh">
+        <DataFreshnessStrip freshness={freshness} />
+      </div>
+
+      <article className={`ov-balance ${TILE} gap-3 sm:flex-row`}>
+        <div className="flex min-h-0 shrink-0 flex-col sm:w-44">
+          <p className={SECTION_LABEL}>Net balance</p>
+          {data ? (
+            <p className="mt-1 tabular-nums text-xl font-semibold text-parsel-neutral">
+              {formatInrSigned(data.summary.portfolio_net)}
+            </p>
+          ) : null}
+          {data && data.summary.missing_opening_banks.length > 0 ? (
+            <p className="mt-1 text-[11px] leading-snug text-parsel-muted">
+              Not counted: {data.summary.missing_opening_banks.join(", ")} (opens later).{" "}
+              <Link to="/settings#banks" className="font-semibold text-parsel-primary hover:underline">
+                Edit
               </Link>
             </p>
-          )}
-          <div className="mt-2 flex min-h-0 flex-1 flex-col border-t border-parsel-border pt-2">
-            {data && (
-              <Suspense fallback={<ChartSkeleton />}>
-                <MonthlySpendBarChart points={trendPoints} spendDeltaPct={data.summary.spend_delta_pct} />
-              </Suspense>
-            )}
-          </div>
-        </article>
-
-        <article className={TILE_FILL}>
-          <p className={`${SECTION_LABEL} shrink-0`}>Total Monthly Spending</p>
-          {data && (
-            <p className="mt-1 shrink-0 tabular-nums text-xl font-semibold text-parsel-neutral">
-              {formatInrAmount(data.summary.current_month_spend)}
+          ) : null}
+          {data ? (
+            <BankBalanceLegend
+              className="mt-3"
+              balances={data.summary.bank_balances}
+              series={data.daily_spend.series}
+              showSwatches={chart === "daily"}
+              start={start}
+              end={end}
+            />
+          ) : null}
+          {projectedSpend !== null ? (
+            <p className="mt-auto pt-2 text-[11px] leading-snug text-parsel-muted">
+              Month-end spend at this pace: {formatInrAmount(projectedSpend)}
             </p>
-          )}
-          <div className="mt-2 flex min-h-0 flex-1 flex-col border-t border-parsel-border pt-2">
-            {data && (
-              <Suspense fallback={<ChartSkeleton />}>
+          ) : null}
+        </div>
+        <div className="ov-balance-chart flex min-h-[9rem] min-w-0 flex-1 flex-col">
+          <p className={`${SECTION_LABEL} mb-1 shrink-0`}>
+            {chart === "daily" && data
+              ? `Daily spend · ${data.daily_spend.month_label}`
+              : `Monthly spend · last ${TREND_MONTHS} months`}
+          </p>
+          <div className="min-h-0 flex-1">
+          {data ? (
+            <Suspense fallback={<ChartSkeleton />}>
+              {chart === "monthly" ? (
+                <MonthlySpendBarChart
+                  compact
+                  points={trendPoints}
+                  spendDeltaPct={data.summary.spend_delta_pct}
+                  onBarClick={(index) => {
+                    const barMonth = shiftMonth(month, index - (trendPoints.length - 1));
+                    const range = monthRange(barMonth);
+                    navigate(ledgerHref({ ...range, bank: linkBank, direction: "debit" }));
+                  }}
+                />
+              ) : (
                 <DailySpendLineChart
+                  compact
                   series={data.daily_spend.series}
                   monthLabel={data.daily_spend.month_label}
                   monthTotal={data.daily_spend.total}
+                  onDayClick={(day) => {
+                    const date = `${month}-${String(day).padStart(2, "0")}`;
+                    navigate(ledgerHref({ start: date, end: date, bank: linkBank }));
+                  }}
                 />
-              </Suspense>
-            )}
-          </div>
-        </article>
-      </div>
-
-      <div className="grid min-h-0 gap-1.5 lg:grid-rows-2 lg:overflow-hidden lg:h-full">
-        <article className={TILE_FILL}>
-          {data && (
-            <Suspense fallback={<ChartSkeleton />}>
-              <CategorySpendBarChart
-                items={data.category_spend.items}
-                monthLabel={data.daily_spend.month_label}
-              />
+              )}
             </Suspense>
-          )}
-        </article>
-        <QuickActionsBlock />
-      </div>
-
-      <div className="grid min-h-0 gap-1.5 lg:grid-rows-[auto_minmax(0,1fr)] lg:overflow-hidden lg:h-full">
-        {data && (
-          <CashFlowTiles
-            tileClassName={TILE}
-            inflow={data.highlights.total_inflow}
-            outflow={data.highlights.total_outflow}
-            investments={data.highlights.current_month_investments}
+          ) : null}
+          </div>
+        </div>
+        <div className="shrink-0 self-start">
+          <OverviewPortfolioControls
+            chart={chart}
+            onChartChange={handleChartChange}
+            month={month}
+            onMonthChange={setMonth}
+            activeBanks={activeBanks}
+            selectedBanks={displaySelectedBanks}
+            onSelectedBanksChange={handleSelectedBanksChange}
           />
-        )}
+        </div>
+      </article>
 
-        <article className={`${TILE} flex min-h-0 flex-col`}>
-          <div className="mb-2 flex shrink-0 items-center justify-between border-b border-parsel-border pb-2">
+      {data ? (
+        <CategoryBudgetCards
+          className="ov-budgets"
+          items={data.category_spend.items}
+          categories={categories}
+          month={month}
+          daysElapsed={daysElapsed}
+          bank={linkBank}
+        />
+      ) : null}
+
+      <div className="ov-side grid min-h-0 gap-1.5">
+        <article className={`${TILE} min-h-0`}>
+          <p className={SECTION_LABEL}>Insight of the month</p>
+          <MonthlyInsightCard month={month} />
+        </article>
+
+        <article className={`${TILE} min-h-[12rem]`}>
+          <div className="mb-1 flex shrink-0 items-center justify-between border-b border-parsel-border pb-2">
             <p className={SECTION_LABEL}>Recent Activity</p>
             <Link to="/ledger/search" className="text-xs font-semibold text-parsel-primary hover:underline">
               View All
@@ -256,22 +357,7 @@ export function OverviewPage() {
           {data && data.recent.items.length === 0 ? (
             <EmptyState title="No recent transactions" detail="New entries will show here." />
           ) : (
-            data && (
-              <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto">
-                {data.recent.items.map((row) => (
-                  <li key={row.id} className="flex items-center gap-2.5 border-b border-parsel-border pb-2 last:border-0 last:pb-0">
-                    <ActivityIcon label={row.description || row.category} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium leading-tight">{row.description || row.category}</p>
-                      <p className="text-xs text-parsel-muted">{formatRelativeDate(row.transaction_date)}</p>
-                    </div>
-                    <p className={`shrink-0 tabular-nums text-sm font-semibold ${row.is_debit ? "text-parsel-outflow" : "text-parsel-inflow"}`}>
-                      {row.is_debit ? "−" : "+"} {formatInrAmount(row.amount)}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )
+            data && <RecentActivityList rows={data.recent.items} />
           )}
         </article>
       </div>

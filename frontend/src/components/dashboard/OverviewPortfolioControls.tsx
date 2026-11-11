@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
+import { ChevronDown } from "lucide-react";
 
+import { Avatar, AvatarFallback, AvatarGroup, AvatarImage } from "@/components/ui/avatar";
 import {
-  Avatar,
-  AvatarFallback,
-  AvatarGroup,
-  AvatarGroupCount,
-  AvatarImage,
-} from "@/components/ui/avatar";
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -21,9 +22,19 @@ import {
 } from "@/lib/dashboardQuery";
 import { cn } from "@/lib/utils";
 
-const COLLAPSED_AVATAR_LIMIT = 3;
+const TRIGGER_AVATAR_LIMIT = 3;
+const CONTROL_WIDTH = "w-[10rem]";
+
+export type SpendChartKind = "daily" | "monthly";
+
+const CHART_OPTIONS: Array<{ value: SpendChartKind; label: string }> = [
+  { value: "daily", label: "Daily" },
+  { value: "monthly", label: "Monthly" },
+];
 
 type OverviewPortfolioControlsProps = {
+  chart: SpendChartKind;
+  onChartChange: (chart: SpendChartKind) => void;
   month: string;
   onMonthChange: (month: string) => void;
   activeBanks: string[];
@@ -45,42 +56,24 @@ function monthOptions(latest: string): Array<{ value: string; label: string }> {
 }
 
 export function OverviewPortfolioControls({
+  chart,
+  onChartChange,
   month,
   onMonthChange,
   activeBanks,
   selectedBanks,
   onSelectedBanksChange,
 }: OverviewPortfolioControlsProps) {
-  const [expanded, setExpanded] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
   const latestMonth = currentMonthValue();
   const options = useMemo(() => monthOptions(latestMonth), [latestMonth]);
   const selectedSet = useMemo(() => new Set(selectedBanks), [selectedBanks]);
-  const collapsedBanks = activeBanks.slice(0, COLLAPSED_AVATAR_LIMIT);
-  const overflowCount = Math.max(0, activeBanks.length - COLLAPSED_AVATAR_LIMIT);
   const allSelected =
     activeBanks.length > 0 && activeBanks.every((bank) => selectedSet.has(bank));
-
-  useEffect(() => {
-    if (!expanded) return;
-
-    function onPointerDown(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setExpanded(false);
-      }
-    }
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setExpanded(false);
-    }
-
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [expanded]);
+  const bankLabel = allSelected
+    ? "All banks"
+    : selectedBanks.length === 1
+      ? selectedBanks[0]
+      : `${selectedBanks.length} banks`;
 
   function toggleBank(bank: string) {
     if (selectedSet.has(bank)) {
@@ -93,11 +86,29 @@ export function OverviewPortfolioControls({
   }
 
   return (
-    <div ref={rootRef} className="flex shrink-0 items-center gap-2">
+    <div className="flex shrink-0 flex-col items-end gap-1.5">
+      <div role="group" aria-label="Spend chart" className={`flex h-8 ${CONTROL_WIDTH} border border-parsel-border`}>
+        {CHART_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={chart === option.value}
+            onClick={() => onChartChange(option.value)}
+            className={cn(
+              "flex-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              chart === option.value
+                ? "bg-parsel-soft text-parsel-neutral"
+                : "text-parsel-muted hover:text-parsel-neutral",
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
       <Select value={month} onValueChange={onMonthChange}>
         <SelectTrigger
           aria-label="Focus month"
-          className="h-8 w-[8.5rem] rounded-none border-parsel-border bg-parsel-surface px-2 text-xs shadow-none"
+          className={`h-8 ${CONTROL_WIDTH} rounded-none border-parsel-border bg-parsel-surface px-2 text-xs shadow-none`}
         >
           <SelectValue placeholder="Month" />
         </SelectTrigger>
@@ -111,75 +122,48 @@ export function OverviewPortfolioControls({
       </Select>
 
       {activeBanks.length > 0 ? (
-        <div className="relative flex h-8 items-center" role="group" aria-label="Bank filter">
-          {!expanded ? (
-            <button
-              type="button"
-              aria-expanded={false}
-              aria-label={
-                allSelected
-                  ? `Banks: all ${activeBanks.length}. Click to expand.`
-                  : `Banks: ${selectedBanks.join(", ")}. Click to expand.`
-              }
-              className="flex h-8 items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-parsel-surface"
-              onClick={() => setExpanded(true)}
-            >
-              <AvatarGroup>
-                {collapsedBanks.map((bank) => (
-                  <BankAvatar key={bank} bank={bank} className="size-8" />
-                ))}
-                {overflowCount > 0 ? (
-                  <AvatarGroupCount className="size-8">+{overflowCount}</AvatarGroupCount>
-                ) : null}
-              </AvatarGroup>
-            </button>
-          ) : (
-            <div className="flex h-8 items-center gap-2" aria-expanded={true}>
-              {activeBanks.map((bank) => {
-                const selected = selectedSet.has(bank);
-                return (
-                  <button
-                    key={bank}
-                    type="button"
-                    title={bank}
-                    aria-label={`${bank}${selected ? ", selected" : ", not selected"}`}
-                    aria-pressed={selected}
-                    onClick={() => toggleBank(bank)}
-                    className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-parsel-surface"
-                  >
-                    <BankAvatar bank={bank} className="size-8" selected={selected} />
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label={`Banks: ${allSelected ? "all" : selectedBanks.join(", ")}`}
+            className={`flex h-8 ${CONTROL_WIDTH} items-center gap-1.5 border border-parsel-border bg-parsel-surface px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+          >
+            <AvatarGroup className="shrink-0">
+              {selectedBanks.slice(0, TRIGGER_AVATAR_LIMIT).map((bank) => (
+                <BankAvatar key={bank} bank={bank} className="size-5" />
+              ))}
+            </AvatarGroup>
+            <span className="min-w-0 flex-1 truncate text-left">{bankLabel}</span>
+            <ChevronDown className="size-4 shrink-0 opacity-50" aria-hidden="true" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-0 rounded-none"
+          >
+            {activeBanks.map((bank) => (
+              <DropdownMenuCheckboxItem
+                key={bank}
+                checked={selectedSet.has(bank)}
+                disabled={selectedSet.has(bank) && selectedBanks.length <= 1}
+                onCheckedChange={() => toggleBank(bank)}
+                onSelect={(event) => event.preventDefault()}
+                title={bank}
+                className="gap-2 rounded-none pl-2 pr-7 text-xs [&>span:first-child]:left-auto [&>span:first-child]:right-2"
+              >
+                <BankAvatar bank={bank} className="size-5 shrink-0" />
+                <span className="min-w-0 truncate">{bank}</span>
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       ) : null}
     </div>
   );
 }
 
-function BankAvatar({
-  bank,
-  className,
-  selected,
-}: {
-  bank: string;
-  className?: string;
-  /** When set, renders selection chrome (expanded picker). */
-  selected?: boolean;
-}) {
+function BankAvatar({ bank, className }: { bank: string; className?: string }) {
   const src = bankLogoSrc(bank);
-  const selecting = selected !== undefined;
   return (
-    <Avatar
-      className={cn(
-        "rounded-full bg-parsel-surface ring-2",
-        selecting && selected ? "ring-parsel-primary" : "ring-parsel-surface",
-        className,
-        selecting && !selected && "opacity-50 hover:opacity-85",
-      )}
-    >
+    <Avatar className={cn("rounded-full bg-parsel-surface ring-2 ring-parsel-surface", className)}>
       {src ? (
         <AvatarImage src={src} alt={bank} className="object-cover" />
       ) : null}

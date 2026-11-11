@@ -30,6 +30,30 @@ export function monthStartLocal(): string {
   return localDateIso(d);
 }
 
+/** First and last day of a "YYYY-MM" month. */
+export function monthRange(month: string): { start: string; end: string } {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return { start: `${month}-01`, end: localDateIso(new Date(year, monthNumber, 0)) };
+}
+
+export type LedgerLink = {
+  start?: string;
+  end?: string;
+  category?: string;
+  bank?: string;
+  direction?: "debit" | "credit";
+  q?: string;
+};
+
+/** Ledger search URL pre-filtered by the given filters (see SearchPage URL params). */
+export function ledgerHref(filters: LedgerLink): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+  return `/ledger/search?${params.toString()}`;
+}
+
 function presetRange(preset: DatePreset): { start: string; end: string } {
   const today = localDateIso();
   const d = new Date();

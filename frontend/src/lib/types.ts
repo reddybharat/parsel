@@ -13,6 +13,8 @@ export type DashboardOverview = {
     spend_delta_pct: number | null;
     /** Selected banks excluded from portfolio_net because they open after the focus month. */
     missing_opening_banks: string[];
+    /** Closing balance per covered bank; sums to portfolio_net. */
+    bank_balances: Array<{ bank: string; balance: number }>;
   };
   trend: {
     months: number;
@@ -34,10 +36,33 @@ export type DashboardOverview = {
     series: DailySpendSeries[];
   };
   category_spend: {
-    items: Array<{ category: string; spend: number }>;
+    items: Array<{ category: string; spend: number; prev_spend: number; txn_count: number }>;
   };
   /** All profile banks (active + inactive) — drives the dashboard bank filter. */
   active_banks: string[];
+  /** One row per profile bank; dates are null when the bank has no transactions. */
+  freshness: BankFreshness[];
+};
+
+export type MonthlyInsight = {
+  sentence: string;
+  facts: {
+    category: string;
+    txn_count: number;
+    month_start: string;
+    month_end: string;
+    spend: number;
+    prev_spend: number;
+    delta_pct: number | null;
+  };
+  questions: string[];
+  generated_at: string;
+};
+
+export type BankFreshness = {
+  bank: string;
+  last_transaction_date: string | null;
+  last_added_at: string | null;
 };
 
 export type Transaction = {
@@ -64,6 +89,7 @@ export type SearchResult = {
 export type Category = {
   name: string;
   is_system: boolean;
+  monthly_limit: number | null;
 };
 
 export type TrackerConfig = {

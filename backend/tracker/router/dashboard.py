@@ -6,8 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from auth.deps import get_current_user
 from auth.models import User
 from common.logger import get_logger
+from tracker.insight_service import get_monthly_insight
 from tracker.schemas import (
     DashboardOverviewResponse,
+    MonthlyInsightResponse,
 )
 from tracker.services import (
     get_dashboard_overview,
@@ -61,3 +63,17 @@ async def dashboard_overview(
         banks,
     )
     return result
+
+
+@router.get("/insight", response_model=Optional[MonthlyInsightResponse])
+async def dashboard_insight(
+    month: str = Query(
+        ...,
+        pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
+        description="Focus month as YYYY-MM.",
+    ),
+    current_user: User = Depends(get_current_user),
+) -> Optional[MonthlyInsightResponse]:
+    """Insight of the month, or null when the month has no spend. Separate from the overview so the LLM never slows it."""
+    payload = await get_monthly_insight(current_user.id, month)
+    return MonthlyInsightResponse(**payload) if payload else None

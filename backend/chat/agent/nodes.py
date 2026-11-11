@@ -1,13 +1,13 @@
 """Graph nodes for the SQL agent."""
 
 from langchain.agents import create_agent
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END
 from langgraph.types import Command, interrupt
 
 from chat.agent.llm import get_llm
 from chat.agent.prompt import SYSTEM_PROMPT_TEMPLATE
-from chat.agent.replies import final_user_reply
+from chat.agent.replies import TECHNICAL_ERROR_REPLY, final_user_reply
 from chat.agent.state import AgentState
 from chat.agent.tools import ALL_TOOLS
 from common.logger import get_logger
@@ -36,7 +36,16 @@ async def agent_node(state: AgentState) -> Command:
     inner = _get_inner_agent(user_id)
 
     logger.info("Invoking inner agent...")
-    result = await inner.ainvoke({"messages": state["messages"]})
+    try:
+        result = await inner.ainvoke({"messages": state["messages"]})
+    except Exception:
+        # Raising here leaves the checkpoint stuck on a failed "agent" task, so the next
+        # resume re-runs the old question and drops the new one. Reply instead.
+        logger.exception("Inner agent failed user_id=%s", user_id)
+        return Command(
+            update={"messages": [AIMessage(content=TECHNICAL_ERROR_REPLY)]},
+            goto="wait_user",
+        )
     result_messages = result.get("messages", [])
     logger.info("Inner agent returned %d messages", len(result_messages))
 

@@ -1,7 +1,7 @@
-import { FormEvent, KeyboardEvent, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { ArrowUp, Square } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
 
 import { ErrorState } from "../components/feedback/ErrorState";
@@ -156,6 +156,8 @@ export function ChatPage() {
   const [stoppedMessageIds, setStoppedMessageIds] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const inFlightAnchorIdRef = useRef<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sentUrlQuestionRef = useRef(false);
 
   function stopProcessing() {
     abortRef.current?.abort();
@@ -241,6 +243,16 @@ export function ChatPage() {
       }
     }
   }
+
+  // Overview question chips link here as /chat?q=…; send once, then drop the param.
+  useEffect(() => {
+    const question = searchParams.get("q")?.trim();
+    if (!question || sentUrlQuestionRef.current) return;
+    sentUrlQuestionRef.current = true;
+    setSearchParams({}, { replace: true });
+    void send(question);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function reset() {
     abortRef.current?.abort();

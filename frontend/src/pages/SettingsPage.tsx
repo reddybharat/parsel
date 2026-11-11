@@ -5,6 +5,7 @@ import { Moon, Pencil, Sun, Trash2 } from "lucide-react";
 
 import { deleteCategory, renameCategory } from "@/api/tracker";
 import { BanksManager } from "@/components/settings/BanksManager";
+import { CategoryLimits } from "@/components/settings/CategoryLimits";
 import { StatusAlert, type FeedbackMessage } from "@/components/feedback/StatusAlert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -530,6 +531,7 @@ export function SettingsPage() {
                   ))}
                 </ul>
               )}
+              <CategoryLimits categories={categories} />
             </SettingsCell>
           </div>
         </SettingsGroup>

@@ -20,8 +20,11 @@ from tracker.category_service import (
     CategoryInfo,
     category_key,
     delete_category,
+    list_categories,
     normalize_category_name,
     register_category_name,
+    rename_category,
+    set_category_limit,
     validate_category_name,
 )
 from tracker.schemas import ImportPreviewResponse, TransactionCreate
@@ -206,3 +209,124 @@ def test_import_preview_reports_new_categories():
     body = response.json()
     assert body["valid_row_count"] == 2
     assert body["new_categories"] == ["Pet Care"]
+
+
+def _limit_session(user: User, *extra_results):
+    user_result = MagicMock()
+    user_result.scalar_one_or_none.return_value = user
+    session = AsyncMock()
+    session.execute.side_effect = [user_result, *extra_results]
+    return session
+
+
+async def _set_limit(user: User, name: str, limit):
+    session = _limit_session(user)
+    with patch("tracker.category_service.get_connection") as connection:
+        connection.return_value.__aenter__.return_value = session
+        return await set_category_limit(ALICE_ID, name, limit)
+
+
+@pytest.mark.anyio
+async def test_set_category_limit_stores_under_canonical_name_and_clears():
+    user = _user()
+    info = await _set_limit(user, "dining", 5000)
+    assert info == CategoryInfo(name="Dining", is_system=True, monthly_limit=5000)
+    assert user.preferences["category_limits"] == {"Dining": 5000}
+    assert user.preferences["theme"] == "light"
+
+    info = await _set_limit(user, "Dining", None)
+    assert info.monthly_limit is None
+    assert user.preferences["category_limits"] == {}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("bad", [0, -1, 10_000_001])
+async def test_set_category_limit_rejects_out_of_range(bad):
+    with pytest.raises(ValueError, match="Monthly limit"):
+        await _set_limit(_user(), "Dining", bad)
+
+
+@pytest.mark.anyio
+async def test_set_category_limit_rejects_unknown_category():
+    with pytest.raises(ValueError, match="Unknown category"):
+        await _set_limit(_user(), "Nope", 100)
+
+
+@pytest.mark.anyio
+async def test_rename_category_moves_limit():
+    user = _user()
+    user.preferences = {
+        "custom_categories": ["Pet Care"],
+        "category_limits": {"Pet Care": 700, "Dining": 100},
+    }
+    session = _limit_session(user, MagicMock())
+    with patch("tracker.category_service.get_connection") as connection:
+        connection.return_value.__aenter__.return_value = session
+        info = await rename_category(ALICE_ID, "Pet Care", "Pets")
+    assert info.monthly_limit == 700
+    assert user.preferences["category_limits"] == {"Dining": 100, "Pets": 700}
+
+
+@pytest.mark.anyio
+async def test_delete_category_drops_limit():
+    user = _user()
+    user.preferences = {
+        "custom_categories": ["Pet Care"],
+        "category_limits": {"Pet Care": 700, "Dining": 100},
+    }
+    usage_result = MagicMock()
+    usage_result.scalar_one.return_value = 0
+    session = _limit_session(user, usage_result)
+    with patch("tracker.category_service.get_connection") as connection:
+        connection.return_value.__aenter__.return_value = session
+        await delete_category(ALICE_ID, "Pet Care")
+    assert user.preferences["category_limits"] == {"Dining": 100}
+
+
+@pytest.mark.anyio
+async def test_list_categories_includes_limits_and_ignores_malformed():
+    prefs_result = MagicMock()
+    prefs_result.scalar_one_or_none.return_value = {
+        "custom_categories": ["Pet Care"],
+        "category_limits": {"dining": 500, "Pet Care": "x", "Rent": True, "Gifts": -5},
+    }
+    session = AsyncMock()
+    session.execute.return_value = prefs_result
+    with patch("tracker.category_service.get_readonly_connection") as connection:
+        connection.return_value.__aenter__.return_value = session
+        rows = await list_categories(ALICE_ID)
+    limits = {row.name: row.monthly_limit for row in rows}
+    assert limits["Dining"] == 500
+    assert limits["Pet Care"] is None
+    assert limits["Rent"] is None
+    assert limits["Gifts"] is None
+
+
+def test_put_category_limit_endpoint():
+    headers = _auth_headers()
+    with patch(
+        "tracker.router.categories.set_category_limit",
+        new=AsyncMock(
+            return_value=CategoryInfo(name="Pet Care", is_system=False, monthly_limit=900)
+        ),
+    ) as setter:
+        response = client.put(
+            "/categories/Pet%20Care/limit",
+            json={"monthly_limit": 900},
+            headers=headers,
+        )
+    assert response.status_code == 200
+    assert response.json() == {"name": "Pet Care", "is_system": False, "monthly_limit": 900}
+    setter.assert_awaited_once_with(ALICE_ID, "Pet Care", 900)
+
+
+def test_put_category_limit_endpoint_maps_value_error_to_400():
+    headers = _auth_headers()
+    with patch(
+        "tracker.router.categories.set_category_limit",
+        new=AsyncMock(side_effect=ValueError("Unknown category")),
+    ):
+        response = client.put(
+            "/categories/Nope/limit", json={"monthly_limit": 1}, headers=headers
+        )
+    assert response.status_code == 400

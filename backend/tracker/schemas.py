@@ -41,6 +41,11 @@ class CategoryRename(BaseModel):
 class CategoryResponse(BaseModel):
     name: str
     is_system: bool
+    monthly_limit: Optional[float] = None
+
+
+class CategoryLimitUpdate(BaseModel):
+    monthly_limit: Optional[float] = None
 
 
 _MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
@@ -210,6 +215,11 @@ class TransactionsSearchResult(BaseModel):
     items: list[TransactionResponse]
 
 
+class DashboardBankBalance(BaseModel):
+    bank: str
+    balance: float
+
+
 class DashboardSummaryResponse(BaseModel):
     portfolio_net: float
     current_month_spend: float
@@ -218,6 +228,8 @@ class DashboardSummaryResponse(BaseModel):
     # Selected profile banks whose opening month is after the focus month, so
     # they are excluded from portfolio_net (surfaced as a hint in the UI).
     missing_opening_banks: list[str] = Field(default_factory=list)
+    # Per-bank closing balance behind portfolio_net (covered banks only).
+    bank_balances: list[DashboardBankBalance] = Field(default_factory=list)
 
 
 class DashboardTrendPoint(BaseModel):
@@ -277,10 +289,35 @@ class DashboardDailySpendResponse(BaseModel):
 class DashboardCategorySpendItem(BaseModel):
     category: str
     spend: float
+    prev_spend: float = 0.0
+    txn_count: int = 0
 
 
 class DashboardCategorySpendResponse(BaseModel):
     items: list[DashboardCategorySpendItem]
+
+
+class MonthlyInsightFacts(BaseModel):
+    category: str
+    txn_count: int
+    month_start: date
+    month_end: date
+    spend: float
+    prev_spend: float
+    delta_pct: Optional[float] = None
+
+
+class MonthlyInsightResponse(BaseModel):
+    sentence: str
+    facts: MonthlyInsightFacts
+    questions: list[str]
+    generated_at: datetime
+
+
+class BankFreshness(BaseModel):
+    bank: str
+    last_transaction_date: Optional[date] = None
+    last_added_at: Optional[datetime] = None
 
 
 class DashboardOverviewResponse(BaseModel):
@@ -291,6 +328,7 @@ class DashboardOverviewResponse(BaseModel):
     daily_spend: DashboardDailySpendResponse
     category_spend: DashboardCategorySpendResponse
     active_banks: list[str] = Field(default_factory=list)
+    freshness: list[BankFreshness] = Field(default_factory=list)
 
 
 class ImportFieldIssue(BaseModel):

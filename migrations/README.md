@@ -1,6 +1,6 @@
 # Database migrations
 
-Hand-applied SQL scripts (no migration runner). Run `001`–`007` as `parsel` (the `DATABASE_URL` login) against the `parsel` database; `008` runs as `postgres`.
+Hand-applied SQL scripts (no migration runner). Run `001`–`007` and `009` as `parsel` (the `DATABASE_URL` login) against the `parsel` database; `008` runs as `postgres`.
 
 Commands are Windows `cmd`, run from the repo root with the Postgres tools on `PATH` (see the [main README](../README.md#prerequisites)). Create the `parsel` role and database first ([First-time setup](../README.md#1-database)).
 
@@ -14,6 +14,7 @@ Commands are Windows `cmd`, run from the repo root with the Postgres tools on `P
 | [006_transaction_bank.sql](006_transaction_bank.sql) | Optional `transactions.bank` label (SBI / Kotak / Slice enforced in app) + `(user_id, bank, transaction_date)` index |
 | [007_user_banks.sql](007_user_banks.sql) | Per-user `user_banks` profile: opening balance seed + opening month + active flag; drives closing-balance portfolio and bank dropdowns |
 | [008_chat_agent_role.sql](008_chat_agent_role.sql) | Read-only `parsel_agent` login for the chat agent (`CHAT_DATABASE_URL`): `SELECT` on `transactions` only. Run as a superuser, then `\password parsel_agent` |
+| [009_monthly_insights.sql](009_monthly_insights.sql) | `monthly_insights` cache for the Overview insight of the month: one row per user and month, refreshed when the month's transactions change |
 
 ## Fresh database
 
@@ -27,6 +28,7 @@ psql -U parsel -d parsel -f migrations\006_transaction_bank.sql
 psql -U parsel -d parsel -f migrations\007_user_banks.sql
 psql -U postgres -d parsel -f migrations\008_chat_agent_role.sql
 psql -U postgres -c "\password parsel_agent"
+psql -U parsel -d parsel -f migrations\009_monthly_insights.sql
 ```
 
 Then:
@@ -76,7 +78,7 @@ psql -U parsel -d parsel -f migrations\002_users_and_transaction_user_id.sql
 
 Register a user, then run the commented **STEP B** block in `002` with your `users.id`.
 
-Apply later scripts (`003`–`008`) in order if they are not already applied.
+Apply later scripts (`003`–`009`) in order if they are not already applied.
 
 ## Search indexes (`003`)
 
