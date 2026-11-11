@@ -38,21 +38,40 @@ import {
 } from "@/api/tracker";
 import type { Transaction } from "@/lib/types";
 
-function defaultFilters(category = ""): LedgerFilters {
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function defaultFilters(): LedgerFilters {
   return {
     startDate: monthStartLocal(),
     endDate: localDateIso(),
     query: "",
-    category,
+    category: "",
     paymentMethod: "",
     bank: "",
     direction: "",
   };
 }
 
+/** Filters carried by deep links (Overview click-through, Settings); only params that are present. */
+function filtersFromUrl(params: URLSearchParams): Partial<LedgerFilters> {
+  const start = params.get("start")?.trim() ?? "";
+  const end = params.get("end")?.trim() ?? "";
+  const direction = params.get("direction");
+  const fromUrl: Partial<LedgerFilters> = {};
+  if (ISO_DATE.test(start)) fromUrl.startDate = start;
+  if (ISO_DATE.test(end)) fromUrl.endDate = end;
+  const category = params.get("category")?.trim();
+  if (category) fromUrl.category = category;
+  const bank = params.get("bank")?.trim();
+  if (bank) fromUrl.bank = bank;
+  const query = params.get("q")?.trim();
+  if (query) fromUrl.query = query;
+  if (direction === "debit" || direction === "credit") fromUrl.direction = direction;
+  return fromUrl;
+}
+
 export function SearchPage() {
   const [urlParams] = useSearchParams();
-  const initialCategory = urlParams.get("category")?.trim() ?? "";
   const { data: trackerConfig } = useQuery(trackerConfigQueryOptions());
   const categories = trackerConfig?.categories ?? [];
   const paymentMethods = trackerConfig?.payment_methods ?? [];
@@ -61,17 +80,20 @@ export function SearchPage() {
   const { data: profileBanks } = useQuery(banksQueryOptions());
   const allBanks = (profileBanks ?? []).map((b) => b.bank);
 
-  const [filters, setFilters] = useState<LedgerFilters>(() => defaultFilters(initialCategory));
+  const [filters, setFilters] = useState<LedgerFilters>(() => ({
+    ...defaultFilters(),
+    ...filtersFromUrl(urlParams),
+  }));
   // Idle until the first explicit search; then filter changes refetch live.
-  // Deep links with a category should search immediately.
-  const [hasSearched, setHasSearched] = useState(() => Boolean(initialCategory));
+  // Deep links carrying any filter should search immediately.
+  const [hasSearched, setHasSearched] = useState(
+    () => Object.keys(filtersFromUrl(urlParams)).length > 0,
+  );
 
   useEffect(() => {
-    const nextCategory = urlParams.get("category")?.trim() ?? "";
-    if (!nextCategory) return;
-    setFilters((current) =>
-      current.category === nextCategory ? current : { ...current, category: nextCategory },
-    );
+    const fromUrl = filtersFromUrl(urlParams);
+    if (Object.keys(fromUrl).length === 0) return;
+    setFilters((current) => ({ ...current, ...fromUrl }));
     setHasSearched(true);
   }, [urlParams]);
 
