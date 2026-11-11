@@ -290,6 +290,23 @@ class DashboardCategorySpendResponse(BaseModel):
     items: list[DashboardCategorySpendItem]
 
 
+class MonthlyInsightFacts(BaseModel):
+    category: str
+    txn_count: int
+    month_start: date
+    month_end: date
+    spend: float
+    prev_spend: float
+    delta_pct: Optional[float] = None
+
+
+class MonthlyInsightResponse(BaseModel):
+    sentence: str
+    facts: MonthlyInsightFacts
+    questions: list[str]
+    generated_at: datetime
+
+
 class BankFreshness(BaseModel):
     bank: str
     last_transaction_date: Optional[date] = None
