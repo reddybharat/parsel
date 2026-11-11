@@ -1,6 +1,6 @@
 .env
 bank_statement_passwords.local
-.venv
+venv
 __pycache__
 .pytest_cache
 ENHANCEMENTS.md

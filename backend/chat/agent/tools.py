@@ -29,7 +29,7 @@ from chat.agent.schema import (
     ListTablesInputSchema,
     QueryCheckerInputSchema,
 )
-from common.database import get_connection, is_database_configured
+from common.database import get_agent_connection, is_chat_database_configured
 from common.logger import get_logger
 
 logger = get_logger(__name__)
@@ -106,17 +106,17 @@ async def execute_query(query: str) -> str:
     """
     logger.info("execute_query called: %s", query[:200])
 
-    if not is_database_configured():
-        logger.error("Database not configured for execute_query")
+    if not is_chat_database_configured():
+        logger.error("CHAT_DATABASE_URL not configured for execute_query")
         return json.dumps(
             {
                 "status": "error",
-                "error": "Database is not configured. Set DATABASE_URL in .env.",
+                "error": "Chat database is not configured. Set CHAT_DATABASE_URL in .env.",
             }
         )
 
     try:
-        async with get_connection() as session:
+        async with get_agent_connection() as session:
             result = await session.execute(text(query.strip()))
             fetched = result.mappings().all()
 

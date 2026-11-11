@@ -18,6 +18,8 @@ _ASYNC_ENGINE: AsyncEngine | None = None
 _SESSIONMAKER: async_sessionmaker[AsyncSession] | None = None
 _READONLY_ENGINE: AsyncEngine | None = None
 _READONLY_SESSIONMAKER: async_sessionmaker[AsyncSession] | None = None
+_AGENT_ENGINE: AsyncEngine | None = None
+_AGENT_SESSIONMAKER: async_sessionmaker[AsyncSession] | None = None
 
 # Prefer recycle over pool_pre_ping (avoids a round trip on every checkout).
 _POOL_RECYCLE_SECONDS = 240
@@ -33,9 +35,9 @@ def get_database_url() -> str:
     return _DATABASE_URL
 
 
-def get_async_database_url() -> str:
+def get_async_database_url(raw: str) -> str:
     """Normalize DB URL for SQLAlchemy asyncpg dialect."""
-    raw = get_database_url().strip()
+    raw = raw.strip()
     if raw.startswith("postgresql+asyncpg://"):
         return raw
     if raw.startswith("postgresql://"):
@@ -50,11 +52,16 @@ def is_database_configured() -> bool:
     return bool(os.getenv("DATABASE_URL"))
 
 
+def is_chat_database_configured() -> bool:
+    """Return True if CHAT_DATABASE_URL (read-only chat agent login) is set."""
+    return bool(os.getenv("CHAT_DATABASE_URL"))
+
+
 def get_async_engine() -> AsyncEngine:
     global _ASYNC_ENGINE
     if _ASYNC_ENGINE is None:
         _ASYNC_ENGINE = create_async_engine(
-            get_async_database_url(),
+            get_async_database_url(get_database_url()),
             pool_pre_ping=False,
             pool_recycle=_POOL_RECYCLE_SECONDS,
             future=True,
@@ -67,13 +74,30 @@ def get_readonly_engine() -> AsyncEngine:
     global _READONLY_ENGINE
     if _READONLY_ENGINE is None:
         _READONLY_ENGINE = create_async_engine(
-            get_async_database_url(),
+            get_async_database_url(get_database_url()),
             pool_pre_ping=False,
             pool_recycle=_POOL_RECYCLE_SECONDS,
             isolation_level="AUTOCOMMIT",
             future=True,
         )
     return _READONLY_ENGINE
+
+
+def get_agent_engine() -> AsyncEngine:
+    """Engine for the chat agent's read-only login; never falls back to DATABASE_URL."""
+    global _AGENT_ENGINE
+    if _AGENT_ENGINE is None:
+        raw = os.getenv("CHAT_DATABASE_URL")
+        if not raw:
+            raise ValueError("CHAT_DATABASE_URL must be set in .env to use chat queries.")
+        _AGENT_ENGINE = create_async_engine(
+            get_async_database_url(raw),
+            pool_pre_ping=False,
+            pool_recycle=_POOL_RECYCLE_SECONDS,
+            isolation_level="AUTOCOMMIT",
+            future=True,
+        )
+    return _AGENT_ENGINE
 
 
 def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
@@ -100,6 +124,18 @@ def get_readonly_sessionmaker() -> async_sessionmaker[AsyncSession]:
     return _READONLY_SESSIONMAKER
 
 
+def get_agent_sessionmaker() -> async_sessionmaker[AsyncSession]:
+    global _AGENT_SESSIONMAKER
+    if _AGENT_SESSIONMAKER is None:
+        _AGENT_SESSIONMAKER = async_sessionmaker(
+            bind=get_agent_engine(),
+            class_=AsyncSession,
+            expire_on_commit=False,
+            autoflush=False,
+        )
+    return _AGENT_SESSIONMAKER
+
+
 @asynccontextmanager
 async def get_connection() -> AsyncIterator[AsyncSession]:
     """Read-write session (commits on success)."""
@@ -118,6 +154,16 @@ async def get_connection() -> AsyncIterator[AsyncSession]:
 async def get_readonly_connection() -> AsyncIterator[AsyncSession]:
     """Read-only session — SELECTs only; writes must use `get_connection`."""
     session = get_readonly_sessionmaker()()
+    try:
+        yield session
+    finally:
+        await session.close()
+
+
+@asynccontextmanager
+async def get_agent_connection() -> AsyncIterator[AsyncSession]:
+    """Chat agent session on CHAT_DATABASE_URL (role `parsel_agent`, read-only)."""
+    session = get_agent_sessionmaker()()
     try:
         yield session
     finally:

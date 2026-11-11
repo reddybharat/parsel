@@ -11,6 +11,8 @@ from common.logger import get_logger
 
 logger = get_logger(__name__)
 
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
+
 
 def get_llm() -> ChatGroq:
     """Return a Groq chat model. Raises if GROQ_API_KEY is missing.
@@ -20,7 +22,7 @@ def get_llm() -> ChatGroq:
     """
 
     groq_api_key = os.getenv("GROQ_API_KEY")
-    groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    groq_model = os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL)
 
     logger.info("Initializing Groq LLM (model=%s)", groq_model)
     if not groq_api_key:
