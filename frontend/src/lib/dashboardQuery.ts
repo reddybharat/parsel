@@ -4,7 +4,7 @@ import { fetchDashboardOverview } from "@/api/dashboard";
 import { queryClient } from "@/lib/queryClient";
 
 export const TREND_MONTHS = 12;
-export const RECENT_ACTIVITY_LIMIT = 11;
+export const RECENT_ACTIVITY_LIMIT = 7;
 
 export type DashboardOverviewFilters = {
   /** Focus month as YYYY-MM. */

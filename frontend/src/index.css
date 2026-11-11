@@ -331,3 +331,109 @@ body,
     animation: none;
   }
 }
+
+/* Overview: single scrolling column by default, fixed no-scroll dashboard on large, tall-enough windows. */
+.ov-link {
+  transition: border-color 150ms ease-out, transform 150ms ease-out;
+}
+
+.ov-link:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.ov-link:active {
+  transform: scale(0.99);
+}
+
+.ov-arrow {
+  opacity: 0;
+}
+
+@media (hover: hover) {
+  .ov-link:hover {
+    border-color: var(--parsel-primary);
+  }
+
+  .ov-link:hover .ov-arrow {
+    opacity: 1;
+  }
+}
+
+.ov-lt130,
+.ov-lt105 {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-link {
+    transition: none;
+  }
+
+  .ov-link:active {
+    transform: none;
+  }
+}
+
+@media (min-width: 1024px) and (min-height: 560px) {
+  .ov-grid {
+    overflow: hidden;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) 20rem;
+    grid-template-rows: auto auto 8.5rem minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .ov-kpis,
+  .ov-fresh {
+    grid-column: 1 / -1;
+  }
+
+  .ov-balance {
+    grid-column: 1 / 4;
+    flex-direction: row;
+  }
+
+  .ov-balance-chart {
+    min-height: 0;
+  }
+
+  .ov-budgets {
+    grid-column: 1 / 4;
+    grid-row: 4 / 6;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+
+  .ov-side {
+    grid-column: 4;
+    grid-row: 3 / 6;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .ov-side > article:last-child {
+    min-height: 0;
+  }
+
+  .ov-cell {
+    container-type: size;
+  }
+
+  @container (max-height: 130px) {
+    .ov-full {
+      display: none;
+    }
+
+    .ov-lt130 {
+      display: inline;
+    }
+  }
+
+  @container (max-height: 105px) {
+    .ov-mid {
+      display: none;
+    }
+
+    .ov-lt105 {
+      display: inline;
+    }
+  }
+}
