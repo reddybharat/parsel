@@ -13,6 +13,8 @@ export type DashboardOverview = {
     spend_delta_pct: number | null;
     /** Selected banks excluded from portfolio_net because they open after the focus month. */
     missing_opening_banks: string[];
+    /** Closing balance per covered bank; sums to portfolio_net. */
+    bank_balances: Array<{ bank: string; balance: number }>;
   };
   trend: {
     months: number;

@@ -50,10 +50,10 @@
   --radius: 0rem;
   /* Cyan chart ramp (Precision accent) */
   --chart-1: 190 100% 38%;
-  --chart-2: 190 90% 48%;
-  --chart-3: 190 85% 32%;
-  --chart-4: 190 80% 26%;
-  --chart-5: 190 75% 20%;
+  --chart-2: 32 95% 44%;
+  --chart-3: 0 0% 22%;
+  --chart-4: 225 70% 52%;
+  --chart-5: 0 0% 58%;
   --chart-6: 190 70% 62%;
   --chart-7: 195 45% 50%;
   --chart-8: 195 35% 42%;
@@ -104,10 +104,10 @@
   --input: 0 0% 16%;
   --ring: 191 85% 57%;
   --chart-1: 191 85% 57%;
-  --chart-2: 191 80% 68%;
-  --chart-3: 191 75% 48%;
-  --chart-4: 191 70% 40%;
-  --chart-5: 191 65% 34%;
+  --chart-2: 38 92% 58%;
+  --chart-3: 0 0% 85%;
+  --chart-4: 225 85% 70%;
+  --chart-5: 0 0% 55%;
   --chart-6: 191 70% 76%;
   --chart-7: 195 40% 58%;
   --chart-8: 195 30% 48%;
@@ -418,7 +418,7 @@ body,
   .ov-side {
     grid-column: 4;
     grid-row: 3 / 6;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(8rem, 1fr) minmax(0, auto);
   }
 
   .ov-side > article:last-child {
@@ -426,7 +426,7 @@ body,
   }
 
   .ov-recent {
-    flex: 1 1 0%;
+    flex: 0 1 auto;
     min-height: 0;
     overflow: hidden;
   }

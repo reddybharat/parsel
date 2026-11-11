@@ -1782,7 +1782,11 @@ SELECT
   COALESCE(
     (SELECT json_agg(bank ORDER BY bank) FROM profile WHERE opening_month > :month_now_start),
     '[]'::json
-  ) AS missing_opening_banks
+  ) AS missing_opening_banks,
+  COALESCE(
+    (SELECT json_agg(json_build_object('bank', bank, 'balance', closing::float8) ORDER BY bank) FROM closings),
+    '[]'::json
+  ) AS bank_balances
 """
 
 
@@ -1812,9 +1816,15 @@ async def _get_portfolio_balance(
     missing = _parse_json_value(row.get("missing_opening_banks"), [])
     if not isinstance(missing, list):
         missing = []
+    balances = _parse_json_value(row.get("bank_balances"), [])
+    if not isinstance(balances, list):
+        balances = []
     return {
         "portfolio_net": float(row.get("portfolio_net") or 0),
         "missing_opening_banks": [str(b) for b in missing if b],
+        "bank_balances": [
+            {"bank": str(b["bank"]), "balance": float(b["balance"])} for b in balances
+        ],
     }
 
 

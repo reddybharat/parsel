@@ -5,6 +5,9 @@ import { ErrorState } from "@/components/feedback/ErrorState";
 import { ledgerHref } from "@/components/transactions/LedgerDateRange";
 import { monthlyInsightQueryOptions } from "@/lib/dashboardQuery";
 
+// Insights cached before the cut to three still carry four questions.
+const MAX_QUESTIONS = 3;
+
 export function MonthlyInsightCard({ month }: { month: string }) {
   const { data, isPending, isError, error, refetch } = useQuery(monthlyInsightQueryOptions(month));
 
@@ -35,7 +38,7 @@ export function MonthlyInsightCard({ month }: { month: string }) {
 
   const { facts } = data;
   return (
-    <div className="mt-1 flex min-h-0 flex-col gap-2">
+    <div className="mt-1 flex min-h-0 flex-1 flex-col gap-2">
       <p className="text-sm leading-snug text-parsel-neutral">{data.sentence}</p>
       <p className="text-[11px] text-parsel-muted">
         Based on {facts.txn_count} {facts.txn_count === 1 ? "transaction" : "transactions"} ·{" "}
@@ -48,12 +51,12 @@ export function MonthlyInsightCard({ month }: { month: string }) {
         {" · "}Generated{" "}
         {new Date(data.generated_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
       </p>
-      <ul className="flex flex-wrap gap-1.5">
-        {data.questions.map((question) => (
+      <ul className="mt-auto flex min-h-0 flex-col gap-2 overflow-y-auto pt-2">
+        {data.questions.slice(0, MAX_QUESTIONS).map((question) => (
           <li key={question}>
             <Link
               to={`/chat?q=${encodeURIComponent(question)}`}
-              className="block border border-parsel-border px-2 py-1 text-left text-xs text-parsel-text transition-[transform,colors] duration-150 ease-out hover:border-parsel-primary hover:text-parsel-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[.97] motion-reduce:transition-none motion-reduce:active:scale-100"
+              className="block border border-parsel-border px-2.5 py-1.5 text-left text-xs text-parsel-text transition-[transform,colors] duration-150 ease-out hover:border-parsel-primary hover:text-parsel-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[.97] motion-reduce:transition-none motion-reduce:active:scale-100"
             >
               {question}
             </Link>

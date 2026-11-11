@@ -10,17 +10,9 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { SERIES_COLORS } from "@/components/dashboard/BankBalanceLegend";
 import { formatInrAmount } from "@/lib/format";
 import type { DailySpendSeries } from "@/lib/types";
-
-// Distinct hues per bank line; cycles if a user ever exceeds five banks.
-const SERIES_COLORS = [
-  "hsl(var(--chart-1))",
-  "hsl(var(--chart-2))",
-  "hsl(var(--chart-3))",
-  "hsl(var(--chart-4))",
-  "hsl(var(--chart-5))",
-];
 
 export function DailySpendLineChart({
   series,

@@ -182,7 +182,6 @@ def build_questions(facts: dict[str, Any]) -> list[str]:
         first,
         f"What were my biggest {category} transactions in {month}?",
         f"How much did I spend on weekends in {month}?",
-        f"Which merchants did I spend the most at in {month}?",
     ]
 
 

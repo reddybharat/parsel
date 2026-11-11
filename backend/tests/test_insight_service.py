@@ -85,7 +85,7 @@ def test_facts_text_contains_every_number_the_llm_may_use():
 
 def test_questions_name_the_absolute_month_never_this_month():
     questions = build_questions(_facts())
-    assert 3 <= len(questions) <= 4
+    assert len(questions) == 3
     assert all("September 2026" in question for question in questions)
     assert all("this month" not in question.lower() for question in questions)
     assert questions[0] == "Why was Dining up in September 2026?"

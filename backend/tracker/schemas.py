@@ -215,6 +215,11 @@ class TransactionsSearchResult(BaseModel):
     items: list[TransactionResponse]
 
 
+class DashboardBankBalance(BaseModel):
+    bank: str
+    balance: float
+
+
 class DashboardSummaryResponse(BaseModel):
     portfolio_net: float
     current_month_spend: float
@@ -223,6 +228,8 @@ class DashboardSummaryResponse(BaseModel):
     # Selected profile banks whose opening month is after the focus month, so
     # they are excluded from portfolio_net (surfaced as a hint in the UI).
     missing_opening_banks: list[str] = Field(default_factory=list)
+    # Per-bank closing balance behind portfolio_net (covered banks only).
+    bank_balances: list[DashboardBankBalance] = Field(default_factory=list)
 
 
 class DashboardTrendPoint(BaseModel):

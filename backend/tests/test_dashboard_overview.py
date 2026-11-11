@@ -273,6 +273,8 @@ def test_portfolio_sql_sums_closing_balances_per_bank():
     assert "opening_month > :month_now_start" in sql
     # Portfolio net is the sum of per-bank closings.
     assert "SUM(closing)" in sql
+    # Each covered bank's closing is returned alongside the total.
+    assert "AS bank_balances" in sql
 
 
 async def test_get_portfolio_balance_parses_and_binds_bank_filter():
@@ -280,6 +282,7 @@ async def test_get_portfolio_balance_parses_and_binds_bank_filter():
     mock_result.mappings.return_value.first.return_value = {
         "portfolio_net": 145000.0,
         "missing_opening_banks": '["Slice"]',
+        "bank_balances": '[{"bank": "Kotak", "balance": 145000.0}]',
     }
     mock_session = AsyncMock()
     mock_session.execute = AsyncMock(return_value=mock_result)
@@ -298,7 +301,11 @@ async def test_get_portfolio_balance_parses_and_binds_bank_filter():
             banks=["SBI", "Kotak"],
         )
 
-    assert result == {"portfolio_net": 145000.0, "missing_opening_banks": ["Slice"]}
+    assert result == {
+        "portfolio_net": 145000.0,
+        "missing_opening_banks": ["Slice"],
+        "bank_balances": [{"bank": "Kotak", "balance": 145000.0}],
+    }
     _, params = mock_session.execute.await_args.args
     assert params["filter_banks"] is True
     assert params["banks_csv"] == "SBI,Kotak"

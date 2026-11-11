@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 
+import { BankBalanceLegend } from "@/components/dashboard/BankBalanceLegend";
 import { MonthlyInsightCard } from "@/components/dashboard/MonthlyInsightCard";
 import { CategoryBudgetCards } from "@/components/dashboard/CategoryBudgetCards";
 import { ChartSkeleton } from "@/components/dashboard/ChartSkeleton";
@@ -198,6 +199,8 @@ export function OverviewPage() {
   const inflow = data?.highlights.total_inflow ?? 0;
   const outflow = data?.highlights.total_outflow ?? 0;
   const spendDelta = data?.summary.spend_delta_pct ?? null;
+  // shortcut: straight-line pace (spend so far / days elapsed); ignores rent-style lump payments.
+  const projectedSpend = daysElapsed < monthDays && spend > 0 ? (spend / daysElapsed) * monthDays : null;
   const limitsTotal = categories.reduce((sum, item) => sum + (item.monthly_limit ?? 0), 0);
 
   return (
@@ -247,7 +250,7 @@ export function OverviewPage() {
       </div>
 
       <article className={`ov-balance ${TILE} gap-3 sm:flex-row`}>
-        <div className="shrink-0 sm:w-44">
+        <div className="flex min-h-0 shrink-0 flex-col sm:w-44">
           <p className={SECTION_LABEL}>Net balance</p>
           {data ? (
             <p className="mt-1 tabular-nums text-xl font-semibold text-parsel-neutral">
@@ -262,8 +265,29 @@ export function OverviewPage() {
               </Link>
             </p>
           ) : null}
+          {data ? (
+            <BankBalanceLegend
+              className="mt-3"
+              balances={data.summary.bank_balances}
+              series={data.daily_spend.series}
+              showSwatches={chart === "daily"}
+              start={start}
+              end={end}
+            />
+          ) : null}
+          {projectedSpend !== null ? (
+            <p className="mt-auto pt-2 text-[11px] leading-snug text-parsel-muted">
+              Month-end spend at this pace: {formatInrAmount(projectedSpend)}
+            </p>
+          ) : null}
         </div>
         <div className="ov-balance-chart flex min-h-[9rem] min-w-0 flex-1 flex-col">
+          <p className={`${SECTION_LABEL} mb-1 shrink-0`}>
+            {chart === "daily" && data
+              ? `Daily spend · ${data.daily_spend.month_label}`
+              : `Monthly spend · last ${TREND_MONTHS} months`}
+          </p>
+          <div className="min-h-0 flex-1">
           {data ? (
             <Suspense fallback={<ChartSkeleton />}>
               {chart === "monthly" ? (
@@ -291,6 +315,7 @@ export function OverviewPage() {
               )}
             </Suspense>
           ) : null}
+          </div>
         </div>
         <div className="shrink-0 self-start">
           <OverviewPortfolioControls
@@ -317,7 +342,7 @@ export function OverviewPage() {
       ) : null}
 
       <div className="ov-side grid min-h-0 gap-1.5">
-        <article className={TILE}>
+        <article className={`${TILE} min-h-0`}>
           <p className={SECTION_LABEL}>Insight of the month</p>
           <MonthlyInsightCard month={month} />
         </article>
