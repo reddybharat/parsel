@@ -67,6 +67,7 @@ flowchart LR
   - `/chat/invoke`
   - `/chat/resume`
   - `/chat/exit`
+  - If the LLM or a tool fails partway through a turn (e.g. a Groq 429), the call returns 200 with a technical-error reply as the assistant message, and the thread can still be resumed
 
 ## Stitch integration notes
 

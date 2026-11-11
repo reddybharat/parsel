@@ -8,6 +8,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from chat.agent.graph import exit_thread, resume_turn, start_turn, thread_awaiting_user
+from chat.agent.replies import TECHNICAL_ERROR_REPLY
 from chat.exceptions import UnknownThreadError
 
 USER_ID = uuid.UUID("33333333-3333-3333-3333-333333333333")
@@ -79,5 +80,28 @@ def test_other_user_cannot_resume_thread(mock_inner_agent):
         _, thread_id = await start_turn("q1", user_id=USER_ID)
         with pytest.raises(UnknownThreadError):
             await resume_turn(thread_id, "q2", user_id=OTHER_USER_ID)
+
+    asyncio.run(run())
+
+
+def test_llm_failure_replies_with_technical_error_and_keeps_thread_usable():
+    calls = {"n": 0}
+
+    async def flaky_ainvoke(payload):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("Error code: 429 - rate_limit_exceeded")
+        last = payload["messages"][-1]
+        return {"messages": payload["messages"] + [AIMessage(content=f"answer:{last.content}")]}
+
+    async def run():
+        with patch("chat.agent.nodes._get_inner_agent") as mock_get:
+            inner = AsyncMock()
+            inner.ainvoke = flaky_ainvoke
+            mock_get.return_value = inner
+
+            _, thread_id = await start_turn("q1", user_id=USER_ID)
+            assert await resume_turn(thread_id, "q2", user_id=USER_ID) == TECHNICAL_ERROR_REPLY
+            assert await resume_turn(thread_id, "q3", user_id=USER_ID) == "answer:q3"
 
     asyncio.run(run())

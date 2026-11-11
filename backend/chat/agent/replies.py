@@ -2,6 +2,10 @@
 
 from langchain_core.messages import AIMessage
 
+TECHNICAL_ERROR_REPLY = (
+    "Sorry, couldn't process your request due to a technical error. Please try again later."
+)
+
 
 def final_user_reply(messages: list) -> str:
     """Last non-tool-call AI message text for the user-facing reply."""

@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from auth.deps import get_current_user
 from auth.models import User
 from chat.agent.graph import exit_thread, resume_turn, start_turn
+from chat.agent.replies import TECHNICAL_ERROR_REPLY
 from chat.exceptions import UnknownThreadError
 from chat.schemas import ChatExitRequest, ChatInvokeRequest, ChatResumeRequest
 from common.logger import get_logger
@@ -39,7 +40,7 @@ async def chat_invoke(
         _handle_chat_error(
             exc,
             log_label="Chat invoke failed",
-            server_detail="Sorry, couldn't process your request due to a technical error. Please try again later.",
+            server_detail=TECHNICAL_ERROR_REPLY,
         )
 
 
@@ -57,7 +58,7 @@ async def chat_resume(
         _handle_chat_error(
             exc,
             log_label="Chat resume failed",
-            server_detail="Sorry, couldn't process your request due to a technical error. Please try again later.",
+            server_detail=TECHNICAL_ERROR_REPLY,
         )
 
 
