@@ -7,14 +7,24 @@ from tracker.category_service import (
     list_categories,
     register_category_name,
     rename_category,
+    set_category_limit,
 )
-from tracker.schemas import CategoryCreate, CategoryRename, CategoryResponse
+from tracker.schemas import (
+    CategoryCreate,
+    CategoryLimitUpdate,
+    CategoryRename,
+    CategoryResponse,
+)
 
 router = APIRouter(prefix="/categories", tags=["categories"])
 
 
 def _to_response(category) -> CategoryResponse:
-    return CategoryResponse(name=category.name, is_system=bool(category.is_system))
+    return CategoryResponse(
+        name=category.name,
+        is_system=bool(category.is_system),
+        monthly_limit=category.monthly_limit,
+    )
 
 
 @router.get("", response_model=list[CategoryResponse])
@@ -63,3 +73,17 @@ async def remove_category(
         await delete_category(current_user.id, name)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.put("/{name}/limit", response_model=CategoryResponse)
+async def put_category_limit(
+    name: str,
+    payload: CategoryLimitUpdate,
+    current_user: User = Depends(get_current_user),
+) -> CategoryResponse:
+    """Set or clear (null) the monthly limit of one category."""
+    try:
+        category = await set_category_limit(current_user.id, name, payload.monthly_limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _to_response(category)

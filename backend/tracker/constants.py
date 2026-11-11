@@ -37,6 +37,7 @@ NON_SPEND_CATEGORIES = (
 # small set of custom names in their preferences.
 CATEGORY_NAME_MAX_LENGTH = 40
 MAX_CUSTOM_CATEGORIES = 10
+MAX_CATEGORY_MONTHLY_LIMIT = 10_000_000
 
 SYSTEM_CATEGORIES = [
     "Dining",

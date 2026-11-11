@@ -16,7 +16,11 @@ async def tracker_config(current_user: User = Depends(get_current_user)) -> dict
     active_banks = await list_active_bank_names(current_user.id)
     return {
         "categories": [
-            CategoryResponse(name=row.name, is_system=bool(row.is_system)).model_dump()
+            CategoryResponse(
+                name=row.name,
+                is_system=bool(row.is_system),
+                monthly_limit=row.monthly_limit,
+            ).model_dump()
             for row in rows
         ],
         "payment_methods": PAYMENT_METHODS,

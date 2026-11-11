@@ -41,6 +41,11 @@ class CategoryRename(BaseModel):
 class CategoryResponse(BaseModel):
     name: str
     is_system: bool
+    monthly_limit: Optional[float] = None
+
+
+class CategoryLimitUpdate(BaseModel):
+    monthly_limit: Optional[float] = None
 
 
 _MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
