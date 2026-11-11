@@ -34,10 +34,18 @@ export type DashboardOverview = {
     series: DailySpendSeries[];
   };
   category_spend: {
-    items: Array<{ category: string; spend: number }>;
+    items: Array<{ category: string; spend: number; prev_spend: number; txn_count: number }>;
   };
   /** All profile banks (active + inactive) — drives the dashboard bank filter. */
   active_banks: string[];
+  /** One row per profile bank; dates are null when the bank has no transactions. */
+  freshness: BankFreshness[];
+};
+
+export type BankFreshness = {
+  bank: string;
+  last_transaction_date: string | null;
+  last_added_at: string | null;
 };
 
 export type Transaction = {
@@ -64,6 +72,7 @@ export type SearchResult = {
 export type Category = {
   name: string;
   is_system: boolean;
+  monthly_limit: number | null;
 };
 
 export type TrackerConfig = {

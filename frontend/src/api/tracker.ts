@@ -1,4 +1,4 @@
-import { deleteJson, getBlob, getJson, patchJson, postJson, postMultipart } from "./client";
+import { deleteJson, getBlob, getJson, patchJson, postJson, postMultipart, putJson } from "./client";
 import type {
   BankSetup,
   Category,
@@ -91,6 +91,12 @@ export function createCategory(name: string) {
 
 export function renameCategory(oldName: string, newName: string) {
   return patchJson<Category>("/categories", { old_name: oldName, new_name: newName });
+}
+
+export function setCategoryLimit(name: string, monthlyLimit: number | null) {
+  return putJson<Category>(`/categories/${encodeURIComponent(name)}/limit`, {
+    monthly_limit: monthlyLimit,
+  });
 }
 
 export function deleteCategory(name: string) {
