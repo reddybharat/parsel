@@ -103,6 +103,12 @@ Parsel is a sharp personal INR console: black/white chrome, zero radius, JetBrai
 
 Operate-mode density. Overview card gaps ≈ 6px (`gap-1.5`). Sharp tiles, no soft radius.
 
+**Overview grid.** At `lg` and at least 560px tall it is one fixed screen with no scroll: KPI row, data freshness strip, net-balance strip (chart + Daily/Monthly toggle), a 3×2 grid of category budget cards, and a right column with the insight above Recent Activity. Content shrinks to fit (budget cards drop detail by container height; Recent Activity shows only whole rows). Below that it is a single scrolling column in the same order.
+
+**The Click-Through Rule.** Every number, card, bar and row on the Overview opens the Ledger already filtered (`ledgerHref`). Clickable tiles are real links with a cyan hover border, a ↗ on hover-capable devices, a 2px focus ring and a small press scale that is off under reduced motion. Status (stale, near limit, over) is always text as well as color.
+
+**Chart toggle.** The Daily|Monthly control sits first in the month/bank controls row, defaults to Monthly and is remembered in `localStorage` (`parsel.overview.spendChart`).
+
 ## Elevation & Depth
 
 Flat by default. Structure from canvas → surface + 1px borders only.

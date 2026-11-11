@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 
+import { MonthlyInsightCard } from "@/components/dashboard/MonthlyInsightCard";
 import { CategoryBudgetCards } from "@/components/dashboard/CategoryBudgetCards";
 import { ChartSkeleton } from "@/components/dashboard/ChartSkeleton";
 import { DataFreshnessStrip } from "@/components/dashboard/DataFreshnessStrip";
@@ -318,7 +319,7 @@ export function OverviewPage() {
       <div className="ov-side grid min-h-0 gap-1.5">
         <article className={TILE}>
           <p className={SECTION_LABEL}>Insight of the month</p>
-          <p className="mt-1 text-sm text-parsel-muted">A summary of your month will appear here.</p>
+          <MonthlyInsightCard month={month} />
         </article>
 
         <article className={`${TILE} min-h-[12rem]`}>

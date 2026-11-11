@@ -1,5 +1,5 @@
 import { getJson } from "./client";
-import type { DashboardOverview } from "../lib/types";
+import type { DashboardOverview, MonthlyInsight } from "../lib/types";
 
 export type DashboardOverviewParams = {
   months?: number;
@@ -9,6 +9,11 @@ export type DashboardOverviewParams = {
   /** Selected banks. Omit / empty = all banks. */
   banks?: string[] | null;
 };
+
+/** Null when the month has no spend. */
+export function fetchMonthlyInsight(month: string) {
+  return getJson<MonthlyInsight | null>("/dashboard/insight", { month });
+}
 
 export function fetchDashboardOverview({
   months = 12,

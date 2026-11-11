@@ -42,6 +42,21 @@ export type DashboardOverview = {
   freshness: BankFreshness[];
 };
 
+export type MonthlyInsight = {
+  sentence: string;
+  facts: {
+    category: string;
+    txn_count: number;
+    month_start: string;
+    month_end: string;
+    spend: number;
+    prev_spend: number;
+    delta_pct: number | null;
+  };
+  questions: string[];
+  generated_at: string;
+};
+
 export type BankFreshness = {
   bank: string;
   last_transaction_date: string | null;

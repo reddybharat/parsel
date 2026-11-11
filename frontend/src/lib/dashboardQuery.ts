@@ -1,6 +1,6 @@
 import { keepPreviousData } from "@tanstack/react-query";
 
-import { fetchDashboardOverview } from "@/api/dashboard";
+import { fetchDashboardOverview, fetchMonthlyInsight } from "@/api/dashboard";
 import { queryClient } from "@/lib/queryClient";
 
 export const TREND_MONTHS = 12;
@@ -57,6 +57,16 @@ export function dashboardOverviewQueryOptions(filters: DashboardOverviewFilters)
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     placeholderData: keepPreviousData,
+  };
+}
+
+/** Keyed under "dashboard" so invalidateDashboardOverview() refreshes it too. */
+export function monthlyInsightQueryOptions(month: string) {
+  return {
+    queryKey: ["dashboard", "insight", month] as const,
+    queryFn: () => fetchMonthlyInsight(month),
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
   };
 }
 
