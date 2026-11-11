@@ -14,6 +14,7 @@ The API is stateless and directly calls feature services.
 - `backend/auth/`: user model, register/login, JWT helpers, `get_current_user` dependency.
 - `backend/tracker/`: transactions, dashboard services, constants, schemas, routers (scoped by `user_id`).
 - `backend/tracker/bank_import/`: bank statement parsers (SBI Excel/PDF, Kotak PDF, Slice PDF) used by transaction import preview.
+- `backend/tracker/category_service.py`: also owns statement category suggestions (`suggest_categories`): exact merchant-key match against the user's own ledger; no match or a failed lookup leaves the category blank.
 - `backend/chat/`: chat agent graph and chat API routes (thread + SQL scoped to user); schema/prompt include `bank`.
 - `backend/tests/`: backend tests.
 

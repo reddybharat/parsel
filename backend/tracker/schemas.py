@@ -312,6 +312,7 @@ class ImportPreviewRow(BaseModel):
     is_ready: bool = False
     category_is_new: bool = False
     is_duplicate: bool = False
+    category_from_history: bool = False
 
 
 class ImportPreviewResponse(BaseModel):

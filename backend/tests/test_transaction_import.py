@@ -45,6 +45,17 @@ def _no_existing_duplicates():
 
 
 @pytest.fixture(autouse=True)
+def _no_category_history(monkeypatch):
+    """Statement previews default to no ledger history and no Groq, so categories stay blank."""
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    with patch(
+        "tracker.category_service._load_history",
+        new=AsyncMock(return_value=[]),
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _all_banks_active():
     """Treat every catalog bank as an active profile bank for import tests."""
     with patch(
@@ -995,3 +1006,31 @@ async def test_legacy_csv_import_uses_per_row_bank():
     session.execute.assert_awaited_once()
     rows = session.execute.await_args.args[1]
     assert [row["bank"] for row in rows] == ["Kotak", "SBI"]
+
+
+async def test_preview_sbi_xlsx_fills_category_from_history():
+    known = {"food": "Food"}
+    content = _sbi_xlsx_bytes()
+    raw_rows = extract_sbi_rows(content)
+    history = [(raw_rows[0].description, "Food")]
+    with patch(
+        "tracker.services.known_category_map",
+        new=AsyncMock(return_value=known),
+    ), patch(
+        "tracker.services.list_missing_category_names",
+        new=AsyncMock(return_value=[]),
+    ), patch(
+        "tracker.category_service._load_history",
+        new=AsyncMock(return_value=history),
+    ):
+        preview = await preview_transactions_import(
+            content,
+            user_id=ALICE_ID,
+            bank="SBI",
+            filename="statement.xlsx",
+        )
+
+    first = preview.rows[0]
+    assert first.category == "Food"
+    assert first.category_from_history
+    assert first.is_ready

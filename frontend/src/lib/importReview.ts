@@ -89,6 +89,7 @@ export function createManualRow(
     issues: [],
     is_ready: false,
     category_is_new: false,
+    category_from_history: false,
     approved_new_category: false,
     imported: false,
     is_duplicate: false,
