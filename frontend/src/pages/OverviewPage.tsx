@@ -342,7 +342,7 @@ export function OverviewPage() {
       ) : null}
 
       <div className="ov-side grid min-h-0 gap-1.5">
-        <article className={`${TILE} min-h-0`}>
+        <article className={TILE}>
           <p className={SECTION_LABEL}>Insight of the month</p>
           <MonthlyInsightCard month={month} />
         </article>

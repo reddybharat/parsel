@@ -418,7 +418,7 @@ body,
   .ov-side {
     grid-column: 4;
     grid-row: 3 / 6;
-    grid-template-rows: minmax(8rem, 1fr) minmax(0, auto);
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .ov-side > article:last-child {

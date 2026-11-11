@@ -51,7 +51,7 @@ export function MonthlyInsightCard({ month }: { month: string }) {
         {" · "}Generated{" "}
         {new Date(data.generated_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
       </p>
-      <ul className="mt-auto flex min-h-0 flex-col gap-2 overflow-y-auto pt-2">
+      <ul className="mt-auto flex flex-col gap-2 pt-2">
         {data.questions.slice(0, MAX_QUESTIONS).map((question) => (
           <li key={question}>
             <Link

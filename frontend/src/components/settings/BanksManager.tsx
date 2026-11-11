@@ -188,9 +188,9 @@ export function BanksManager() {
           No banks yet. Add one to start tracking balances.
         </p>
       ) : (
-        <ul className="divide-y divide-parsel-border border border-parsel-border">
+        <ul className="divide-y divide-parsel-border border-y border-parsel-border">
           {banks.map((bank) => (
-            <li key={bank.bank} className="flex items-center justify-between gap-3 px-3 py-2">
+            <li key={bank.bank} className="flex items-center justify-between gap-3 py-2.5">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-parsel-neutral">{bank.bank}</p>
                 <p className="text-xs text-parsel-muted">
@@ -211,12 +211,14 @@ export function BanksManager() {
                 <Button
                   type="button"
                   variant="ghost"
-                  size="sm"
+                  size="icon"
+                  className="size-8"
+                  aria-label={`Edit ${bank.bank}`}
+                  title="Edit"
                   disabled={busyBank === bank.bank}
                   onClick={() => openEdit(bank)}
                 >
                   <Pencil className="size-3.5" />
-                  Edit
                 </Button>
               </div>
             </li>

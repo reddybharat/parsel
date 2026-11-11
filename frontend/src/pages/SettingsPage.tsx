@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "react-router-dom";
-import { Moon, Pencil, Sun, Trash2 } from "lucide-react";
+import { ChevronDown, Moon, Pencil, Sun, Trash2 } from "lucide-react";
 
 import { deleteCategory, renameCategory } from "@/api/tracker";
 import { BanksManager } from "@/components/settings/BanksManager";
@@ -16,16 +16,11 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useAuth } from "@/lib/auth";
+import { cn } from "@/lib/utils";
 import { PASSWORD_HINT, passwordStrengthError } from "@/lib/password";
 import { initialsFromProfile } from "@/lib/profile";
 import {
@@ -36,6 +31,9 @@ import { useTheme, type Theme } from "@/lib/theme";
 import type { Category } from "@/lib/types";
 
 const MAX_CUSTOM_CATEGORIES = 10;
+const DEFAULT_OPEN_SECTIONS: readonly SettingsSection[] = ["profile"];
+const USERNAME_PATTERN = /^[a-zA-Z0-9_]{3,32}$/;
+const USERNAME_HINT = "3–32 characters: letters, numbers, underscores. You sign in with this.";
 
 const SETTINGS_SECTIONS = [
   "profile",
@@ -50,50 +48,81 @@ type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 function parseSettingsSection(hash: string): SettingsSection | null {
   const raw = hash.replace(/^#/, "").toLowerCase();
   if (raw === "other") return "banks";
+  if (raw === "account") return "profile";
   return (SETTINGS_SECTIONS as readonly string[]).includes(raw)
     ? (raw as SettingsSection)
     : null;
 }
 
-function SettingsGroup({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="border border-parsel-border bg-parsel-surface">
-      <header className="border-b border-parsel-border px-4 py-2.5">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-parsel-neutral">{title}</h2>
-        <p className="mt-0.5 text-xs text-parsel-muted">{description}</p>
-      </header>
-      <div className="p-4">{children}</div>
-    </section>
-  );
-}
-
-function SettingsCell({
+function CollapsibleSection({
   id,
   title,
-  description,
+  summary,
+  aside,
+  open,
+  onToggle,
   children,
 }: {
   id: SettingsSection;
   title: string;
-  description: string;
+  summary: string;
+  aside?: React.ReactNode;
+  open: boolean;
+  onToggle: () => void;
   children: React.ReactNode;
 }) {
   return (
-    <div id={id} className="scroll-mt-3 border border-parsel-border p-3">
-      <div className="mb-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-parsel-neutral">{title}</h3>
-        <p className="mt-0.5 text-xs text-parsel-muted">{description}</p>
+    <section id={id} className="scroll-mt-3 border-b border-parsel-border last:border-b-0">
+      <h2>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={`${id}-panel`}
+          onClick={onToggle}
+          className="flex w-full items-center justify-between gap-4 px-6 py-3.5 text-left transition-colors hover:bg-parsel-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-parsel-primary md:px-8"
+        >
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-parsel-neutral">{title}</span>
+            <span className="mt-0.5 block text-xs font-normal text-parsel-muted">{summary}</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-3 text-xs font-normal text-parsel-muted">
+            {aside}
+            <ChevronDown
+              className={cn("size-4 transition-transform duration-200", open && "rotate-180")}
+              aria-hidden
+            />
+          </span>
+        </button>
+      </h2>
+      <div id={`${id}-panel`} hidden={!open} className="px-6 pb-6 pt-2 md:px-8">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function SettingsRow({
+  id,
+  title,
+  summary,
+  children,
+}: {
+  id: SettingsSection;
+  title: string;
+  summary: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      id={id}
+      className="flex scroll-mt-3 flex-wrap items-center justify-between gap-4 border-b border-parsel-border px-6 py-3.5 md:px-8"
+    >
+      <div className="min-w-0">
+        <h2 className="text-sm font-semibold text-parsel-neutral">{title}</h2>
+        <p className="mt-0.5 text-xs text-parsel-muted">{summary}</p>
       </div>
       {children}
-    </div>
+    </section>
   );
 }
 
@@ -103,17 +132,19 @@ export function SettingsPage() {
     email,
     firstName,
     lastName,
-    preferences,
     updateProfile,
     changePassword,
   } = useAuth();
   const { theme, setTheme } = useTheme();
   const location = useLocation();
   const scrollRootRef = useRef<HTMLDivElement>(null);
+  const [openSections, setOpenSections] = useState<ReadonlySet<SettingsSection>>(
+    () => new Set(DEFAULT_OPEN_SECTIONS),
+  );
 
   const [nameForm, setNameForm] = useState({ firstName: "", lastName: "" });
   const [usernameDraft, setUsernameDraft] = useState("");
-  const [defaultTheme, setDefaultTheme] = useState<Theme>("light");
+  const [usernameError, setUsernameError] = useState<string | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileFeedback, setProfileFeedback] = useState<FeedbackMessage | null>(null);
 
@@ -142,6 +173,14 @@ export function SettingsPage() {
   const [deleting, setDeleting] = useState<Category | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
 
+  function toggleSection(section: SettingsSection) {
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(section)) next.add(section);
+      return next;
+    });
+  }
+
   const initials = initialsFromProfile(firstName, lastName, username ?? email);
   const summaryName =
     [firstName, lastName].filter(Boolean).join(" ") || username || email || "Signed in";
@@ -149,10 +188,12 @@ export function SettingsPage() {
   useEffect(() => {
     const section = parseSettingsSection(location.hash);
     if (!section) return;
-    const root = scrollRootRef.current;
-    const target = root?.querySelector(`#${section}`);
-    if (!(target instanceof HTMLElement) || !root) return;
-    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    setOpenSections((prev) => new Set(prev).add(section));
+    const frame = requestAnimationFrame(() => {
+      const target = scrollRootRef.current?.querySelector(`#${section}`);
+      if (target instanceof HTMLElement) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [location.hash]);
 
   useEffect(() => {
@@ -161,35 +202,60 @@ export function SettingsPage() {
   }, [firstName, lastName, username]);
 
   useEffect(() => {
-    setDefaultTheme(preferences?.theme ?? theme);
-  }, [preferences, theme]);
-
-  useEffect(() => {
     if (!categoriesFailed) return;
     setCategoryError(
       categoriesErr instanceof Error ? categoriesErr.message : "Could not load categories.",
     );
   }, [categoriesFailed, categoriesErr]);
 
-  async function handleSaveProfile() {
+  const profileDirty =
+    nameForm.firstName.trim() !== (firstName ?? "") ||
+    nameForm.lastName.trim() !== (lastName ?? "") ||
+    usernameDraft.trim() !== (username ?? "");
+
+  async function handleSaveProfile(event: React.FormEvent) {
+    event.preventDefault();
+    const nextUsername = usernameDraft.trim();
+    if (!USERNAME_PATTERN.test(nextUsername)) {
+      setUsernameError(USERNAME_HINT);
+      document.getElementById("settings-username")?.focus();
+      return;
+    }
+    setUsernameError(null);
     setProfileSaving(true);
     setProfileFeedback(null);
     try {
       await updateProfile({
         first_name: nameForm.firstName.trim() || null,
         last_name: nameForm.lastName.trim() || null,
-        username: usernameDraft.trim(),
-        preferences: { theme: defaultTheme },
+        username: nextUsername,
       });
-      setTheme(defaultTheme);
       setProfileFeedback({ variant: "success", title: "Profile saved." });
     } catch (err) {
-      setProfileFeedback({
-        variant: "error",
-        title: err instanceof Error ? err.message : "Could not save profile.",
-      });
+      const message = err instanceof Error ? err.message : "Could not save profile.";
+      if (/username/i.test(message)) {
+        setUsernameError(message);
+        document.getElementById("settings-username")?.focus();
+      } else {
+        setProfileFeedback({ variant: "error", title: message });
+      }
     } finally {
       setProfileSaving(false);
+    }
+  }
+
+  async function handleThemeChange(next: Theme) {
+    const previous = theme;
+    setTheme(next);
+    setProfileFeedback(null);
+    try {
+      await updateProfile({ preferences: { theme: next } });
+    } catch (err) {
+      setTheme(previous);
+      setProfileFeedback({
+        variant: "error",
+        title: err instanceof Error ? err.message : "Could not save theme.",
+      });
     }
   }
 
@@ -296,245 +362,222 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col">
-      <div className="mb-3 shrink-0">
-        <h1 className="text-base font-semibold tracking-wide">Settings</h1>
-        <p className="text-xs text-parsel-muted">Manage your Parsel identity and ledger preferences.</p>
-      </div>
+    <div className="flex h-full min-h-0 w-full justify-center bg-parsel-canvas">
+      <div className="flex h-full min-h-0 w-full max-w-4xl flex-col rounded-none border-x border-parsel-border bg-parsel-surface shadow-none">
+        <header className="shrink-0 border-b border-parsel-border px-6 py-3 md:px-8">
+          <h1 className="text-base font-semibold tracking-wide">Settings</h1>
+          <p className="text-xs text-parsel-muted">Manage your Parsel identity and ledger preferences.</p>
+        </header>
 
-      <div ref={scrollRootRef} className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pb-4">
-        <SettingsGroup title="Profile" description="Identity, sign-in, and appearance.">
-          {profileFeedback ? (
-            <div className="mb-3">
-              <StatusAlert
-                variant={profileFeedback.variant}
-                title={profileFeedback.title}
-                onDismiss={() => setProfileFeedback(null)}
-              />
-            </div>
-          ) : null}
-          <div className="grid gap-3 lg:grid-cols-2">
-            <SettingsCell
-              id="profile"
-              title="Profile"
-              description="Your display name."
-            >
+        <div ref={scrollRootRef} className="min-h-0 flex-1 overflow-y-auto">
+          <CollapsibleSection
+            id="profile"
+            title="Profile"
+            summary="Name, username and email."
+            open={openSections.has("profile")}
+            onToggle={() => toggleSection("profile")}
+          >
+            <form onSubmit={(e) => void handleSaveProfile(e)} noValidate>
               <div className="flex flex-wrap items-start gap-5">
-                <div className="flex min-w-[5.5rem] max-w-[8rem] shrink-0 flex-col items-center gap-1">
-                  <Avatar className="h-12 w-12 rounded-none border border-parsel-border" aria-hidden>
-                    <AvatarFallback className="rounded-none bg-parsel-avatar-bg text-sm font-semibold text-parsel-secondary">
-                      {initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <p className="w-full truncate text-center text-xs text-parsel-muted" title={summaryName}>
-                    {summaryName}
-                  </p>
-                </div>
-                <div className="grid w-full max-w-sm grid-cols-2 gap-2">
-                  <Field>
+                <Avatar className="mt-7 hidden h-14 w-14 shrink-0 rounded-none sm:flex border border-parsel-border" aria-hidden>
+                  <AvatarFallback className="rounded-none bg-parsel-avatar-bg text-base font-semibold text-parsel-secondary">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                <div id="account" className="grid min-w-0 flex-1 gap-x-4 gap-y-5 sm:grid-cols-2 lg:max-w-2xl">
+                  <Field className="gap-1.5">
                     <FieldLabel htmlFor="settings-first-name">First name</FieldLabel>
                     <Input
                       id="settings-first-name"
                       value={nameForm.firstName}
-                      onChange={(e) =>
-                        setNameForm((prev) => ({ ...prev, firstName: e.target.value }))
-                      }
+                      onChange={(e) => setNameForm((prev) => ({ ...prev, firstName: e.target.value }))}
                       disabled={profileSaving}
                       autoComplete="given-name"
                     />
                   </Field>
-                  <Field>
+                  <Field className="gap-1.5">
                     <FieldLabel htmlFor="settings-last-name">Last name</FieldLabel>
                     <Input
                       id="settings-last-name"
                       value={nameForm.lastName}
-                      onChange={(e) =>
-                        setNameForm((prev) => ({ ...prev, lastName: e.target.value }))
-                      }
+                      onChange={(e) => setNameForm((prev) => ({ ...prev, lastName: e.target.value }))}
                       disabled={profileSaving}
                       autoComplete="family-name"
                     />
                   </Field>
+                  <Field className="gap-1.5" data-invalid={usernameError ? true : undefined}>
+                    <FieldLabel htmlFor="settings-username">Username</FieldLabel>
+                    <Input
+                      id="settings-username"
+                      value={usernameDraft}
+                      onChange={(e) => {
+                        setUsernameDraft(e.target.value);
+                        setUsernameError(null);
+                      }}
+                      disabled={profileSaving}
+                      autoComplete="username"
+                      aria-invalid={usernameError ? true : undefined}
+                      aria-describedby="settings-username-help"
+                    />
+                    {usernameError ? (
+                      <FieldError id="settings-username-help" className="text-xs">{usernameError}</FieldError>
+                    ) : (
+                      <FieldDescription id="settings-username-help" className="text-xs">
+                        {USERNAME_HINT}
+                      </FieldDescription>
+                    )}
+                  </Field>
+                  <Field className="gap-1.5">
+                    <FieldLabel htmlFor="settings-email">Email</FieldLabel>
+                    <Input
+                      id="settings-email"
+                      value={email ?? ""}
+                      readOnly
+                      aria-describedby="settings-email-help"
+                      className="truncate bg-parsel-soft text-parsel-neutral"
+                    />
+                    <FieldDescription id="settings-email-help" className="text-xs">
+                      Email can’t be changed.
+                    </FieldDescription>
+                  </Field>
                 </div>
               </div>
-            </SettingsCell>
-
-            <SettingsCell
-              id="account"
-              title="Account"
-              description="Username and email for this Parsel login."
-            >
-              <div className="grid w-full max-w-sm grid-cols-2 gap-2">
-                <Field>
-                  <FieldLabel htmlFor="settings-username">Username</FieldLabel>
-                  <Input
-                    id="settings-username"
-                    value={usernameDraft}
-                    onChange={(e) => setUsernameDraft(e.target.value)}
-                    disabled={profileSaving}
-                    autoComplete="username"
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="settings-email">Email</FieldLabel>
-                  <TooltipProvider delayDuration={200}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="block w-full cursor-default">
-                          <Input
-                            id="settings-email"
-                            className="pointer-events-none"
-                            value={email ?? ""}
-                            disabled
-                            readOnly
-                          />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">Email cannot be changed.</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </Field>
-              </div>
-            </SettingsCell>
-
-            <SettingsCell
-              id="appearance"
-              title="Appearance"
-              description="Default theme for new devices."
-            >
-              <div className="flex w-fit items-center gap-2 border border-parsel-border bg-parsel-soft px-2 py-1.5">
-                  <span className="flex items-center gap-1 text-[11px] text-parsel-muted">
-                    <Sun className="size-3 shrink-0" aria-hidden />
-                    Light
-                  </span>
-                  <Switch
-                    checked={defaultTheme === "dark"}
-                    onCheckedChange={(checked) => setDefaultTheme(checked ? "dark" : "light")}
-                    disabled={profileSaving}
-                    aria-label="Default dark mode"
-                    className="h-3.5 w-6 [&>span]:h-2.5 [&>span]:w-2.5 [&>span]:data-[state=checked]:translate-x-2.5 [&>span]:data-[state=unchecked]:translate-x-0"
-                  />
-                  <span className="flex items-center gap-1 text-[11px] text-parsel-muted">
-                    <Moon className="size-3 shrink-0" aria-hidden />
-                    Dark
-                  </span>
+              <div className="mt-6 flex flex-wrap items-center gap-3">
+                <Button type="submit" className="w-fit" disabled={profileSaving || !profileDirty}>
+                  {profileSaving ? "Saving…" : "Save profile"}
+                </Button>
+                <div role="status" aria-live="polite" className="min-h-5 text-xs">
+                  {profileFeedback && (profileFeedback.variant === "error" || !profileDirty) ? (
+                    <span className={profileFeedback.variant === "error" ? "text-destructive" : "text-parsel-muted"}>
+                      {profileFeedback.title}
+                    </span>
+                  ) : profileDirty ? (
+                    <span className="text-parsel-muted">Unsaved changes</span>
+                  ) : null}
                 </div>
-            </SettingsCell>
+              </div>
+            </form>
+          </CollapsibleSection>
 
-            <SettingsCell
-              id="password"
-              title="Password"
-              description="Change the password used to sign in."
+          <SettingsRow
+            id="appearance"
+            title="Appearance"
+            summary="Light or dark. Applies on every device you sign in on."
+          >
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              value={theme}
+              onValueChange={(value) => {
+                if (value === "light" || value === "dark") void handleThemeChange(value);
+              }}
+              aria-label="Theme"
+              className="gap-0"
             >
-              <Button type="button" className="w-fit" onClick={() => setPasswordDrawerOpen(true)}>
-                Update password
-              </Button>
-            </SettingsCell>
-          </div>
-          <div className="mt-4 flex justify-start border-t border-parsel-border pt-4">
-            <Button
-              type="button"
-              className="w-fit"
-              onClick={() => void handleSaveProfile()}
-              disabled={profileSaving}
-            >
-              {profileSaving ? "Saving…" : "Save"}
+              {(["light", "dark"] as const).map((option) => (
+                <ToggleGroupItem
+                  key={option}
+                  value={option}
+                  className="h-8 min-w-20 rounded-none px-3 text-xs shadow-none data-[state=on]:bg-parsel-nav-active-bg data-[state=on]:text-parsel-nav-active-text"
+                >
+                  {option === "light" ? <Sun aria-hidden /> : <Moon aria-hidden />}
+                  {option === "light" ? "Light" : "Dark"}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </SettingsRow>
+
+          <SettingsRow id="password" title="Password" summary="Change the password used to sign in.">
+            <Button type="button" variant="outline" className="w-fit" onClick={() => setPasswordDrawerOpen(true)}>
+              Update password
             </Button>
-          </div>
-        </SettingsGroup>
+          </SettingsRow>
 
-        <SettingsGroup title="Other" description="Ledger preferences.">
-          <div className="grid gap-3 lg:grid-cols-2">
-            <SettingsCell
-              id="banks"
-              title="Banks"
-              description="Opening balances drive Net Portfolio Balance. Inactive banks stay in history but hide when adding transactions."
-            >
-              <BanksManager />
-            </SettingsCell>
+          <CollapsibleSection
+            id="banks"
+            title="Banks"
+            summary="Opening balances drive Net Portfolio Balance. Inactive banks hide when adding transactions."
+            open={openSections.has("banks")}
+            onToggle={() => toggleSection("banks")}
+          >
+            <BanksManager />
+          </CollapsibleSection>
 
-            <SettingsCell
-              id="categories"
-              title="Categories"
-              description={`Custom categories on your account. Up to ${MAX_CUSTOM_CATEGORIES}.`}
-            >
-              <div className="mb-3 flex justify-end">
-                <span className="text-xs text-parsel-muted">
-                  {customCategories.length}/{MAX_CUSTOM_CATEGORIES}
-                </span>
+          <CollapsibleSection
+            id="categories"
+            title="Categories"
+            summary="Monthly limits drive the Overview budget cards. Custom categories can be renamed or deleted."
+            aside={`${customCategories.length}/${MAX_CUSTOM_CATEGORIES} custom`}
+            open={openSections.has("categories")}
+            onToggle={() => toggleSection("categories")}
+          >
+            {categoryError ? (
+              <div className="mb-3">
+                <StatusAlert
+                  variant="error"
+                  title={categoryError}
+                  action={
+                    categoryErrorLedgerName ? (
+                      <Button asChild size="sm" variant="outline" className="rounded-none shadow-none">
+                        <Link
+                          to={`/ledger/search?category=${encodeURIComponent(categoryErrorLedgerName)}`}
+                        >
+                          Go to ledger
+                        </Link>
+                      </Button>
+                    ) : undefined
+                  }
+                />
               </div>
-              {categoryError ? (
-                <div className="mb-3">
-                  <StatusAlert
-                    variant="error"
-                    title={categoryError}
-                    action={
-                      categoryErrorLedgerName ? (
-                        <Button asChild size="sm" variant="outline" className="rounded-none shadow-none">
-                          <Link
-                            to={`/ledger/search?category=${encodeURIComponent(categoryErrorLedgerName)}`}
-                          >
-                            Go to ledger
-                          </Link>
-                        </Button>
-                      ) : undefined
-                    }
-                  />
-                </div>
-              ) : null}
-              {categoriesLoading ? (
-                <p className="text-sm text-parsel-muted">Loading categories…</p>
-              ) : customCategories.length === 0 ? (
-                <p className="text-sm text-parsel-muted">
-                  No custom categories yet. Create one when adding a transaction.
-                </p>
-              ) : (
-                <ul className="max-w-md divide-y divide-parsel-border border border-parsel-border">
-                  {customCategories.map((item) => (
-                    <li key={item.name} className="flex items-center justify-between gap-2 px-3 py-1.5">
-                      <span className="min-w-0 truncate text-sm text-parsel-neutral" title={item.name}>
-                        {item.name}
-                      </span>
-                      <div className="flex shrink-0 items-center gap-0.5">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={categoryBusyName === item.name}
-                          onClick={() => {
-                            setRenaming(item);
-                            setRenameDraft(item.name);
-                            setCategoryError(null);
-                            setCategoryErrorLedgerName(null);
-                          }}
-                        >
-                          <Pencil className="size-3.5" />
-                          Rename
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-parsel-danger-text hover:bg-parsel-danger-bg hover:text-parsel-danger-text"
-                          disabled={categoryBusyName === item.name}
-                          onClick={() => {
-                            setDeleting(item);
-                            setCategoryError(null);
-                            setCategoryErrorLedgerName(null);
-                          }}
-                        >
-                          <Trash2 className="size-3.5" />
-                          Delete
-                        </Button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <CategoryLimits categories={categories} />
-            </SettingsCell>
-          </div>
-        </SettingsGroup>
+            ) : null}
+            {categoriesLoading ? (
+              <p className="text-sm text-parsel-muted">Loading categories…</p>
+            ) : (
+              <CategoryLimits
+                categories={categories}
+                rowActions={(item) =>
+                  item.is_system === false ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        aria-label={`Rename ${item.name}`}
+                        title="Rename"
+                        disabled={categoryBusyName === item.name}
+                        onClick={() => {
+                          setRenaming(item);
+                          setRenameDraft(item.name);
+                          setCategoryError(null);
+                          setCategoryErrorLedgerName(null);
+                        }}
+                      >
+                        <Pencil className="size-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 text-parsel-danger-text hover:bg-parsel-danger-bg hover:text-parsel-danger-text"
+                        aria-label={`Delete ${item.name}`}
+                        title="Delete"
+                        disabled={categoryBusyName === item.name}
+                        onClick={() => {
+                          setDeleting(item);
+                          setCategoryError(null);
+                          setCategoryErrorLedgerName(null);
+                        }}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </>
+                  ) : null
+                }
+              />
+            )}
+          </CollapsibleSection>
+        </div>
       </div>
 
       <Drawer open={passwordDrawerOpen} onOpenChange={handlePasswordDrawerOpenChange}>
@@ -554,7 +597,7 @@ export function SettingsPage() {
             </div>
           ) : null}
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
-            <Field>
+            <Field className="gap-1.5">
               <FieldLabel htmlFor="settings-current-password">Current password</FieldLabel>
               <Input
                 id="settings-current-password"
@@ -567,7 +610,7 @@ export function SettingsPage() {
                 autoComplete="current-password"
               />
             </Field>
-            <Field>
+            <Field className="gap-1.5">
               <FieldLabel htmlFor="settings-new-password">New password</FieldLabel>
               <Input
                 id="settings-new-password"
@@ -581,7 +624,7 @@ export function SettingsPage() {
               />
               <FieldDescription>{PASSWORD_HINT}</FieldDescription>
             </Field>
-            <Field>
+            <Field className="gap-1.5">
               <FieldLabel htmlFor="settings-confirm-password">Confirm new password</FieldLabel>
               <Input
                 id="settings-confirm-password"
@@ -631,7 +674,7 @@ export function SettingsPage() {
             </DrawerTitle>
           </DrawerHeader>
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
-            <Field>
+            <Field className="gap-1.5">
               <FieldLabel htmlFor="settings-rename-category">Name</FieldLabel>
               <Input
                 id="settings-rename-category"
