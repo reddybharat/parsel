@@ -312,6 +312,9 @@ export function SearchPage() {
             isLoading={firstLoad}
             isRefreshing={isFetching && !firstLoad}
             skeletonRows={Math.min(pagination.pageSize, 10)}
+            // Fixed layout: Description (the only unsized column) fills the leftover width and
+            // truncates. Min width (~63.5rem of sized columns + ~16rem) keeps it from collapsing on narrow screens.
+            className="[&_table]:min-w-[80rem] [&_table]:table-fixed"
             empty={
               <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
                 <p className="text-sm text-parsel-text">
