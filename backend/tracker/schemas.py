@@ -265,7 +265,6 @@ class DashboardTopCategory(BaseModel):
 class DashboardHighlightsResponse(BaseModel):
     top_category: DashboardTopCategory
     total_inflow: float = 0.0
-    total_outflow: float = 0.0
     current_month_investments: float = 0.0
 
 

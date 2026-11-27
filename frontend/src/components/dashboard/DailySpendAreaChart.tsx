@@ -1,5 +1,5 @@
 import { TrendingUp } from "lucide-react";
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -14,7 +14,7 @@ import { SERIES_COLORS, Y_AXIS_WIDTH } from "@/components/dashboard/BankBalanceL
 import { formatInrAmount, formatInrCompact } from "@/lib/format";
 import type { DailySpendSeries } from "@/lib/types";
 
-export function DailySpendLineChart({
+export function DailySpendAreaChart({
   series,
   monthLabel,
   monthTotal,
@@ -84,22 +84,30 @@ export function DailySpendLineChart({
           config={chartConfig}
           className={compact ? "aspect-auto h-full min-h-0 w-full" : "aspect-auto h-full min-h-[7rem] w-full"}
         >
-          <LineChart
+          <AreaChart
             accessibilityLayer
             data={chartData}
-            margin={{ left: 0, right: 12 }}
+            margin={{ left: 0, right: 12, top: 6 }}
             className={onDayClick ? "cursor-pointer" : undefined}
             onClick={(state) => {
               const day = Number(state?.activeLabel);
               if (day) onDayClick?.(day);
             }}
           >
+            <defs>
+              {series.map((item) => (
+                <linearGradient key={item.bank} id={`daily-fill-${item.bank}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={`var(--color-${item.bank})`} stopOpacity={0.3} />
+                  <stop offset="100%" stopColor={`var(--color-${item.bank})`} stopOpacity={0.02} />
+                </linearGradient>
+              ))}
+            </defs>
             <CartesianGrid vertical={false} />
             <XAxis
               dataKey="day"
               tickLine={false}
               axisLine={false}
-              tickMargin={8}
+              tickMargin={4}
               ticks={axisTicks}
               tickFormatter={(value) => `Day ${value}`}
             />
@@ -125,16 +133,18 @@ export function DailySpendLineChart({
             />
             {compact ? null : <ChartLegend content={<ChartLegendContent />} />}
             {series.map((item) => (
-              <Line
+              <Area
                 key={item.bank}
                 dataKey={item.bank}
-                type="linear"
+                type="monotone"
                 stroke={`var(--color-${item.bank})`}
                 strokeWidth={2}
+                fill={`url(#daily-fill-${item.bank})`}
                 dot={false}
+                activeDot={{ r: 4, fill: `var(--color-${item.bank})` }}
               />
             ))}
-          </LineChart>
+          </AreaChart>
         </ChartContainer>
       </CardContent>
       {compact ? null : (

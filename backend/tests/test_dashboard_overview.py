@@ -79,7 +79,6 @@ def _aggregate_row(**overrides):
         "previous_month_spend": 250.0,
         "trend_rows": "[]",
         "total_inflow": 5000.0,
-        "total_outflow": 3200.0,
         "current_month_investments": 800.0,
         "top_category": '{"category": "Grocery", "spend": 150.0}',
         "category_spend_rows": (
@@ -128,6 +127,11 @@ async def test_get_dashboard_aggregates_parses_category_spend_sorted():
         ":wallet_top_up_category )"
     ) == 6
     assert "cm.category = :investments_category" in sql
+    assert (
+        "WHEN cm.is_debit = FALSE AND cm.category NOT IN "
+        "(:self_transfer_category, :wallet_top_up_category)"
+    ) in sql
+    assert "total_outflow" not in sql
     assert sql.count("NOT :filter_banks OR") == 4
     assert params["investments_category"] == INVESTMENTS_CATEGORY
     assert params["self_transfer_category"] == SELF_TRANSFER_CATEGORY
@@ -170,7 +174,6 @@ async def test_get_dashboard_overview_merges_portfolio_and_profile_banks():
         "highlights": {
             "top_category": {"category": None, "spend": 0.0},
             "total_inflow": 0.0,
-            "total_outflow": 0.0,
             "current_month_investments": 0.0,
         },
         "daily_spend": {"month_label": "Jul 2026", "total": 0.0, "series": []},
@@ -430,3 +433,55 @@ async def test_chart_category_narrows_only_the_spend_charts():
     # Everything outside the two charts ignores the category.
     assert groceries_result["summary"] == all_result["summary"]
     assert groceries_result["category_spend"] == all_result["category_spend"]
+
+
+@pytest.mark.skipif(not is_database_configured(), reason="DATABASE_URL not set")
+async def test_inflow_skips_own_account_transfers():
+    user_id = uuid.uuid4()
+    user = User(
+        id=user_id,
+        username=f"inflow-{user_id}",
+        email=f"{user_id}@example.com",
+        password_hash="x",
+    )
+
+    def txn(amount: int, category: str, *, is_debit: bool) -> Transaction:
+        return Transaction(
+            id=uuid.uuid4(),
+            user_id=user_id,
+            amount=amount,
+            is_debit=is_debit,
+            category=category,
+            bank="SBI",
+            transaction_date=date(2026, 7, 10),
+        )
+
+    txns = [
+        txn(50000, "Salary", is_debit=False),
+        txn(300, "Refund", is_debit=False),
+        txn(20000, SELF_TRANSFER_CATEGORY, is_debit=False),
+        txn(1500, WALLET_TOP_UP_CATEGORY, is_debit=False),
+        txn(20000, SELF_TRANSFER_CATEGORY, is_debit=True),
+        txn(8000, INVESTMENTS_CATEGORY, is_debit=True),
+        txn(1200, "Groceries", is_debit=True),
+    ]
+    try:
+        async with get_connection() as session:
+            session.add(user)
+            await session.flush()
+            session.add_all(txns)
+    except Exception as exc:  # noqa: BLE001
+        pytest.skip(f"database not reachable: {exc}")
+
+    try:
+        result = await _get_dashboard_aggregates(
+            _dashboard_bounds(1, date(2026, 7, 1)), 1, user_id=user_id
+        )
+    finally:
+        async with get_connection() as session:
+            await session.execute(delete(Transaction).where(Transaction.user_id == user_id))
+            await session.execute(delete(User).where(User.id == user_id))
+
+    assert result["highlights"]["total_inflow"] == 50300.0
+    assert result["highlights"]["current_month_investments"] == 8000.0
+    assert result["summary"]["current_month_spend"] == 1200.0

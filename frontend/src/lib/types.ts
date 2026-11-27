@@ -26,7 +26,6 @@ export type DashboardOverview = {
   highlights: {
     top_category: { category: string | null; spend: number };
     total_inflow: number;
-    total_outflow: number;
     current_month_investments: number;
   };
   daily_spend: {
