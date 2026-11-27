@@ -23,8 +23,9 @@ import {
 import { cn } from "@/lib/utils";
 
 const TRIGGER_AVATAR_LIMIT = 3;
-const CONTROL_WIDTH = "w-[10rem]";
-const SELECT_TRIGGER = `h-8 ${CONTROL_WIDTH} rounded-none border-parsel-border bg-parsel-surface px-2 text-xs shadow-none`;
+// One row from lg up (where the Overview is one fixed-height screen); 2 × 2 below.
+const CONTROL = "h-7 w-full min-w-0 lg:flex-1";
+const SELECT_TRIGGER = `${CONTROL} rounded-none border-parsel-border bg-parsel-surface px-2 text-xs shadow-none`;
 // Radix Select can't use "" as an item value.
 const ALL_CATEGORIES = "__all__";
 
@@ -36,6 +37,7 @@ const CHART_OPTIONS: Array<{ value: SpendChartKind; label: string }> = [
 ];
 
 type OverviewPortfolioControlsProps = {
+  className?: string;
   chart: SpendChartKind;
   onChartChange: (chart: SpendChartKind) => void;
   month: string;
@@ -62,6 +64,7 @@ function monthOptions(latest: string): Array<{ value: string; label: string }> {
 }
 
 export function OverviewPortfolioControls({
+  className,
   chart,
   onChartChange,
   month,
@@ -95,8 +98,8 @@ export function OverviewPortfolioControls({
   }
 
   return (
-    <div className="flex shrink-0 flex-col items-end gap-1.5">
-      <div role="group" aria-label="Spend chart" className={`flex h-8 ${CONTROL_WIDTH} border border-parsel-border`}>
+    <div className={cn("grid shrink-0 grid-cols-2 gap-1.5 lg:flex", className)}>
+      <div role="group" aria-label="Spend chart" className="flex h-7 w-full border border-parsel-border lg:w-[8.5rem] lg:shrink-0">
         {CHART_OPTIONS.map((option) => (
           <button
             key={option.value}
@@ -118,7 +121,7 @@ export function OverviewPortfolioControls({
         <SelectTrigger aria-label="Focus month" className={SELECT_TRIGGER}>
           <SelectValue placeholder="Month" />
         </SelectTrigger>
-        <SelectContent className="rounded-none" align="end">
+        <SelectContent className="rounded-none" align="start">
           {options.map((option) => (
             <SelectItem key={option.value} value={option.value} className="rounded-none text-xs">
               {option.label}
@@ -131,19 +134,19 @@ export function OverviewPortfolioControls({
         <DropdownMenu>
           <DropdownMenuTrigger
             aria-label={`Banks: ${allSelected ? "all" : selectedBanks.join(", ")}`}
-            className={`flex h-8 ${CONTROL_WIDTH} items-center gap-1.5 border border-parsel-border bg-parsel-surface px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+            className={`flex ${CONTROL} items-center gap-1.5 border border-parsel-border bg-parsel-surface px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
           >
             <AvatarGroup className="shrink-0">
               {selectedBanks.slice(0, TRIGGER_AVATAR_LIMIT).map((bank) => (
-                <BankAvatar key={bank} bank={bank} className="size-5" />
+                <BankAvatar key={bank} bank={bank} className="size-4" />
               ))}
             </AvatarGroup>
             <span className="min-w-0 flex-1 truncate text-left">{bankLabel}</span>
             <ChevronDown className="size-4 shrink-0 opacity-50" aria-hidden="true" />
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            align="end"
-            className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-0 rounded-none"
+            align="start"
+            className="min-w-[var(--radix-dropdown-menu-trigger-width)] rounded-none"
           >
             {activeBanks.map((bank) => (
               <DropdownMenuCheckboxItem
@@ -168,10 +171,14 @@ export function OverviewPortfolioControls({
           value={selectedCategory ?? ALL_CATEGORIES}
           onValueChange={(value) => onSelectedCategoryChange(value === ALL_CATEGORIES ? null : value)}
         >
-          <SelectTrigger aria-label="Chart category" className={SELECT_TRIGGER}>
+          <SelectTrigger
+            aria-label="Chart category"
+            title={selectedCategory ?? "All categories"}
+            className={SELECT_TRIGGER}
+          >
             <SelectValue placeholder="All categories" />
           </SelectTrigger>
-          <SelectContent className="rounded-none" align="end">
+          <SelectContent className="rounded-none" align="start">
             <SelectItem value={ALL_CATEGORIES} className="rounded-none text-xs">
               All categories
             </SelectItem>

@@ -1509,8 +1509,10 @@ trend_rows AS (
 ),
 highlights AS (
   SELECT
-    COALESCE(SUM(CASE WHEN cm.is_debit = FALSE THEN cm.amount ELSE 0 END), 0)::float8 AS total_inflow,
-    COALESCE(SUM(CASE WHEN cm.is_debit = TRUE THEN cm.amount ELSE 0 END), 0)::float8 AS total_outflow,
+    COALESCE(SUM(CASE
+      WHEN cm.is_debit = FALSE
+       AND cm.category NOT IN (:self_transfer_category, :wallet_top_up_category)
+      THEN cm.amount ELSE 0 END), 0)::float8 AS total_inflow,
     COALESCE(SUM(CASE
       WHEN cm.is_debit = TRUE AND cm.category = :investments_category
       THEN cm.amount ELSE 0 END), 0)::float8 AS current_month_investments
@@ -1579,7 +1581,6 @@ SELECT
     '[]'::json
   ) AS trend_rows,
   h.total_inflow,
-  h.total_outflow,
   h.current_month_investments,
   (SELECT json_build_object('category', tc.category, 'spend', tc.spend) FROM top_category tc) AS top_category,
   COALESCE(
@@ -1707,7 +1708,6 @@ async def _get_dashboard_aggregates(
         "highlights": {
             "top_category": top_category,
             "total_inflow": float(row.get("total_inflow") or 0),
-            "total_outflow": float(row.get("total_outflow") or 0),
             "current_month_investments": float(row.get("current_month_investments") or 0),
         },
         "daily_spend": {

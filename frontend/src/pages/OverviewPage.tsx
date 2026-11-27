@@ -25,14 +25,14 @@ import { formatInrAmount, formatInrSigned } from "@/lib/format";
 import { trackerConfigQueryOptions } from "@/lib/trackerConfigQuery";
 import type { DashboardOverview } from "@/lib/types";
 
-const MonthlySpendBarChart = lazy(() =>
-  import("@/components/dashboard/MonthlySpendBarChart").then((m) => ({
-    default: m.MonthlySpendBarChart,
+const MonthlySpendAreaChart = lazy(() =>
+  import("@/components/dashboard/MonthlySpendAreaChart").then((m) => ({
+    default: m.MonthlySpendAreaChart,
   })),
 );
-const DailySpendLineChart = lazy(() =>
-  import("@/components/dashboard/DailySpendLineChart").then((m) => ({
-    default: m.DailySpendLineChart,
+const DailySpendAreaChart = lazy(() =>
+  import("@/components/dashboard/DailySpendAreaChart").then((m) => ({
+    default: m.DailySpendAreaChart,
   })),
 );
 
@@ -98,12 +98,14 @@ function KpiTile({
   value,
   valueClassName = "text-parsel-neutral",
   sub,
+  hint,
   to,
 }: {
   label: string;
   value: string;
   valueClassName?: string;
   sub?: string;
+  hint: string;
   to?: string;
 }) {
   const body = (
@@ -124,11 +126,13 @@ function KpiTile({
   );
   const className = "block min-w-0 border border-parsel-border bg-parsel-surface px-3 py-2";
   return to ? (
-    <Link to={to} className={`ov-link ${className}`}>
+    <Link to={to} title={hint} className={`ov-link ${className}`}>
       {body}
     </Link>
   ) : (
-    <div className={className}>{body}</div>
+    <div title={hint} className={className}>
+      {body}
+    </div>
   );
 }
 
@@ -198,52 +202,53 @@ export function OverviewPage() {
 
   const spend = data?.summary.current_month_spend ?? 0;
   const inflow = data?.highlights.total_inflow ?? 0;
-  const outflow = data?.highlights.total_outflow ?? 0;
+  const invested = data?.highlights.current_month_investments ?? 0;
+  const leftOver = inflow - spend - invested;
   const spendDelta = data?.summary.spend_delta_pct ?? null;
   // shortcut: straight-line pace (spend so far / days elapsed); ignores rent-style lump payments.
   const projectedSpend = daysElapsed < monthDays && spend > 0 ? (spend / daysElapsed) * monthDays : null;
-  const categoryLabel = chartCategory ? ` · ${chartCategory}` : "";
-  const limitsTotal = categories.reduce((sum, item) => sum + (item.monthly_limit ?? 0), 0);
 
   return (
     <div className="ov-grid grid h-full min-h-0 grid-cols-1 content-start gap-1.5 overflow-y-auto">
-      <div className="ov-kpis grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="ov-kpis grid grid-cols-2 gap-1.5 lg:grid-cols-4">
         <KpiTile
-          label="Spent"
+          label="Spending"
           value={formatInrAmount(spend)}
           sub={
-            spendDelta === null
-              ? undefined
-              : `${spendDelta >= 0 ? "▲" : "▼"} ${Math.abs(spendDelta).toFixed(0)}% vs prev month`
+            `Avg ${formatInrAmount(spend / daysElapsed)}/day` +
+            (spendDelta === null
+              ? ""
+              : ` · ${spendDelta >= 0 ? "▲" : "▼"} ${Math.abs(spendDelta).toFixed(0)}% vs last month`)
           }
+          hint="Money you spent this month. Investments and moving money between your own accounts are not counted."
           to={ledgerHref({ ...monthLink, direction: "debit" })}
         />
         <KpiTile
           label="Inflow"
           value={formatInrAmount(inflow)}
           valueClassName="text-parsel-inflow"
+          sub="Not counting your own transfers"
+          hint="Money that came into your accounts this month, like salary or refunds. Moving money between your own accounts is not counted."
           to={ledgerHref({ ...monthLink, direction: "credit" })}
         />
         <KpiTile
-          label="Outflow"
-          value={formatInrAmount(outflow)}
-          valueClassName="text-parsel-outflow"
-          to={ledgerHref({ ...monthLink, direction: "debit" })}
-        />
-        <KpiTile
           label="Invested"
-          value={formatInrAmount(data?.highlights.current_month_investments ?? 0)}
+          value={formatInrAmount(invested)}
+          hint="Money you put into investments this month."
           to={ledgerHref({ ...monthLink, category: INVESTMENTS_CATEGORY })}
         />
         <KpiTile
-          label="Savings rate"
-          value={inflow > 0 ? `${(((inflow - outflow) / inflow) * 100).toFixed(0)}%` : "—"}
-          sub={inflow > 0 ? undefined : "No inflow this month"}
-        />
-        <KpiTile
-          label="Per day"
-          value={formatInrAmount(spend / daysElapsed)}
-          sub={limitsTotal > 0 ? `budget pace ${formatInrAmount(limitsTotal / monthDays)}` : undefined}
+          label="Left over"
+          value={`${leftOver < 0 ? "−" : ""}${formatInrAmount(leftOver)}`}
+          valueClassName={leftOver < 0 ? "text-parsel-outflow" : "text-parsel-neutral"}
+          sub={
+            inflow <= 0
+              ? "No inflow this month"
+              : leftOver < 0
+                ? "Spent more than came in"
+                : `${((leftOver / inflow) * 100).toFixed(0)}% of inflow`
+          }
+          hint="Inflow minus spending minus invested."
         />
       </div>
 
@@ -284,20 +289,29 @@ export function OverviewPage() {
           ) : null}
         </div>
         <div className="ov-balance-chart flex min-h-[9rem] min-w-0 flex-1 flex-col">
-          <p className={`${SECTION_LABEL} mb-1 shrink-0`}>
-            {chart === "daily" && data
-              ? `Daily spend${categoryLabel} · ${data.daily_spend.month_label}`
-              : `Monthly spend${categoryLabel} · last ${TREND_MONTHS} months`}
-          </p>
+          <OverviewPortfolioControls
+            className="mb-1"
+            chart={chart}
+            onChartChange={handleChartChange}
+            month={month}
+            onMonthChange={setMonth}
+            activeBanks={activeBanks}
+            selectedBanks={displaySelectedBanks}
+            onSelectedBanksChange={handleSelectedBanksChange}
+            categories={categories.map((item) => item.name)}
+            selectedCategory={chartCategory}
+            onSelectedCategoryChange={setChartCategory}
+          />
           <div className="min-h-0 flex-1">
           {data ? (
             <Suspense fallback={<ChartSkeleton />}>
               {chart === "monthly" ? (
-                <MonthlySpendBarChart
+                <MonthlySpendAreaChart
                   compact
                   points={trendPoints}
                   spendDeltaPct={data.summary.spend_delta_pct}
-                  onBarClick={(index) => {
+                  partialLast={month === currentMonthValue()}
+                  onMonthClick={(index) => {
                     const barMonth = shiftMonth(month, index - (trendPoints.length - 1));
                     const range = monthRange(barMonth);
                     navigate(
@@ -311,7 +325,7 @@ export function OverviewPage() {
                   }}
                 />
               ) : (
-                <DailySpendLineChart
+                <DailySpendAreaChart
                   compact
                   series={data.daily_spend.series}
                   monthLabel={data.daily_spend.month_label}
@@ -332,20 +346,6 @@ export function OverviewPage() {
             </Suspense>
           ) : null}
           </div>
-        </div>
-        <div className="shrink-0 self-start">
-          <OverviewPortfolioControls
-            chart={chart}
-            onChartChange={handleChartChange}
-            month={month}
-            onMonthChange={setMonth}
-            activeBanks={activeBanks}
-            selectedBanks={displaySelectedBanks}
-            onSelectedBanksChange={handleSelectedBanksChange}
-            categories={categories.map((item) => item.name)}
-            selectedCategory={chartCategory}
-            onSelectedCategoryChange={setChartCategory}
-          />
         </div>
       </article>
 
