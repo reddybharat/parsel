@@ -1,10 +1,11 @@
 import { TrendingDown, TrendingUp } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { EmptyState } from "@/components/feedback/EmptyState";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
-import { formatInrAmount } from "@/lib/format";
+import { formatInrAmount, formatInrCompact } from "@/lib/format";
+import { Y_AXIS_WIDTH } from "@/components/dashboard/BankBalanceLegend";
 
 type TrendPoint = { month_label: string; spend: number };
 
@@ -65,6 +66,14 @@ export function MonthlySpendBarChart({
               tickMargin={10}
               axisLine={false}
               tickFormatter={(value) => String(value).slice(0, 3)}
+            />
+            <YAxis
+              width={Y_AXIS_WIDTH}
+              tickLine={false}
+              axisLine={false}
+              tickMargin={4}
+              tickCount={4}
+              tickFormatter={(value) => formatInrCompact(Number(value))}
             />
             <ChartTooltip
               cursor={false}

@@ -135,11 +135,12 @@ function KpiTile({
 export function OverviewPage() {
   const [month, setMonth] = useState(currentMonthValue);
   const [selectedBanks, setSelectedBanks] = useState<string[] | null>(null);
+  const [chartCategory, setChartCategory] = useState<string | null>(null);
   const [chart, setChart] = useState<SpendChartKind>(readSpendChart);
   const navigate = useNavigate();
 
   const { data, isPending, isError, error, refetch, isFetching } = useQuery(
-    dashboardOverviewQueryOptions({ month, banks: selectedBanks }),
+    dashboardOverviewQueryOptions({ month, banks: selectedBanks, chartCategory }),
   );
   const { data: trackerConfig } = useQuery(trackerConfigQueryOptions());
 
@@ -201,6 +202,7 @@ export function OverviewPage() {
   const spendDelta = data?.summary.spend_delta_pct ?? null;
   // shortcut: straight-line pace (spend so far / days elapsed); ignores rent-style lump payments.
   const projectedSpend = daysElapsed < monthDays && spend > 0 ? (spend / daysElapsed) * monthDays : null;
+  const categoryLabel = chartCategory ? ` · ${chartCategory}` : "";
   const limitsTotal = categories.reduce((sum, item) => sum + (item.monthly_limit ?? 0), 0);
 
   return (
@@ -284,8 +286,8 @@ export function OverviewPage() {
         <div className="ov-balance-chart flex min-h-[9rem] min-w-0 flex-1 flex-col">
           <p className={`${SECTION_LABEL} mb-1 shrink-0`}>
             {chart === "daily" && data
-              ? `Daily spend · ${data.daily_spend.month_label}`
-              : `Monthly spend · last ${TREND_MONTHS} months`}
+              ? `Daily spend${categoryLabel} · ${data.daily_spend.month_label}`
+              : `Monthly spend${categoryLabel} · last ${TREND_MONTHS} months`}
           </p>
           <div className="min-h-0 flex-1">
           {data ? (
@@ -298,7 +300,14 @@ export function OverviewPage() {
                   onBarClick={(index) => {
                     const barMonth = shiftMonth(month, index - (trendPoints.length - 1));
                     const range = monthRange(barMonth);
-                    navigate(ledgerHref({ ...range, bank: linkBank, direction: "debit" }));
+                    navigate(
+                      ledgerHref({
+                        ...range,
+                        bank: linkBank,
+                        direction: "debit",
+                        category: chartCategory ?? undefined,
+                      }),
+                    );
                   }}
                 />
               ) : (
@@ -309,7 +318,14 @@ export function OverviewPage() {
                   monthTotal={data.daily_spend.total}
                   onDayClick={(day) => {
                     const date = `${month}-${String(day).padStart(2, "0")}`;
-                    navigate(ledgerHref({ start: date, end: date, bank: linkBank }));
+                    navigate(
+                      ledgerHref({
+                        start: date,
+                        end: date,
+                        bank: linkBank,
+                        category: chartCategory ?? undefined,
+                      }),
+                    );
                   }}
                 />
               )}
@@ -326,6 +342,9 @@ export function OverviewPage() {
             activeBanks={activeBanks}
             selectedBanks={displaySelectedBanks}
             onSelectedBanksChange={handleSelectedBanksChange}
+            categories={categories.map((item) => item.name)}
+            selectedCategory={chartCategory}
+            onSelectedCategoryChange={setChartCategory}
           />
         </div>
       </article>
@@ -342,7 +361,7 @@ export function OverviewPage() {
       ) : null}
 
       <div className="ov-side grid min-h-0 gap-1.5">
-        <article className={`${TILE} min-h-0`}>
+        <article className={TILE}>
           <p className={SECTION_LABEL}>Insight of the month</p>
           <MonthlyInsightCard month={month} />
         </article>

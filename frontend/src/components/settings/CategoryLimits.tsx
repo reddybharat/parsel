@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Pencil } from "lucide-react";
 
 import { setCategoryLimit } from "@/api/tracker";
@@ -17,7 +17,13 @@ import { formatInrAmount } from "@/lib/format";
 import { setTrackerConfigCategories } from "@/lib/trackerConfigQuery";
 import type { Category } from "@/lib/types";
 
-export function CategoryLimits({ categories }: { categories: Category[] }) {
+export function CategoryLimits({
+  categories,
+  rowActions,
+}: {
+  categories: Category[];
+  rowActions?: (category: Category) => ReactNode;
+}) {
   const [editing, setEditing] = useState<Category | null>(null);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -60,23 +66,33 @@ export function CategoryLimits({ categories }: { categories: Category[] }) {
   }
 
   return (
-    <div className="mt-5">
-      <h3 className="text-sm font-medium text-parsel-neutral">Monthly limits</h3>
-      <p className="mb-2 text-xs text-parsel-muted">Budget cards on the Overview track spend against these.</p>
-      <ul className="max-w-md divide-y divide-parsel-border border border-parsel-border">
+    <div>
+      <ul className="divide-y divide-parsel-border border-y border-parsel-border">
         {categories.map((item) => (
-          <li key={item.name} className="flex items-center justify-between gap-2 px-3 py-1.5">
-            <span className="min-w-0 truncate text-sm text-parsel-neutral" title={item.name}>
-              {item.name}
-            </span>
-            <div className="flex shrink-0 items-center gap-2">
-              <span className="text-sm text-parsel-muted">
-                {item.monthly_limit === null ? "No limit" : formatInrAmount(item.monthly_limit)}
+          <li key={item.name} className="flex items-center justify-between gap-3 py-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 truncate text-sm text-parsel-neutral" title={item.name}>
+                {item.name}
               </span>
-              <Button type="button" variant="ghost" size="sm" onClick={() => openEdit(item)}>
+              {item.is_system === false ? null : (
+                <span className="shrink-0 text-xs text-parsel-muted">Default</span>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="tabular-nums"
+                aria-label={`Edit monthly limit for ${item.name}`}
+                onClick={() => openEdit(item)}
+              >
+                <span className={item.monthly_limit === null ? "text-parsel-muted" : undefined}>
+                  {item.monthly_limit === null ? "No limit" : formatInrAmount(item.monthly_limit)}
+                </span>
                 <Pencil className="size-3.5" />
-                Edit
               </Button>
+              <div className="flex w-16 items-center justify-end">{rowActions?.(item)}</div>
             </div>
           </li>
         ))}

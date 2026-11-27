@@ -1,5 +1,5 @@
 import { TrendingUp } from "lucide-react";
-import { CartesianGrid, Line, LineChart, XAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -10,8 +10,8 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import { SERIES_COLORS } from "@/components/dashboard/BankBalanceLegend";
-import { formatInrAmount } from "@/lib/format";
+import { SERIES_COLORS, Y_AXIS_WIDTH } from "@/components/dashboard/BankBalanceLegend";
+import { formatInrAmount, formatInrCompact } from "@/lib/format";
 import type { DailySpendSeries } from "@/lib/types";
 
 export function DailySpendLineChart({
@@ -87,7 +87,7 @@ export function DailySpendLineChart({
           <LineChart
             accessibilityLayer
             data={chartData}
-            margin={{ left: 12, right: 12 }}
+            margin={{ left: 0, right: 12 }}
             className={onDayClick ? "cursor-pointer" : undefined}
             onClick={(state) => {
               const day = Number(state?.activeLabel);
@@ -102,6 +102,14 @@ export function DailySpendLineChart({
               tickMargin={8}
               ticks={axisTicks}
               tickFormatter={(value) => `Day ${value}`}
+            />
+            <YAxis
+              width={Y_AXIS_WIDTH}
+              tickLine={false}
+              axisLine={false}
+              tickMargin={4}
+              tickCount={4}
+              tickFormatter={(value) => formatInrCompact(Number(value))}
             />
             <ChartTooltip
               cursor={false}

@@ -14,6 +14,8 @@ export type DashboardOverviewFilters = {
    * `null` = all banks (default / not yet narrowed).
    */
   banks: string[] | null;
+  /** Category for the monthly trend only. `null` = all spend. */
+  chartCategory: string | null;
 };
 
 export function currentMonthValue(now = new Date()): string {
@@ -41,6 +43,7 @@ export function dashboardOverviewQueryKey(filters: DashboardOverviewFilters) {
     RECENT_ACTIVITY_LIMIT,
     filters.month,
     banksFilterKey(filters.banks),
+    filters.chartCategory ?? "all",
   ] as const;
 }
 
@@ -53,6 +56,7 @@ export function dashboardOverviewQueryOptions(filters: DashboardOverviewFilters)
         recentLimit: RECENT_ACTIVITY_LIMIT,
         month: filters.month,
         banks: filters.banks,
+        chartCategory: filters.chartCategory,
       }),
     staleTime: 60_000,
     gcTime: 5 * 60_000,
@@ -79,6 +83,7 @@ export function prefetchDashboardOverview(filters?: Partial<DashboardOverviewFil
   const resolved: DashboardOverviewFilters = {
     month: filters?.month ?? currentMonthValue(),
     banks: filters?.banks ?? null,
+    chartCategory: filters?.chartCategory ?? null,
   };
   return queryClient.prefetchQuery(dashboardOverviewQueryOptions(resolved));
 }

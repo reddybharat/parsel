@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from auth.deps import get_current_user
 from auth.models import User
 from common.logger import get_logger
+from tracker.constants import CATEGORY_NAME_MAX_LENGTH
 from tracker.insight_service import get_monthly_insight
 from tracker.schemas import (
     DashboardOverviewResponse,
@@ -38,6 +39,11 @@ async def dashboard_overview(
         None,
         description="Optional comma-separated bank filter. Omit for all banks.",
     ),
+    chart_category: Optional[str] = Query(
+        None,
+        max_length=CATEGORY_NAME_MAX_LENGTH,
+        description="Narrow only the monthly trend to this category. Omit for all spend.",
+    ),
     current_user: User = Depends(get_current_user),
 ) -> DashboardOverviewResponse:
     t0 = time.perf_counter()
@@ -49,18 +55,20 @@ async def dashboard_overview(
             user_id=current_user.id,
             month=month,
             banks=bank_list,
+            chart_category=chart_category,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     result = DashboardOverviewResponse(**payload)
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
-        "dashboard_overview completed in %.1f ms (months=%d, recent_limit=%d, month=%s, banks=%s)",
+        "dashboard_overview completed in %.1f ms (months=%d, recent_limit=%d, month=%s, banks=%s, chart_category=%s)",
         elapsed_ms,
         months,
         recent_limit,
         month,
         banks,
+        chart_category,
     )
     return result
 

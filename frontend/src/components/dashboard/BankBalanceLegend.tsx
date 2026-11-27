@@ -13,6 +13,9 @@ export const SERIES_COLORS = [
   "hsl(var(--chart-5))",
 ];
 
+/** Room for Y-axis labels like "₹1.2L"; shared so the daily and monthly charts line up. */
+export const Y_AXIS_WIDTH = 44;
+
 /** Per-bank balances; in Daily view each row's swatch matches that bank's chart line. */
 export function BankBalanceLegend({
   balances,
