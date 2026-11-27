@@ -1372,12 +1372,15 @@ def _dashboard_params(
     user_id: uuid.UUID,
     *,
     banks: list[str] | None = None,
+    chart_category: str | None = None,
 ) -> dict[str, Any]:
     return {
         **bounds,
         "user_id": user_id,
         "filter_banks": banks is not None,
         "banks_csv": ",".join(banks) if banks else "",
+        "filter_chart_category": chart_category is not None,
+        "chart_category": chart_category or "",
         "investments_category": INVESTMENTS_CATEGORY,
         "self_transfer_category": SELF_TRANSFER_CATEGORY,
         "wallet_top_up_category": WALLET_TOP_UP_CATEGORY,
@@ -1452,6 +1455,17 @@ spend_txns AS (
       :investments_category, :self_transfer_category, :wallet_top_up_category
     )
 ),
+chart_txns AS (
+  SELECT cm.*
+  FROM current_month cm
+  WHERE cm.is_debit = TRUE
+    AND (CASE WHEN :filter_chart_category
+      THEN cm.category = :chart_category
+      ELSE cm.category NOT IN (
+        :investments_category, :self_transfer_category, :wallet_top_up_category
+      )
+    END)
+),
 summary AS (
   SELECT
     COALESCE(SUM(CASE
@@ -1482,9 +1496,12 @@ trend_rows AS (
   FROM transactions t
   WHERE t.user_id = :user_id
     AND t.is_debit = TRUE
-    AND t.category NOT IN (
-      :investments_category, :self_transfer_category, :wallet_top_up_category
-    )
+    AND (CASE WHEN :filter_chart_category
+      THEN t.category = :chart_category
+      ELSE t.category NOT IN (
+        :investments_category, :self_transfer_category, :wallet_top_up_category
+      )
+    END)
     AND t.transaction_date >= :trend_start
     AND t.transaction_date < :month_next_start
     AND (NOT :filter_banks OR t.bank = ANY(string_to_array(:banks_csv, ',')))
@@ -1540,19 +1557,19 @@ daily_series AS (
 ),
 daily_bank_agg AS (
   SELECT
-    st.bank AS bank,
-    st.transaction_date AS day_date,
-    COALESCE(SUM(st.amount), 0)::float8 AS spend
-  FROM spend_txns st
-  WHERE st.bank IS NOT NULL AND btrim(st.bank) <> ''
-  GROUP BY st.bank, st.transaction_date
+    ct.bank AS bank,
+    ct.transaction_date AS day_date,
+    COALESCE(SUM(ct.amount), 0)::float8 AS spend
+  FROM chart_txns ct
+  WHERE ct.bank IS NOT NULL AND btrim(ct.bank) <> ''
+  GROUP BY ct.bank, ct.transaction_date
 ),
 daily_banks AS (
   SELECT DISTINCT bank FROM daily_bank_agg
 ),
 daily_spend AS (
-  SELECT COALESCE(SUM(st.amount), 0)::float8 AS total
-  FROM spend_txns st
+  SELECT COALESCE(SUM(ct.amount), 0)::float8 AS total
+  FROM chart_txns ct
 )
 SELECT
   s.current_month_spend,
@@ -1616,12 +1633,16 @@ async def _get_dashboard_aggregates(
     *,
     user_id: uuid.UUID,
     banks: list[str] | None = None,
+    chart_category: str | None = None,
 ) -> dict:
-    """Single-query dashboard aggregates (summary, trend, highlights, daily spend)."""
+    """Single-query dashboard aggregates (summary, trend, highlights, daily spend).
+
+    ``chart_category`` narrows only the two spend charts (monthly trend, daily series) to that one category.
+    """
     async with get_readonly_connection() as session:
         result = await session.execute(
             text(_DASHBOARD_AGGREGATES_SQL),
-            _dashboard_params(bounds, user_id, banks=banks),
+            _dashboard_params(bounds, user_id, banks=banks, chart_category=chart_category),
         )
         row = result.mappings().first() or {}
 
@@ -1863,6 +1884,7 @@ async def get_dashboard_overview(
     user_id: uuid.UUID,
     month: str | None = None,
     banks: list[str] | None = None,
+    chart_category: str | None = None,
 ) -> dict:
     """Return dashboard data via one aggregate query and one recent-transactions query."""
     months = max(1, min(int(months), 24))
@@ -1870,9 +1892,12 @@ async def get_dashboard_overview(
     focus_month = _parse_focus_month(month)
     bank_filter = _normalize_banks_filter(banks)
     bounds = _dashboard_bounds(months, focus_month)
+    chart_category = (chart_category or "").strip() or None
 
     aggregates, recent_items, profile_banks, portfolio, freshness = await asyncio.gather(
-        _get_dashboard_aggregates(bounds, months, user_id=user_id, banks=bank_filter),
+        _get_dashboard_aggregates(
+            bounds, months, user_id=user_id, banks=bank_filter, chart_category=chart_category
+        ),
         _get_dashboard_recent(recent_limit, bounds, user_id=user_id, banks=bank_filter),
         bank_service.list_profile_bank_names(user_id),
         _get_portfolio_balance(bounds, user_id=user_id, banks=bank_filter),

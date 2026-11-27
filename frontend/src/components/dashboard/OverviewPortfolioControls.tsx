@@ -24,6 +24,9 @@ import { cn } from "@/lib/utils";
 
 const TRIGGER_AVATAR_LIMIT = 3;
 const CONTROL_WIDTH = "w-[10rem]";
+const SELECT_TRIGGER = `h-8 ${CONTROL_WIDTH} rounded-none border-parsel-border bg-parsel-surface px-2 text-xs shadow-none`;
+// Radix Select can't use "" as an item value.
+const ALL_CATEGORIES = "__all__";
 
 export type SpendChartKind = "daily" | "monthly";
 
@@ -40,6 +43,9 @@ type OverviewPortfolioControlsProps = {
   activeBanks: string[];
   selectedBanks: string[];
   onSelectedBanksChange: (banks: string[]) => void;
+  categories: string[];
+  selectedCategory: string | null;
+  onSelectedCategoryChange: (category: string | null) => void;
 };
 
 /** Months of the current calendar year, from latest down to January. */
@@ -63,6 +69,9 @@ export function OverviewPortfolioControls({
   activeBanks,
   selectedBanks,
   onSelectedBanksChange,
+  categories,
+  selectedCategory,
+  onSelectedCategoryChange,
 }: OverviewPortfolioControlsProps) {
   const latestMonth = currentMonthValue();
   const options = useMemo(() => monthOptions(latestMonth), [latestMonth]);
@@ -106,10 +115,7 @@ export function OverviewPortfolioControls({
         ))}
       </div>
       <Select value={month} onValueChange={onMonthChange}>
-        <SelectTrigger
-          aria-label="Focus month"
-          className={`h-8 ${CONTROL_WIDTH} rounded-none border-parsel-border bg-parsel-surface px-2 text-xs shadow-none`}
-        >
+        <SelectTrigger aria-label="Focus month" className={SELECT_TRIGGER}>
           <SelectValue placeholder="Month" />
         </SelectTrigger>
         <SelectContent className="rounded-none" align="end">
@@ -155,6 +161,27 @@ export function OverviewPortfolioControls({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+      ) : null}
+
+      {categories.length > 0 ? (
+        <Select
+          value={selectedCategory ?? ALL_CATEGORIES}
+          onValueChange={(value) => onSelectedCategoryChange(value === ALL_CATEGORIES ? null : value)}
+        >
+          <SelectTrigger aria-label="Chart category" className={SELECT_TRIGGER}>
+            <SelectValue placeholder="All categories" />
+          </SelectTrigger>
+          <SelectContent className="rounded-none" align="end">
+            <SelectItem value={ALL_CATEGORIES} className="rounded-none text-xs">
+              All categories
+            </SelectItem>
+            {categories.map((category) => (
+              <SelectItem key={category} value={category} className="rounded-none text-xs">
+                {category}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       ) : null}
     </div>
   );

@@ -1,11 +1,17 @@
 """Tests for dashboard overview aggregates."""
 
 from datetime import date, datetime
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
 import pytest
+from sqlalchemy import delete
 
+os.environ.setdefault("JWT_SECRET", "test-secret-key-for-pytest-only!!")
+
+from auth.models import User
+from common.database import get_connection, is_database_configured
 from tracker.constants import (
     INVESTMENTS_CATEGORY,
     NON_SPEND_CATEGORIES,
@@ -24,6 +30,7 @@ from tracker.services import (
     _parse_focus_month,
     get_dashboard_overview,
 )
+from tracker.models import Transaction
 
 pytestmark = pytest.mark.anyio
 
@@ -119,7 +126,7 @@ async def test_get_dashboard_aggregates_parses_category_spend_sorted():
     assert sql.count(
         "category NOT IN ( :investments_category, :self_transfer_category, "
         ":wallet_top_up_category )"
-    ) == 5
+    ) == 6
     assert "cm.category = :investments_category" in sql
     assert sql.count("NOT :filter_banks OR") == 4
     assert params["investments_category"] == INVESTMENTS_CATEGORY
@@ -127,6 +134,8 @@ async def test_get_dashboard_aggregates_parses_category_spend_sorted():
     assert params["wallet_top_up_category"] == WALLET_TOP_UP_CATEGORY
     assert params["filter_banks"] is True
     assert params["banks_csv"] == "SBI,Kotak"
+    assert params["filter_chart_category"] is False
+    assert params["chart_category"] == ""
 
     items = result["category_spend"]["items"]
     assert len(items) == 2
@@ -207,8 +216,10 @@ async def test_get_dashboard_overview_merges_portfolio_and_profile_banks():
             user_id=uuid.UUID("55555555-5555-5555-5555-555555555555"),
             month="2026-07",
             banks=["Kotak"],
+            chart_category="  Grocery ",
         )
 
+    assert aggregates_mock.await_args.kwargs["chart_category"] == "Grocery"
     assert result["category_spend"]["items"] == [{"category": "Grocery", "spend": 42.0}]
     # Dashboard picker shows all profile banks (active + inactive).
     assert result["active_banks"] == ["SBI", "Kotak", "Slice"]
@@ -347,3 +358,75 @@ async def test_get_dashboard_overview_rejects_invalid_bank():
             user_id=uuid.UUID("55555555-5555-5555-5555-555555555555"),
             banks=["Unknown Bank"],
         )
+
+
+@pytest.mark.skipif(not is_database_configured(), reason="DATABASE_URL not set")
+async def test_chart_category_narrows_only_the_spend_charts():
+    user_id = uuid.uuid4()
+    user = User(
+        id=user_id,
+        username=f"trend-{user_id}",
+        email=f"{user_id}@example.com",
+        password_hash="x",
+    )
+
+    def debit(amount: int, category: str, day: date) -> Transaction:
+        return Transaction(
+            id=uuid.uuid4(),
+            user_id=user_id,
+            amount=amount,
+            is_debit=True,
+            category=category,
+            bank="SBI",
+            transaction_date=day,
+        )
+
+    txns = [
+        debit(100, "Groceries", date(2026, 6, 3)),
+        debit(40, "Dining", date(2026, 6, 4)),
+        debit(250, "Groceries", date(2026, 7, 2)),
+        debit(60, "Dining", date(2026, 7, 5)),
+        debit(1000, INVESTMENTS_CATEGORY, date(2026, 7, 6)),
+    ]
+    try:
+        async with get_connection() as session:
+            session.add(user)
+            await session.flush()
+            session.add_all(txns)
+    except Exception as exc:  # noqa: BLE001
+        pytest.skip(f"database not reachable: {exc}")
+
+    bounds = _dashboard_bounds(2, date(2026, 7, 1))
+
+    async def trend(category: str | None) -> tuple[list[float], dict]:
+        result = await _get_dashboard_aggregates(
+            bounds, 2, user_id=user_id, chart_category=category
+        )
+        return [point["spend"] for point in result["trend_points"]], result
+
+    try:
+        all_spend, all_result = await trend(None)
+        groceries, groceries_result = await trend("Groceries")
+        invested, invested_result = await trend(INVESTMENTS_CATEGORY)
+        unknown, _ = await trend("Nope")
+    finally:
+        async with get_connection() as session:
+            await session.execute(delete(Transaction).where(Transaction.user_id == user_id))
+            await session.execute(delete(User).where(User.id == user_id))
+
+    assert all_spend == [140.0, 310.0]
+    assert groceries == [100.0, 250.0]
+    assert invested == [0.0, 1000.0]
+    assert unknown == [0.0, 0.0]
+
+    def july_daily(result: dict) -> tuple[float, dict[int, float]]:
+        daily = result["daily_spend"]
+        (sbi,) = daily["series"]
+        return daily["total"], {p["day"]: p["spend"] for p in sbi["points"] if p["spend"]}
+
+    assert july_daily(all_result) == (310.0, {2: 250.0, 5: 60.0})
+    assert july_daily(groceries_result) == (250.0, {2: 250.0})
+    assert july_daily(invested_result) == (1000.0, {6: 1000.0})
+    # Everything outside the two charts ignores the category.
+    assert groceries_result["summary"] == all_result["summary"]
+    assert groceries_result["category_spend"] == all_result["category_spend"]

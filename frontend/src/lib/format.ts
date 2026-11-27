@@ -17,6 +17,18 @@ export function formatInrAmount(amount: number): string {
   })}`;
 }
 
+const INR_COMPACT = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+/** Short axis label: ₹950, ₹15K, ₹1.2L, ₹3Cr. */
+export function formatInrCompact(amount: number): string {
+  return INR_COMPACT.format(amount);
+}
+
 export function formatRelativeDate(iso: string): string {
   const date = new Date(`${iso}T12:00:00`);
   const now = new Date();
