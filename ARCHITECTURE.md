@@ -7,6 +7,11 @@ Parsel uses a clear split:
 
 The API is stateless and directly calls feature services.
 
+Root scripts for Windows users (see the README's Quick setup):
+
+- `setup.bat`: one-time install. Installs missing Python, Node.js and PostgreSQL via `winget`, creates the `parsel` and `parsel_agent` logins with random passwords, applies `migrations/*.sql` in order, installs packages and writes `backend/.env`. When `backend/.env` already exists it only refreshes packages.
+- `start_backend.bat` and `start_frontend.bat`: run uvicorn (port 8000) and Vite (port 5173, `--strictPort`), each in its own window.
+
 ## Backend structure
 
 - `backend/main.py`: FastAPI app setup, CORS, router registration, JWT auth wiring.

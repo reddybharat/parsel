@@ -18,6 +18,8 @@ Commands are Windows `cmd`, run from the repo root with the Postgres tools on `P
 
 ## Fresh database
 
+[`setup.bat`](../setup.bat) does all of this on a new machine: it runs every script here in filename order, `008` as `postgres` and the rest as `parsel`, plus the `SET NOT NULL` and FK parts of `002` STEP B. It skips the database when `backend\.env` already exists, so new scripts on an existing database still need the commands below. A new script added here is picked up by `setup.bat` automatically; if it must run as `postgres`, special-case it there the way `008` is.
+
 ```cmd
 psql -U parsel -d parsel -f migrations\001_initial_transactions.sql
 psql -U parsel -d parsel -f migrations\002_users_and_transaction_user_id.sql

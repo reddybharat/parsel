@@ -11,6 +11,29 @@ Parsel is an INR-focused personal finance tracker: log and search transactions t
 
 All amounts are stored and displayed in Indian Rupees (₹). Bank is a label on each transaction (not Open Banking / account aggregation).
 
+## Quick setup (Windows)
+
+No coding needed. You need an internet connection and about 15 minutes.
+
+1. **Download Parsel** and unzip it somewhere easy to find, like your Documents folder.
+2. **Double-click `setup.bat`** and follow what the window says. You only do this once.
+   - Anything missing (Python, Node.js, PostgreSQL) is installed for you.
+   - When the PostgreSQL installer opens, keep the defaults, **choose a password and write it down**, and untick "Stack Builder" at the end. Setup asks for that password next.
+   - If setup says new programs were installed, close the window and double-click `setup.bat` again.
+   - It asks for a Groq API key, which is free at [console.groq.com/keys](https://console.groq.com/keys). Only the chat assistant needs it; press Enter to skip.
+3. **Every time you use Parsel:**
+   - Double-click `start_backend.bat`.
+   - Double-click `start_frontend.bat`.
+   - Open **[http://localhost:5173](http://localhost:5173)** in your browser and register an account.
+
+Keep both windows open while you use Parsel. Close them to stop it.
+
+Setup writes all settings to `backend\.env` for you, including generated passwords, so there is nothing to fill in. To add a Groq key later: open `backend\.env` in Notepad, paste the key after `GROQ_API_KEY=`, save, then close and reopen the backend window.
+
+Running `setup.bat` again is safe: it updates packages and leaves your data alone. It does not apply new database migrations to an existing database; those still run by hand (see [`migrations/README.md`](migrations/README.md)).
+
+The rest of this README is the manual setup, for developers.
+
 ## Prerequisites
 
 - **Python** 3.11+ (3.12 recommended)
