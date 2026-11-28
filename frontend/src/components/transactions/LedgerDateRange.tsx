@@ -103,12 +103,10 @@ export function LedgerDateRange({
   startDate,
   endDate,
   onChange,
-  invalid = false,
 }: {
   startDate: string;
   endDate: string;
   onChange: (start: string, end: string) => void;
-  invalid?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const preset = matchPreset(startDate, endDate);
@@ -122,10 +120,7 @@ export function LedgerDateRange({
         <Button
           variant="outline"
           size="sm"
-          className={cn(
-            "h-8 gap-2 border-parsel-border px-2.5 text-xs font-normal text-parsel-text",
-            invalid && "border-parsel-danger text-parsel-danger",
-          )}
+          className="h-8 gap-2 border-parsel-border px-2.5 text-xs font-normal text-parsel-text"
         >
           <CalendarRange className="text-parsel-muted" />
           <span className="whitespace-nowrap tabular-nums">{label}</span>
@@ -160,20 +155,17 @@ export function LedgerDateRange({
           <div className="flex items-center gap-1.5">
             <DatePicker
               value={startDate}
-              onChange={(value) => onChange(value, endDate)}
+              onChange={(value) => onChange(value, value > endDate ? value : endDate)}
               placeholder="Start"
               className="h-8 flex-1 px-2 text-xs"
             />
             <DatePicker
               value={endDate}
-              onChange={(value) => onChange(startDate, value)}
+              onChange={(value) => onChange(value < startDate ? value : startDate, value)}
               placeholder="End"
               className="h-8 flex-1 px-2 text-xs"
             />
           </div>
-          {invalid ? (
-            <p className="text-xs text-parsel-danger">Start date must come before the end date.</p>
-          ) : null}
         </div>
       </PopoverContent>
     </Popover>

@@ -210,7 +210,15 @@ export function OverviewPage() {
 
   return (
     <div className="ov-grid grid h-full min-h-0 grid-cols-1 content-start gap-1.5 overflow-y-auto">
-      <div className="ov-kpis grid grid-cols-2 gap-1.5 lg:grid-cols-4">
+      <div className="ov-kpis grid grid-cols-2 gap-1.5 lg:grid-cols-5">
+        <KpiTile
+          label="Inflow"
+          value={formatInrAmount(inflow)}
+          valueClassName="text-parsel-inflow"
+          sub="Not counting your own transfers"
+          hint="Money that came into your accounts this month, like salary or refunds. Moving money between your own accounts is not counted."
+          to={ledgerHref({ ...monthLink, direction: "credit" })}
+        />
         <KpiTile
           label="Spending"
           value={formatInrAmount(spend)}
@@ -224,21 +232,14 @@ export function OverviewPage() {
           to={ledgerHref({ ...monthLink, direction: "debit" })}
         />
         <KpiTile
-          label="Inflow"
-          value={formatInrAmount(inflow)}
-          valueClassName="text-parsel-inflow"
-          sub="Not counting your own transfers"
-          hint="Money that came into your accounts this month, like salary or refunds. Moving money between your own accounts is not counted."
-          to={ledgerHref({ ...monthLink, direction: "credit" })}
-        />
-        <KpiTile
           label="Invested"
           value={formatInrAmount(invested)}
+          sub={inflow <= 0 ? "No inflow this month" : `${((invested / inflow) * 100).toFixed(0)}% of inflow`}
           hint="Money you put into investments this month."
           to={ledgerHref({ ...monthLink, category: INVESTMENTS_CATEGORY })}
         />
         <KpiTile
-          label="Left over"
+          label="Left over this month"
           value={`${leftOver < 0 ? "−" : ""}${formatInrAmount(leftOver)}`}
           valueClassName={leftOver < 0 ? "text-parsel-outflow" : "text-parsel-neutral"}
           sub={
@@ -248,7 +249,13 @@ export function OverviewPage() {
                 ? "Spent more than came in"
                 : `${((leftOver / inflow) * 100).toFixed(0)}% of inflow`
           }
-          hint="Inflow minus spending minus invested."
+          hint="This month's inflow minus spending minus invested, so far. Money already in your accounts before the month started is not counted."
+        />
+        <KpiTile
+          label="Projected spend"
+          value={formatInrAmount(projectedSpend ?? spend)}
+          sub={daysElapsed < monthDays ? "By month end, at current pace" : "Month complete"}
+          hint="Estimate of what you'll spend by month end if you keep spending at this month's daily pace. Big one-off payments like rent can skew it."
         />
       </div>
 
@@ -281,11 +288,6 @@ export function OverviewPage() {
               start={start}
               end={end}
             />
-          ) : null}
-          {projectedSpend !== null ? (
-            <p className="mt-auto pt-2 text-[11px] leading-snug text-parsel-muted">
-              Month-end spend at this pace: {formatInrAmount(projectedSpend)}
-            </p>
           ) : null}
         </div>
         <div className="ov-balance-chart flex min-h-[9rem] min-w-0 flex-1 flex-col">

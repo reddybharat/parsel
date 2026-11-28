@@ -4,10 +4,10 @@
 
 /* Hybrid: Mono Signal layout + Precision cyan accents + JetBrains Mono */
 :root {
-  --parsel-bg: #ffffff;
+  --parsel-bg: #eeeeee;
   --parsel-surface: #ffffff;
   --parsel-soft: #ebebeb;
-  --parsel-canvas: #f3f3f3;
+  --parsel-canvas: #eeeeee;
   --parsel-text: #0a0a0a;
   --parsel-muted: #6b6b6b;
   --parsel-primary: #00a3c4;
@@ -60,10 +60,10 @@
 }
 
 .dark {
-  --parsel-bg: #000000;
+  --parsel-bg: #252525;
   --parsel-surface: #111111;
   --parsel-soft: #1a1a1a;
-  --parsel-canvas: #0a0a0a;
+  --parsel-canvas: #252525;
   --parsel-text: #f5f5f5;
   --parsel-muted: #a3a3a3;
   --parsel-primary: #35d0ef;
@@ -153,7 +153,50 @@ body,
 .chat-markdown ul,
 .chat-markdown ol {
   margin: 0.5em 0;
-  padding-left: 1.25rem;
+  padding-left: 1.5rem;
+}
+
+/* Tailwind preflight strips list markers; answers rely on them. */
+.chat-markdown ul {
+  list-style: square;
+}
+
+.chat-markdown ol {
+  list-style: decimal;
+}
+
+.chat-markdown li::marker {
+  color: var(--parsel-muted);
+}
+
+.chat-markdown strong {
+  font-weight: 600;
+}
+
+/* New assistant answers settle in; user messages appear instantly (keyboard-sent). */
+.chat-message-enter {
+  transition:
+    opacity 180ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@starting-style {
+  .chat-message-enter {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-message-enter {
+    transition: opacity 180ms ease;
+  }
+
+  @starting-style {
+    .chat-message-enter {
+      transform: none;
+    }
+  }
 }
 
 .chat-markdown li {

@@ -29,28 +29,24 @@ export function LedgerToolbar({
   onFiltersChange,
   onReset,
   isDirty,
-  invalidRange,
   categories,
   paymentMethods,
   banks,
   table,
   onExport,
   canExport,
-  onSubmit,
   onAdd,
 }: {
   filters: LedgerFilters;
   onFiltersChange: (next: Partial<LedgerFilters>) => void;
   onReset: () => void;
   isDirty: boolean;
-  invalidRange: boolean;
   categories: Category[];
   paymentMethods: string[];
   banks: string[];
   table: Table<Transaction>;
   onExport: () => void;
   canExport: boolean;
-  onSubmit: () => void;
   onAdd: () => void;
 }) {
   return (
@@ -64,10 +60,6 @@ export function LedgerToolbar({
           value={filters.query}
           onChange={(event) => onFiltersChange({ query: event.target.value })}
           onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              onSubmit();
-            }
             if (event.key === "Escape" && filters.query) {
               event.preventDefault();
               onFiltersChange({ query: "" });
@@ -92,7 +84,6 @@ export function LedgerToolbar({
       <LedgerDateRange
         startDate={filters.startDate}
         endDate={filters.endDate}
-        invalid={invalidRange}
         onChange={(start, end) => onFiltersChange({ startDate: start, endDate: end })}
       />
 
