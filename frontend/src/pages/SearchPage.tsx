@@ -7,7 +7,6 @@ import {
   type SortingState,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { Search } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 
 import { DataTable } from "@/components/data-table/data-table";
@@ -70,6 +69,12 @@ function filtersFromUrl(params: URLSearchParams): Partial<LedgerFilters> {
   return fromUrl;
 }
 
+/** Swap a reversed range (e.g. a deep link's single bound past the default other end). */
+function withOrderedRange(filters: LedgerFilters): LedgerFilters {
+  if (filters.startDate <= filters.endDate) return filters;
+  return { ...filters, startDate: filters.endDate, endDate: filters.startDate };
+}
+
 export function SearchPage() {
   const [urlParams] = useSearchParams();
   const { data: trackerConfig } = useQuery(trackerConfigQueryOptions());
@@ -80,21 +85,14 @@ export function SearchPage() {
   const { data: profileBanks } = useQuery(banksQueryOptions());
   const allBanks = (profileBanks ?? []).map((b) => b.bank);
 
-  const [filters, setFilters] = useState<LedgerFilters>(() => ({
-    ...defaultFilters(),
-    ...filtersFromUrl(urlParams),
-  }));
-  // Idle until the first explicit search; then filter changes refetch live.
-  // Deep links carrying any filter should search immediately.
-  const [hasSearched, setHasSearched] = useState(
-    () => Object.keys(filtersFromUrl(urlParams)).length > 0,
+  const [filters, setFilters] = useState<LedgerFilters>(() =>
+    withOrderedRange({ ...defaultFilters(), ...filtersFromUrl(urlParams) }),
   );
 
   useEffect(() => {
     const fromUrl = filtersFromUrl(urlParams);
     if (Object.keys(fromUrl).length === 0) return;
-    setFilters((current) => ({ ...current, ...fromUrl }));
-    setHasSearched(true);
+    setFilters((current) => withOrderedRange({ ...current, ...fromUrl }));
   }, [urlParams]);
 
   const [sorting, setSorting] = useState<SortingState>([{ id: "transaction_date", desc: true }]);
@@ -109,7 +107,6 @@ export function SearchPage() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const debouncedQuery = useDebouncedValue(filters.query, 300);
-  const invalidRange = filters.startDate > filters.endDate;
 
   const searchParams: SearchParams = useMemo(
     () => ({
@@ -140,7 +137,7 @@ export function SearchPage() {
   );
 
   const { data, isPending, isFetching, isError, error, refetch } = useQuery(
-    transactionSearchQueryOptions(searchParams, hasSearched && !invalidRange),
+    transactionSearchQueryOptions(searchParams, true),
   );
 
   const rows = data?.items ?? [];
@@ -207,15 +204,6 @@ export function SearchPage() {
     onColumnVisibilityChange: setColumnVisibility,
   });
 
-  function runSearch() {
-    if (invalidRange) return;
-    if (hasSearched) {
-      void refetch();
-    } else {
-      setHasSearched(true);
-    }
-  }
-
   async function withMutation(action: () => Promise<void>, failureTitle: string) {
     setSubmitting(true);
     setActionError(null);
@@ -272,8 +260,7 @@ export function SearchPage() {
     }
   }
 
-  const showTable = hasSearched && !invalidRange;
-  const firstLoad = showTable && isPending;
+  const firstLoad = isPending;
 
   return (
     <div className="flex h-full w-full min-h-0 flex-col gap-1.5 overflow-hidden">
@@ -304,14 +291,12 @@ export function SearchPage() {
         onFiltersChange={onFiltersChange}
         onReset={onReset}
         isDirty={isDirty}
-        invalidRange={invalidRange}
         categories={categories}
         paymentMethods={paymentMethods}
         banks={allBanks}
         table={table}
         onExport={() => void onExport()}
         canExport={total > 0}
-        onSubmit={runSearch}
         onAdd={() => setAddOpen(true)}
       />
 
@@ -327,61 +312,44 @@ export function SearchPage() {
         }}
       />
 
-      {showTable ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <DataTable
-            table={table}
-            isLoading={firstLoad}
-            isRefreshing={isFetching && !firstLoad}
-            skeletonRows={Math.min(pagination.pageSize, 10)}
-            // Fixed layout: Description (the only unsized column) fills the leftover width and
-            // truncates. Min width (~63.5rem of sized columns + ~16rem) keeps it from collapsing on narrow screens.
-            className="[&_table]:min-w-[80rem] [&_table]:table-fixed"
-            empty={
-              <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
-                <p className="text-sm text-parsel-text">
-                  {hasNarrowingFilters ? "No transactions match these filters" : "Nothing recorded in this range"}
-                </p>
-                <p className="max-w-sm text-xs text-parsel-muted">
-                  {hasNarrowingFilters
-                    ? "Widen the date range or clear a filter to see more."
-                    : "Pick a wider date range, or add your first entry for these dates."}
-                </p>
-                <div className="mt-1 flex gap-1.5">
-                  {isDirty ? (
-                    <Button variant="outline" size="sm" onClick={onReset}>
-                      Reset filters
-                    </Button>
-                  ) : null}
-                  <Button
-                    size="sm"
-                    variant={isDirty ? "ghost" : "default"}
-                    onClick={() => setAddOpen(true)}
-                  >
-                    Add transaction
+      <div className="flex min-h-0 flex-1 flex-col">
+        <DataTable
+          table={table}
+          isLoading={firstLoad}
+          isRefreshing={isFetching && !firstLoad}
+          skeletonRows={Math.min(pagination.pageSize, 10)}
+          // Fixed layout: Description (the only unsized column) fills the leftover width and
+          // truncates. Min width (~63.5rem of sized columns + ~16rem) keeps it from collapsing on narrow screens.
+          className="[&_table]:min-w-[80rem] [&_table]:table-fixed"
+          empty={
+            <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+              <p className="text-sm text-parsel-text">
+                {hasNarrowingFilters ? "No transactions match these filters" : "Nothing recorded in this range"}
+              </p>
+              <p className="max-w-sm text-xs text-parsel-muted">
+                {hasNarrowingFilters
+                  ? "Widen the date range or clear a filter to see more."
+                  : "Pick a wider date range, or add your first entry for these dates."}
+              </p>
+              <div className="mt-1 flex gap-1.5">
+                {isDirty ? (
+                  <Button variant="outline" size="sm" onClick={onReset}>
+                    Reset filters
                   </Button>
-                </div>
+                ) : null}
+                <Button
+                  size="sm"
+                  variant={isDirty ? "ghost" : "default"}
+                  onClick={() => setAddOpen(true)}
+                >
+                  Add transaction
+                </Button>
               </div>
-            }
-          />
-          <DataTablePagination table={table} />
-        </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 border border-parsel-border bg-parsel-surface px-6 text-center">
-          <Search className="size-5 text-parsel-muted" aria-hidden />
-          <div className="space-y-1.5">
-            <h2 className="text-sm font-semibold text-parsel-text">Search your ledger</h2>
-            <p className="max-w-sm text-xs text-parsel-muted">
-              {invalidRange
-                ? "The start date is after the end date. Fix the range to search."
-                : "Set a date range and filters above, then run the search. Results update as you refine them."}
-            </p>
-          </div>
-          <Button size="sm" onClick={runSearch} disabled={invalidRange}>
-            Search ledger
-          </Button>
-        </div>
-      )}
+            </div>
+          }
+        />
+        <DataTablePagination table={table} />
+      </div>
 
       <EditTransactionDialog
         open={Boolean(editing)}

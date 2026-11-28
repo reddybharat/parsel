@@ -23,9 +23,10 @@ import {
 import { cn } from "@/lib/utils";
 
 const TRIGGER_AVATAR_LIMIT = 3;
-// One row from lg up (where the Overview is one fixed-height screen); 2 × 2 below.
-const CONTROL = "h-7 w-full min-w-0 lg:flex-1";
-const SELECT_TRIGGER = `${CONTROL} rounded-none border-parsel-border bg-parsel-surface px-2 text-xs shadow-none`;
+// One row from lg up (where the Overview is one fixed-height screen); 2 × 2 below,
+// a little taller there for touch. Fixed widths so the row doesn't shift as values change.
+const CONTROL = "h-8 w-full min-w-0 lg:h-7";
+const SELECT_TRIGGER = `${CONTROL} rounded-none border-parsel-border bg-parsel-surface px-2 py-0 text-xs shadow-none`;
 // Radix Select can't use "" as an item value.
 const ALL_CATEGORIES = "__all__";
 
@@ -99,7 +100,7 @@ export function OverviewPortfolioControls({
 
   return (
     <div className={cn("grid shrink-0 grid-cols-2 gap-1.5 lg:flex", className)}>
-      <div role="group" aria-label="Spend chart" className="flex h-7 w-full border border-parsel-border lg:w-[8.5rem] lg:shrink-0">
+      <div role="group" aria-label="Spend chart" className="flex h-8 w-full border border-parsel-border lg:ml-auto lg:h-7 lg:w-[8.5rem] lg:shrink-0">
         {CHART_OPTIONS.map((option) => (
           <button
             key={option.value}
@@ -118,7 +119,7 @@ export function OverviewPortfolioControls({
         ))}
       </div>
       <Select value={month} onValueChange={onMonthChange}>
-        <SelectTrigger aria-label="Focus month" className={SELECT_TRIGGER}>
+        <SelectTrigger aria-label="Focus month" className={cn(SELECT_TRIGGER, "lg:w-36")}>
           <SelectValue placeholder="Month" />
         </SelectTrigger>
         <SelectContent className="rounded-none" align="start">
@@ -134,7 +135,7 @@ export function OverviewPortfolioControls({
         <DropdownMenu>
           <DropdownMenuTrigger
             aria-label={`Banks: ${allSelected ? "all" : selectedBanks.join(", ")}`}
-            className={`flex ${CONTROL} items-center gap-1.5 border border-parsel-border bg-parsel-surface px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+            className={`flex ${CONTROL} lg:w-44 items-center gap-1.5 border border-parsel-border bg-parsel-surface px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
           >
             <AvatarGroup className="shrink-0">
               {selectedBanks.slice(0, TRIGGER_AVATAR_LIMIT).map((bank) => (
@@ -174,7 +175,7 @@ export function OverviewPortfolioControls({
           <SelectTrigger
             aria-label="Chart category"
             title={selectedCategory ?? "All categories"}
-            className={SELECT_TRIGGER}
+            className={cn(SELECT_TRIGGER, "lg:min-w-28 lg:max-w-56 lg:flex-1")}
           >
             <SelectValue placeholder="All categories" />
           </SelectTrigger>

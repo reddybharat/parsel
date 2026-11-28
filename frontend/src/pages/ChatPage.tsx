@@ -1,14 +1,15 @@
-import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
-import { ArrowUp, Square } from "lucide-react";
+import { FormEvent, KeyboardEvent, ReactNode, useEffect, useRef, useState } from "react";
+import { ArrowUp, ArrowUpRight, Check, Copy, SquarePen, Square } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { Link, useSearchParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
 
 import { ErrorState } from "../components/feedback/ErrorState";
 import { exitChat, invokeChat, resumeChat } from "../api/chat";
+import { ParselMark } from "@/components/brand/ParselMark";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
-import { Message, MessageContent } from "@/components/ui/message";
+import { Message, MessageAvatar, MessageContent, MessageFooter } from "@/components/ui/message";
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -18,8 +19,10 @@ import {
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
 import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
 
 const LEDGER_SEARCH_PATH = "/ledger/search";
+const COPIED_RESET_MS = 1500;
 
 type ChatMessage = { id: string; role: "user" | "assistant"; content: string };
 
@@ -69,79 +72,118 @@ function formatChatError(err: unknown): string {
   return message;
 }
 
-function ChatMessageRow({ message }: { message: ChatMessage }) {
-  const isUser = message.role === "user";
+const ACTION_BUTTON_CLASS =
+  "flex h-7 items-center gap-1.5 px-1.5 text-[11px] text-parsel-muted transition-[color,transform] duration-150 ease-out hover:text-parsel-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-parsel-primary active:scale-[0.97]";
+
+/** Assistant column: Parsel chip on the left, content beside it (answer, thinking, stopped). */
+function AssistantMessage({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <Message align="start" className={className}>
+      <MessageAvatar className="self-start">
+        <span className="flex size-6 items-center justify-center bg-parsel-nav-active-bg text-parsel-nav-active-text">
+          <ParselMark className="size-4" />
+        </span>
+      </MessageAvatar>
+      <MessageContent className="w-full max-w-[72ch]">{children}</MessageContent>
+    </Message>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), COPIED_RESET_MS);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+    } catch (err) {
+      console.warn("Chat: copying the answer to the clipboard failed", err);
+    }
+  }
 
   return (
-    <Message align="start">
-      <MessageContent className={isUser ? "max-w-[68%]" : "max-w-full"}>
-        <div className="flex flex-col gap-1">
-          <Bubble
-            className={
-              isUser
-                ? "border-parsel-border/50 bg-parsel-soft/50 text-parsel-secondary"
-                : "border-parsel-border bg-parsel-surface font-medium text-parsel-text"
-            }
-          >
-            <BubbleContent className={!isUser ? "chat-markdown" : undefined}>
-              {isUser ? (
-                <p className="whitespace-pre-wrap text-sm">{message.content}</p>
-              ) : (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-              )}
+    <button type="button" className={ACTION_BUTTON_CLASS} onClick={() => void copy()}>
+      {copied ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
+      <span aria-live="polite">{copied ? "Copied" : "Copy"}</span>
+    </button>
+  );
+}
+
+function ChatMessageRow({ message, isLatest }: { message: ChatMessage; isLatest: boolean }) {
+  if (message.role === "user") {
+    return (
+      <Message align="end">
+        <MessageContent className="max-w-[75%]">
+          <Bubble className="border-transparent bg-parsel-soft">
+            <BubbleContent className="py-2.5">
+              <p className="whitespace-pre-wrap break-words">{message.content}</p>
             </BubbleContent>
           </Bubble>
-          {!isUser ? (
-            <Link
-              to={LEDGER_SEARCH_PATH}
-              className="self-start text-[11px] text-parsel-muted transition-colors hover:text-parsel-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-parsel-primary"
-            >
-              Verify in Ledger
-            </Link>
-          ) : null}
-        </div>
-      </MessageContent>
-    </Message>
+        </MessageContent>
+      </Message>
+    );
+  }
+
+  return (
+    <AssistantMessage className="chat-message-enter">
+      <div className="chat-markdown pt-0.5 text-sm text-parsel-text">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+      </div>
+      <MessageFooter
+        className={cn(
+          "-ml-1.5 gap-0 transition-opacity duration-150 ease-out focus-within:opacity-100 group-hover/message:opacity-100 [@media(hover:none)]:opacity-100",
+          isLatest ? "opacity-100" : "opacity-0",
+        )}
+      >
+        <CopyButton text={message.content} />
+        <Link to={LEDGER_SEARCH_PATH} className={ACTION_BUTTON_CLASS}>
+          <ArrowUpRight className="size-3.5" aria-hidden />
+          Verify in Ledger
+        </Link>
+      </MessageFooter>
+    </AssistantMessage>
   );
 }
 
 function ThinkingRow() {
   return (
-    <Message align="start">
-      <MessageContent className="max-w-full">
-        <Marker role="status" aria-live="polite" aria-atomic="true">
-          <MarkerIcon>
-            <Spinner
-              className="size-4 text-parsel-primary"
-              aria-hidden
-              aria-label={undefined}
-              role="presentation"
-            />
-          </MarkerIcon>
-          <MarkerContent className="shimmer">Reading your ledger…</MarkerContent>
-        </Marker>
-      </MessageContent>
-    </Message>
+    <AssistantMessage>
+      <Marker role="status" aria-live="polite" aria-atomic="true" className="min-h-6">
+        <MarkerIcon>
+          <Spinner
+            className="size-4 text-parsel-primary"
+            aria-hidden
+            aria-label={undefined}
+            role="presentation"
+          />
+        </MarkerIcon>
+        <MarkerContent className="shimmer">Reading your ledger…</MarkerContent>
+      </Marker>
+    </AssistantMessage>
   );
 }
 
 function StoppedRow() {
   return (
-    <Message align="start">
-      <MessageContent className="max-w-full">
-        <Marker role="status" aria-live="polite" aria-atomic="true">
-          <MarkerIcon>
-            <Square
-              className="size-4 text-parsel-muted"
-              strokeWidth={0}
-              fill="currentColor"
-              aria-hidden
-            />
-          </MarkerIcon>
-          <MarkerContent>Stopped — ask again when ready</MarkerContent>
-        </Marker>
-      </MessageContent>
-    </Message>
+    <AssistantMessage>
+      <Marker role="status" aria-live="polite" aria-atomic="true" className="min-h-6">
+        <MarkerIcon>
+          <Square
+            className="size-4 text-parsel-muted"
+            strokeWidth={0}
+            fill="currentColor"
+            aria-hidden
+          />
+        </MarkerIcon>
+        <MarkerContent>Stopped — ask again when ready</MarkerContent>
+      </Marker>
+    </AssistantMessage>
   );
 }
 
@@ -291,21 +333,25 @@ export function ChatPage() {
             <span className="text-[11px] text-parsel-muted">your ledger</span>
           </div>
           <button
-            className="shrink-0 text-xs font-semibold uppercase tracking-wide text-parsel-secondary transition-colors hover:text-parsel-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-parsel-primary disabled:pointer-events-none disabled:opacity-50"
+            className="-my-1.5 -mr-2 flex h-8 shrink-0 items-center gap-1.5 px-2 text-xs font-semibold text-parsel-secondary transition-[color,transform] duration-150 ease-out hover:text-parsel-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-parsel-primary active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50"
             type="button"
             onClick={() => void reset()}
-            disabled={processing}
+            disabled={processing || messages.length === 0}
           >
-            Reset Session
+            <SquarePen className="size-3.5" aria-hidden />
+            New chat
           </button>
         </header>
 
         <MessageScrollerProvider autoScroll>
           <MessageScroller className="min-h-0 flex-1">
             <MessageScrollerViewport className="p-6 md:p-8">
-              <MessageScrollerContent className="gap-3">
+              <MessageScrollerContent className="flex-1 gap-6">
                 {messages.length === 0 && !processing && (
-                  <div className="mx-auto flex max-w-xl flex-col gap-4 py-6">
+                  <div className="m-auto flex w-full max-w-xl flex-col gap-4 py-6">
+                    <span className="flex size-8 items-center justify-center bg-parsel-nav-active-bg text-parsel-nav-active-text">
+                      <ParselMark className="size-5" />
+                    </span>
                     <div className="space-y-1.5">
                       <h2 className="text-sm font-semibold leading-snug text-parsel-text">
                         Ask about your ₹ transaction history — read-only, no money moves.
@@ -330,14 +376,17 @@ export function ChatPage() {
                   </div>
                 )}
 
-                {messages.map((message) => (
+                {messages.map((message, index) => (
                   <MessageScrollerItem
                     key={message.id}
                     messageId={message.id}
                     scrollAnchor={message.role === "user"}
                   >
-                    <div className="flex flex-col gap-1.5">
-                      <ChatMessageRow message={message} />
+                    <div className="flex flex-col gap-3">
+                      <ChatMessageRow
+                        message={message}
+                        isLatest={index === messages.length - 1 && !processing}
+                      />
                       {stoppedMessageIds.includes(message.id) ? <StoppedRow /> : null}
                     </div>
                   </MessageScrollerItem>
@@ -386,11 +435,18 @@ export function ChatPage() {
               </div>
             </details>
           ) : null}
-          <div className="flex items-center gap-2 rounded-none border border-parsel-border bg-parsel-soft px-3 py-1 focus-within:border-parsel-primary focus-within:ring-1 focus-within:ring-parsel-primary">
-            <input
-              className="w-full border-0 bg-transparent px-1 py-2.5 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
+          <div className="flex items-end gap-2 rounded-none border border-parsel-border bg-parsel-soft px-3 py-1.5 focus-within:border-parsel-primary focus-within:ring-1 focus-within:ring-parsel-primary">
+            {/* shortcut: field-sizing auto-grows in Chromium only; elsewhere the box stays one row and scrolls. Add JS resize if Safari/Firefox users complain. */}
+            <textarea
+              className="max-h-40 min-h-9 w-full resize-none border-0 bg-transparent px-1 py-2 text-sm leading-5 outline-none [field-sizing:content] placeholder:text-parsel-muted disabled:cursor-not-allowed disabled:opacity-50"
+              rows={1}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
+                if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }}
               placeholder="Ask about your transactions…"
               aria-label="Ask about your transactions"
             />
@@ -405,7 +461,7 @@ export function ChatPage() {
               </button>
             ) : (
               <button
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-none bg-parsel-primary text-sm text-primary-foreground transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-parsel-primary disabled:pointer-events-none disabled:opacity-50"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-none bg-parsel-primary text-sm text-primary-foreground transition-[opacity,transform] duration-150 ease-out active:scale-[0.97] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-parsel-primary disabled:pointer-events-none disabled:opacity-50"
                 type="submit"
                 disabled={!draft.trim()}
                 aria-label="Send message"
@@ -420,20 +476,7 @@ export function ChatPage() {
             </div>
           ) : null}
           <p className="mt-2 text-center text-[11px] text-parsel-muted">
-            {processing ? (
-              "Esc to stop"
-            ) : (
-              <>
-                Answers can be wrong.{" "}
-                <Link
-                  to={LEDGER_SEARCH_PATH}
-                  className="text-parsel-muted underline-offset-2 transition-colors hover:text-parsel-primary hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-parsel-primary"
-                >
-                  Verify against your transactions
-                </Link>
-                .
-              </>
-            )}
+            {processing ? "Esc to stop" : "Answers can be wrong."}
           </p>
         </form>
       </section>
