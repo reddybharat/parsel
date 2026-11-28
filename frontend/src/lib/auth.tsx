@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -35,6 +36,9 @@ import { useTheme, type Theme } from "@/lib/theme";
 
 /** Show the stay-logged-in prompt this many ms before expiry. */
 const SESSION_WARNING_MS = 60_000;
+/** While the user is active, silently refresh the token at most this often. */
+const ACTIVITY_REFRESH_INTERVAL_MS = 60_000;
+const ACTIVITY_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
 
 type AuthContextValue = {
   token: string | null;
@@ -89,7 +93,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPreferences(null);
   }, []);
 
+  const tokenIssuedAtRef = useRef(0);
+  const activityRefreshInFlightRef = useRef(false);
+
   const setSessionToken = useCallback((next: string) => {
+    tokenIssuedAtRef.current = Date.now();
     setAccessToken(next);
     setToken(next);
     setShowExpiryWarning(false);
@@ -180,9 +188,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [setSessionToken, logout]);
 
-  // Load profile + default theme when a stored token is present.
+  // Load profile + default theme once per signed-in user. Keyed on username, not
+  // token, so session refreshes don't reset a theme the user toggled locally.
+  const sessionUsername = token ? decodeTokenClaims(token).username : null;
   useEffect(() => {
-    if (!token || isTokenExpired(token)) return;
+    if (!sessionUsername) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -196,7 +206,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [token, applyProfile]);
+  }, [sessionUsername, applyProfile]);
+
+  // Token lifetime is the idle timeout: user activity keeps sliding it forward,
+  // so the warning below only appears after a full idle period.
+  useEffect(() => {
+    if (!token || showExpiryWarning) return;
+    let cancelled = false;
+    const onActivity = () => {
+      if (activityRefreshInFlightRef.current) return;
+      if (Date.now() - tokenIssuedAtRef.current < ACTIVITY_REFRESH_INTERVAL_MS) return;
+      activityRefreshInFlightRef.current = true;
+      void apiRefresh()
+        .then((result) => {
+          if (!cancelled) setSessionToken(result.access_token);
+        })
+        .catch((error: unknown) => {
+          // Expiry timers below still warn / log out if the session really ends.
+          console.warn("Silent session refresh failed", error);
+        })
+        .finally(() => {
+          activityRefreshInFlightRef.current = false;
+        });
+    };
+    for (const name of ACTIVITY_EVENTS) {
+      window.addEventListener(name, onActivity, { capture: true, passive: true });
+    }
+    return () => {
+      cancelled = true;
+      for (const name of ACTIVITY_EVENTS) {
+        window.removeEventListener(name, onActivity, { capture: true });
+      }
+    };
+  }, [token, showExpiryWarning, setSessionToken]);
 
   // Warn in the last minute; log out when the token expires.
   useEffect(() => {
