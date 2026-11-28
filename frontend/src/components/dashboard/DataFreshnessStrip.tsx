@@ -1,6 +1,3 @@
-import { Link } from "react-router-dom";
-
-import { ledgerHref } from "@/components/transactions/LedgerDateRange";
 import type { BankFreshness } from "@/lib/types";
 
 const STALE_AFTER_DAYS = 7;
@@ -38,23 +35,18 @@ export function DataFreshnessStrip({ freshness }: { freshness: BankFreshness[] }
           const days = item.last_added_at ? calendarDaysAgo(item.last_added_at) : null;
           const stale = days === null || days > STALE_AFTER_DAYS;
           return (
-            <li key={item.bank}>
-              <Link
-                to={stale ? "/ledger/add" : ledgerHref({ bank: item.bank })}
-                className="ov-link flex items-center gap-1.5 border border-transparent px-1 py-0.5"
-              >
-                <span
-                  aria-hidden="true"
-                  className={`size-2 shrink-0 ${stale ? "bg-parsel-outflow" : "bg-parsel-inflow"}`}
-                />
-                <span className="font-medium text-parsel-neutral">{item.bank}</span>
-                <span className="text-parsel-muted">
-                  {days === null ? "no data yet" : addedLabel(days)}
-                </span>
-                {stale ? (
-                  <span className="font-semibold text-parsel-outflow">stale, import now</span>
-                ) : null}
-              </Link>
+            <li key={item.bank} className="flex items-center gap-1.5 px-1 py-0.5">
+              <span
+                aria-hidden="true"
+                className={`size-2 shrink-0 ${stale ? "bg-parsel-outflow" : "bg-parsel-inflow"}`}
+              />
+              <span className="font-medium text-parsel-neutral">{item.bank}</span>
+              <span className="text-parsel-muted">
+                {days === null ? "no data yet" : addedLabel(days)}
+              </span>
+              {stale ? (
+                <span className="font-semibold text-parsel-outflow">stale, import now</span>
+              ) : null}
             </li>
           );
         })}
