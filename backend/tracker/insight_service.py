@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import text
 
 from chat.agent.llm import ainvoke_with_retry, get_llm
+from common.base import UTCDateTime
 from common.database import get_connection, get_readonly_connection
 from common.logger import get_logger
 from tracker.constants import (
@@ -28,9 +29,9 @@ _NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
 _SPEND_BY_CATEGORY_SQL = """
 SELECT
   t.category AS category,
-  COALESCE(SUM(CASE WHEN t.transaction_date >= :month_start THEN t.amount ELSE 0 END), 0)::float8 AS spend,
-  COALESCE(SUM(CASE WHEN t.transaction_date < :month_start THEN t.amount ELSE 0 END), 0)::float8 AS prev_spend,
-  COUNT(*) FILTER (WHERE t.transaction_date >= :month_start)::int AS txn_count
+  COALESCE(SUM(CASE WHEN t.transaction_date >= :month_start THEN t.amount ELSE 0 END), 0) AS spend,
+  COALESCE(SUM(CASE WHEN t.transaction_date < :month_start THEN t.amount ELSE 0 END), 0) AS prev_spend,
+  COUNT(*) FILTER (WHERE t.transaction_date >= :month_start) AS txn_count
 FROM transactions t
 WHERE t.user_id = :user_id
   AND t.is_debit = TRUE
@@ -58,8 +59,8 @@ LIMIT 1
 
 _FINGERPRINT_SQL = """
 SELECT
-  COUNT(*)::int AS txn_count,
-  COUNT(*) FILTER (WHERE t.transaction_date >= :month_start)::int AS month_txn_count,
+  COUNT(*) AS txn_count,
+  COUNT(*) FILTER (WHERE t.transaction_date >= :month_start) AS month_txn_count,
   MAX(t.updated_at) AS last_updated
 FROM transactions t
 WHERE t.user_id = :user_id
@@ -75,7 +76,7 @@ WHERE user_id = :user_id AND month = :month_start
 
 _UPSERT_SQL = """
 INSERT INTO monthly_insights (user_id, month, fingerprint, sentence, facts, questions, generated_at)
-VALUES (:user_id, :month_start, :fingerprint, :sentence, CAST(:facts AS jsonb), CAST(:questions AS jsonb), now())
+VALUES (:user_id, :month_start, :fingerprint, :sentence, :facts, :questions, CURRENT_TIMESTAMP)
 ON CONFLICT (user_id, month) DO UPDATE SET
   fingerprint = EXCLUDED.fingerprint,
   sentence = EXCLUDED.sentence,
@@ -217,7 +218,11 @@ def _params(user_id: uuid.UUID, bounds: dict[str, date]) -> dict[str, Any]:
 async def _load_fingerprint(user_id: uuid.UUID, bounds: dict[str, date]) -> tuple[str, int]:
     """(fingerprint, transactions in the focus month)."""
     async with get_readonly_connection() as session:
-        row = (await session.execute(text(_FINGERPRINT_SQL), _params(user_id, bounds))).mappings().first() or {}
+        row = (
+            await session.execute(
+                text(_FINGERPRINT_SQL).columns(last_updated=UTCDateTime), _params(user_id, bounds)
+            )
+        ).mappings().first() or {}
     last_updated = row.get("last_updated")
     fingerprint = f"{row.get('txn_count') or 0}:{last_updated.isoformat() if last_updated else ''}"
     return fingerprint, int(row.get("month_txn_count") or 0)
@@ -227,7 +232,7 @@ async def _load_cached(user_id: uuid.UUID, month_start: date) -> dict[str, Any] 
     async with get_readonly_connection() as session:
         row = (
             await session.execute(
-                text(_CACHED_SQL), {"user_id": user_id, "month_start": month_start}
+                text(_CACHED_SQL).columns(generated_at=UTCDateTime), {"user_id": user_id, "month_start": month_start}
             )
         ).mappings().first()
     return dict(row) if row else None
@@ -275,7 +280,7 @@ async def _store(
     async with get_connection() as session:
         generated_at = (
             await session.execute(
-                text(_UPSERT_SQL),
+                text(_UPSERT_SQL).columns(generated_at=UTCDateTime),
                 {
                     "user_id": user_id,
                     "month_start": month_start,

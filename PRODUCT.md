@@ -32,7 +32,7 @@ INR-first personal ledger with conversational Q&A over the user’s own transact
 - Each transaction may carry a `bank` label from a fixed allowlist; new creates/imports require it
 - Multi-user: transactions and chat threads are scoped to the authenticated user
 - Chat assistant is read-only over transaction data (no write tools for money movement)
-- Stack: React (Vite) frontend, FastAPI backend, PostgreSQL
+- Stack: React (Vite) frontend, FastAPI backend, SQLite (one local file)
 - Dev UI typically at `http://127.0.0.1:5173`; API at `http://127.0.0.1:8000`
 
 ## Brand Commitments

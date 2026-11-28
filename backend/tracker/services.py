@@ -11,6 +11,7 @@ from datetime import date, datetime
 from typing import Any, Optional
 import uuid
 
+from common.base import UTCDateTime
 from common.database import get_connection, get_readonly_connection
 from pydantic import ValidationError
 from sqlalchemy import or_, select, text
@@ -67,14 +68,14 @@ CSV_FIELDS = [
 
 
 def transaction_text_search(term: str):
-    """ILIKE contains-match over description, category, payment_method, and bank."""
+    """Case-insensitive contains-match over description, category, payment_method, and bank."""
     escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     pattern = f"%{escaped}%"
     return or_(
-        Transaction.description.ilike(pattern),
-        Transaction.category.ilike(pattern),
-        Transaction.payment_method.ilike(pattern),
-        Transaction.bank.ilike(pattern),
+        Transaction.description.ilike(pattern, escape="\\"),
+        Transaction.category.ilike(pattern, escape="\\"),
+        Transaction.payment_method.ilike(pattern, escape="\\"),
+        Transaction.bank.ilike(pattern, escape="\\"),
     )
 
 
@@ -1378,7 +1379,7 @@ def _dashboard_params(
         **bounds,
         "user_id": user_id,
         "filter_banks": banks is not None,
-        "banks_csv": ",".join(banks) if banks else "",
+        "banks_json": json.dumps(banks or []),
         "filter_chart_category": chart_category is not None,
         "chart_category": chart_category or "",
         "investments_category": INVESTMENTS_CATEGORY,
@@ -1439,13 +1440,13 @@ def _build_trend_points(
 
 
 _DASHBOARD_AGGREGATES_SQL = """
-WITH current_month AS (
+WITH RECURSIVE current_month AS (
   SELECT t.*
   FROM transactions t
   WHERE t.user_id = :user_id
     AND t.transaction_date >= :month_now_start
     AND t.transaction_date < :month_next_start
-    AND (NOT :filter_banks OR t.bank = ANY(string_to_array(:banks_csv, ',')))
+    AND (NOT :filter_banks OR t.bank IN (SELECT value FROM json_each(:banks_json)))
 ),
 spend_txns AS (
   SELECT cm.*
@@ -1475,7 +1476,7 @@ summary AS (
        )
        AND t.transaction_date >= :month_now_start
        AND t.transaction_date < :month_next_start
-      THEN t.amount ELSE 0 END), 0)::float8 AS current_month_spend,
+      THEN t.amount ELSE 0 END), 0) AS current_month_spend,
     COALESCE(SUM(CASE
       WHEN t.is_debit = TRUE
        AND t.category NOT IN (
@@ -1483,16 +1484,16 @@ summary AS (
        )
        AND t.transaction_date >= :prev_month_start
        AND t.transaction_date < :month_now_start
-      THEN t.amount ELSE 0 END), 0)::float8 AS previous_month_spend
+      THEN t.amount ELSE 0 END), 0) AS previous_month_spend
   FROM transactions t
   WHERE t.user_id = :user_id
     AND t.transaction_date < :month_next_start
-    AND (NOT :filter_banks OR t.bank = ANY(string_to_array(:banks_csv, ',')))
+    AND (NOT :filter_banks OR t.bank IN (SELECT value FROM json_each(:banks_json)))
 ),
 trend_rows AS (
   SELECT
-    date_trunc('month', t.transaction_date)::date AS month_start,
-    COALESCE(SUM(t.amount), 0)::float8 AS spend
+    date(t.transaction_date, 'start of month') AS month_start,
+    COALESCE(SUM(t.amount), 0) AS spend
   FROM transactions t
   WHERE t.user_id = :user_id
     AND t.is_debit = TRUE
@@ -1504,7 +1505,7 @@ trend_rows AS (
     END)
     AND t.transaction_date >= :trend_start
     AND t.transaction_date < :month_next_start
-    AND (NOT :filter_banks OR t.bank = ANY(string_to_array(:banks_csv, ',')))
+    AND (NOT :filter_banks OR t.bank IN (SELECT value FROM json_each(:banks_json)))
   GROUP BY 1
 ),
 highlights AS (
@@ -1512,21 +1513,21 @@ highlights AS (
     COALESCE(SUM(CASE
       WHEN cm.is_debit = FALSE
        AND cm.category NOT IN (:self_transfer_category, :wallet_top_up_category)
-      THEN cm.amount ELSE 0 END), 0)::float8 AS total_inflow,
+      THEN cm.amount ELSE 0 END), 0) AS total_inflow,
     COALESCE(SUM(CASE
       WHEN cm.is_debit = TRUE AND cm.category = :investments_category
-      THEN cm.amount ELSE 0 END), 0)::float8 AS current_month_investments
+      THEN cm.amount ELSE 0 END), 0) AS current_month_investments
   FROM current_month cm
 ),
 top_category AS (
-  SELECT st.category, COALESCE(SUM(st.amount), 0)::float8 AS spend
+  SELECT st.category, COALESCE(SUM(st.amount), 0) AS spend
   FROM spend_txns st
   GROUP BY st.category
   ORDER BY spend DESC
   LIMIT 1
 ),
 prev_category_spend AS (
-  SELECT t.category, COALESCE(SUM(t.amount), 0)::float8 AS spend
+  SELECT t.category, COALESCE(SUM(t.amount), 0) AS spend
   FROM transactions t
   WHERE t.user_id = :user_id
     AND t.is_debit = TRUE
@@ -1535,93 +1536,78 @@ prev_category_spend AS (
     )
     AND t.transaction_date >= :prev_month_start
     AND t.transaction_date < :month_now_start
-    AND (NOT :filter_banks OR t.bank = ANY(string_to_array(:banks_csv, ',')))
+    AND (NOT :filter_banks OR t.bank IN (SELECT value FROM json_each(:banks_json)))
   GROUP BY t.category
 ),
 category_spend AS (
   SELECT
     st.category,
-    COALESCE(SUM(st.amount), 0)::float8 AS spend,
-    COALESCE(MAX(pcs.spend), 0)::float8 AS prev_spend,
-    COUNT(*)::int AS txn_count
+    COALESCE(SUM(st.amount), 0) AS spend,
+    COALESCE(MAX(pcs.spend), 0) AS prev_spend,
+    COUNT(*) AS txn_count
   FROM spend_txns st
   LEFT JOIN prev_category_spend pcs ON pcs.category = st.category
   GROUP BY st.category
   HAVING COALESCE(SUM(st.amount), 0) > 0
   ORDER BY spend DESC
 ),
-daily_series AS (
-  SELECT generate_series(
-    :month_now_start,
-    :month_next_start - interval '1 day',
-    interval '1 day'
-  )::date AS day_date
+daily_series(day_date) AS (
+  SELECT :month_now_start
+  UNION ALL
+  SELECT date(day_date, '+1 day')
+  FROM daily_series
+  WHERE date(day_date, '+1 day') < :month_next_start
 ),
 daily_bank_agg AS (
   SELECT
     ct.bank AS bank,
     ct.transaction_date AS day_date,
-    COALESCE(SUM(ct.amount), 0)::float8 AS spend
+    COALESCE(SUM(ct.amount), 0) AS spend
   FROM chart_txns ct
-  WHERE ct.bank IS NOT NULL AND btrim(ct.bank) <> ''
+  WHERE ct.bank IS NOT NULL AND trim(ct.bank) <> ''
   GROUP BY ct.bank, ct.transaction_date
 ),
 daily_banks AS (
   SELECT DISTINCT bank FROM daily_bank_agg
 ),
 daily_spend AS (
-  SELECT COALESCE(SUM(ct.amount), 0)::float8 AS total
+  SELECT COALESCE(SUM(ct.amount), 0) AS total
   FROM chart_txns ct
 )
 SELECT
   s.current_month_spend,
   s.previous_month_spend,
-  COALESCE(
-    (SELECT json_agg(json_build_object('month_start', tr.month_start, 'spend', tr.spend)) FROM trend_rows tr),
-    '[]'::json
-  ) AS trend_rows,
+  (SELECT json_group_array(json_object('month_start', tr.month_start, 'spend', tr.spend)) FROM trend_rows tr) AS trend_rows,
   h.total_inflow,
   h.current_month_investments,
-  (SELECT json_build_object('category', tc.category, 'spend', tc.spend) FROM top_category tc) AS top_category,
-  COALESCE(
-    (SELECT json_agg(
-       json_build_object(
-         'category', cs.category,
-         'spend', cs.spend,
-         'prev_spend', cs.prev_spend,
-         'txn_count', cs.txn_count
-       )
-       ORDER BY cs.spend DESC
+  (SELECT json_object('category', tc.category, 'spend', tc.spend) FROM top_category tc) AS top_category,
+  (SELECT json_group_array(
+     json_object(
+       'category', cs.category,
+       'spend', cs.spend,
+       'prev_spend', cs.prev_spend,
+       'txn_count', cs.txn_count
      )
-     FROM category_spend cs),
-    '[]'::json
-  ) AS category_spend_rows,
-  to_char(:month_now_start, 'Mon YYYY') AS month_label,
+   )
+   FROM category_spend cs) AS category_spend_rows,
   (SELECT total FROM daily_spend) AS daily_total,
-  COALESCE(
-    (
-      SELECT json_agg(
-        json_build_object('bank', bs.bank, 'points', bs.points)
-        ORDER BY bs.bank
-      )
-      FROM (
-        SELECT
-          db.bank AS bank,
-          json_agg(
-            json_build_object(
-              'day', EXTRACT(DAY FROM ds.day_date)::int,
-              'spend', COALESCE(dba.spend, 0)
-            )
-            ORDER BY ds.day_date
-          ) AS points
-        FROM daily_banks db
-        CROSS JOIN daily_series ds
-        LEFT JOIN daily_bank_agg dba
-          ON dba.bank = db.bank AND dba.day_date = ds.day_date
-        GROUP BY db.bank
-      ) bs
-    ),
-    '[]'::json
+  (
+    SELECT json_group_array(json_object('bank', bs.bank, 'points', json(bs.points)))
+    FROM (
+      SELECT
+        db.bank AS bank,
+        json_group_array(
+          json_object(
+            'day', CAST(strftime('%d', ds.day_date) AS INTEGER),
+            'spend', COALESCE(dba.spend, 0)
+          )
+        ) AS points
+      FROM daily_banks db
+      CROSS JOIN daily_series ds
+      LEFT JOIN daily_bank_agg dba
+        ON dba.bank = db.bank AND dba.day_date = ds.day_date
+      GROUP BY db.bank
+    ) bs
   ) AS daily_series_rows
 FROM summary s
 CROSS JOIN highlights h
@@ -1647,6 +1633,7 @@ async def _get_dashboard_aggregates(
         )
         row = result.mappings().first() or {}
 
+    month_start = bounds["month_now_start"]
     current = float(row.get("current_month_spend") or 0)
     previous = float(row.get("previous_month_spend") or 0)
     spend_delta_pct = None
@@ -1668,35 +1655,44 @@ async def _get_dashboard_aggregates(
     if not isinstance(category_spend_rows, list):
         category_spend_rows = []
 
-    category_spend_items = [
-        {
-            "category": str(item.get("category") or ""),
-            "spend": float(item.get("spend") or 0),
-            "prev_spend": float(item.get("prev_spend") or 0),
-            "txn_count": int(item.get("txn_count") or 0),
-        }
-        for item in category_spend_rows
-        if isinstance(item, dict) and item.get("category")
-    ]
+    category_spend_items = sorted(
+        (
+            {
+                "category": str(item.get("category") or ""),
+                "spend": float(item.get("spend") or 0),
+                "prev_spend": float(item.get("prev_spend") or 0),
+                "txn_count": int(item.get("txn_count") or 0),
+            }
+            for item in category_spend_rows
+            if isinstance(item, dict) and item.get("category")
+        ),
+        key=lambda item: -item["spend"],
+    )
 
     daily_series_rows = _parse_json_value(row.get("daily_series_rows"), [])
     if not isinstance(daily_series_rows, list):
         daily_series_rows = []
-    daily_series = [
-        {
-            "bank": str(item.get("bank") or ""),
-            "points": [
-                {
-                    "day": int(point.get("day") or 0),
-                    "spend": float(point.get("spend") or 0),
-                }
-                for point in (item.get("points") or [])
-                if isinstance(point, dict)
-            ],
-        }
-        for item in daily_series_rows
-        if isinstance(item, dict) and item.get("bank")
-    ]
+    daily_series = sorted(
+        (
+            {
+                "bank": str(item.get("bank") or ""),
+                "points": sorted(
+                    (
+                        {
+                            "day": int(point.get("day") or 0),
+                            "spend": float(point.get("spend") or 0),
+                        }
+                        for point in (item.get("points") or [])
+                        if isinstance(point, dict)
+                    ),
+                    key=lambda point: point["day"],
+                ),
+            }
+            for item in daily_series_rows
+            if isinstance(item, dict) and item.get("bank")
+        ),
+        key=lambda item: item["bank"],
+    )
 
     return {
         "summary": {
@@ -1711,7 +1707,7 @@ async def _get_dashboard_aggregates(
             "current_month_investments": float(row.get("current_month_investments") or 0),
         },
         "daily_spend": {
-            "month_label": row.get("month_label") or "",
+            "month_label": f"{_MONTH_LABELS[month_start.month - 1]} {month_start.year}",
             "total": float(row.get("daily_total") or 0),
             "series": daily_series,
         },
@@ -1728,19 +1724,19 @@ async def _get_dashboard_recent(
 ) -> list:
     sql = """
         SELECT
-          id::text,
+          id,
           transaction_date,
           category,
           bank,
           payment_method,
-          amount::float8 AS amount,
+          amount,
           is_debit,
           description
         FROM transactions
         WHERE user_id = :user_id
           AND transaction_date >= :month_now_start
           AND transaction_date < :month_next_start
-          AND (NOT :filter_banks OR bank = ANY(string_to_array(:banks_csv, ',')))
+          AND (NOT :filter_banks OR bank IN (SELECT value FROM json_each(:banks_json)))
         ORDER BY transaction_date DESC, created_at DESC
         LIMIT :recent_limit
     """
@@ -1753,7 +1749,7 @@ async def _get_dashboard_recent(
                 "month_now_start": bounds["month_now_start"],
                 "month_next_start": bounds["month_next_start"],
                 "filter_banks": banks is not None,
-                "banks_csv": ",".join(banks) if banks else "",
+                "banks_json": json.dumps(banks or []),
             },
         )
         rows = result.mappings().all()
@@ -1778,7 +1774,7 @@ WITH profile AS (
   SELECT bank, opening_balance, opening_month
   FROM user_banks
   WHERE user_id = :user_id
-    AND (NOT :filter_banks OR bank = ANY(string_to_array(:banks_csv, ',')))
+    AND (NOT :filter_banks OR bank IN (SELECT value FROM json_each(:banks_json)))
 ),
 covered AS (
   SELECT bank, opening_balance, opening_month
@@ -1799,15 +1795,9 @@ closings AS (
   GROUP BY c.bank, c.opening_balance
 )
 SELECT
-  COALESCE((SELECT SUM(closing) FROM closings), 0)::float8 AS portfolio_net,
-  COALESCE(
-    (SELECT json_agg(bank ORDER BY bank) FROM profile WHERE opening_month > :month_now_start),
-    '[]'::json
-  ) AS missing_opening_banks,
-  COALESCE(
-    (SELECT json_agg(json_build_object('bank', bank, 'balance', closing::float8) ORDER BY bank) FROM closings),
-    '[]'::json
-  ) AS bank_balances
+  COALESCE((SELECT SUM(closing) FROM closings), 0) AS portfolio_net,
+  (SELECT json_group_array(bank) FROM profile WHERE opening_month > :month_now_start) AS missing_opening_banks,
+  (SELECT json_group_array(json_object('bank', bank, 'balance', closing)) FROM closings) AS bank_balances
 """
 
 
@@ -1828,7 +1818,7 @@ async def _get_portfolio_balance(
         "month_now_start": bounds["month_now_start"],
         "month_next_start": bounds["month_next_start"],
         "filter_banks": banks is not None,
-        "banks_csv": ",".join(banks) if banks else "",
+        "banks_json": json.dumps(banks or []),
     }
     async with get_readonly_connection() as session:
         result = await session.execute(text(_PORTFOLIO_SQL), params)
@@ -1842,10 +1832,11 @@ async def _get_portfolio_balance(
         balances = []
     return {
         "portfolio_net": float(row.get("portfolio_net") or 0),
-        "missing_opening_banks": [str(b) for b in missing if b],
-        "bank_balances": [
-            {"bank": str(b["bank"]), "balance": float(b["balance"])} for b in balances
-        ],
+        "missing_opening_banks": sorted(str(b) for b in missing if b),
+        "bank_balances": sorted(
+            ({"bank": str(b["bank"]), "balance": float(b["balance"])} for b in balances),
+            key=lambda b: b["bank"],
+        ),
     }
 
 
@@ -1865,7 +1856,10 @@ ORDER BY ub.bank
 async def _get_bank_freshness(*, user_id: uuid.UUID) -> list[dict]:
     """Latest transaction date and latest insert time per profile bank (all months)."""
     async with get_readonly_connection() as session:
-        result = await session.execute(text(_BANK_FRESHNESS_SQL), {"user_id": user_id})
+        result = await session.execute(
+            text(_BANK_FRESHNESS_SQL).columns(last_added_at=UTCDateTime),
+            {"user_id": user_id},
+        )
         rows = result.mappings().all()
     return [
         {

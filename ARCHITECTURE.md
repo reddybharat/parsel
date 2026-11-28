@@ -7,10 +7,10 @@ Parsel uses a clear split:
 
 The API is stateless and directly calls feature services.
 
-Root scripts for Windows users (see the README's Quick setup):
+Scripts for non-developers live in `run-parsel/<os>/` (`windows`, `macos`, `linux`; see the README's Quick setup):
 
-- `setup.bat`: one-time install. Installs missing Python, Node.js and PostgreSQL via `winget`, creates the `parsel` and `parsel_agent` logins with random passwords, applies `migrations/*.sql` in order, installs packages and writes `backend/.env`. When `backend/.env` already exists it only refreshes packages.
-- `start_backend.bat` and `start_frontend.bat`: run uvicorn (port 8000) and Vite (port 5173, `--strictPort`), each in its own window.
+- `setup`: install and update in one. Pulls the `release` branch (`git pull --ff-only`, then restarts itself so the shell never runs a half-replaced file), installs missing Python 3.11+ and Node.js 18+ (winget / Homebrew / apt), installs packages, then runs `run-parsel/configure.py`: writes `backend/.env` only if missing, and calls `init_database()`.
+- `start`: backend (uvicorn, port 8000) in the background, frontend (Vite, port 5173, `--strictPort`) in the foreground, and `run-parsel/open_browser.py` opens the browser once port 5173 answers. Closing the window stops both.
 
 ## Backend structure
 
@@ -25,12 +25,14 @@ Root scripts for Windows users (see the README's Quick setup):
 
 ## Database access
 
-`backend/common/database.py` exposes two session helpers:
+Data lives in one SQLite file: `DATABASE_PATH`, default `<repo>/data/parsel.db` (WAL mode, `foreign_keys=ON`, 5s `busy_timeout`). `backend/common/database.py` exposes:
 
-- `get_connection()` — read/write (transactional commit).
-- `get_readonly_connection()` — `AUTOCOMMIT` for pure SELECTs (skips `BEGIN`/`COMMIT` round trips).
+- `get_connection()` — read/write (transactional commit). Transactions start with `BEGIN IMMEDIATE`, which serializes writers; SQLite has no row locks, so the `with_for_update()` calls in services are no-ops kept for readability.
+- `get_readonly_connection()` — `AUTOCOMMIT` for pure SELECTs. Prefer it for auth lookups and other hot read paths.
+- `init_database()` — runs at API startup (FastAPI lifespan) and from setup. Applies each pending `migrations/NNN_*.sql` in its own transaction, tracking progress in `PRAGMA user_version`, and backs up the file to `parsel.db.bak-v<old>` first (newest 3 kept). Refuses to start if `.env` still has a PostgreSQL `DATABASE_URL`.
+- `run_agent_query(sql, user_id=...)` — the chat agent's only DB access: a separate read-only (`mode=ro`) connection, one statement, 10s limit, at most `AGENT_MAX_ROWS` (200) rows with a `truncated` flag. Temp views make `transactions` mean only that user's rows: a randomly named view filters on `user_id`, and `transactions` aliases it. An authorizer allows `SELECT` and lets reads of `main.transactions` through only via that view, so `users`, `PRAGMA`, `ATTACH`, writes, `main.transactions` and look-alike CTEs are refused. `agent_node` sets the user id in the `AGENT_USER_ID` context variable (never a tool argument, so the model can't pick it); `execute_query` refuses without it and passes SQLite's error text back so the model can fix its query.
 
-Pools use `pool_recycle` instead of `pool_pre_ping`. Prefer the read-only session for auth lookups and other hot read paths.
+Engines use `NullPool` (opening a SQLite connection is cheap). Column types in `backend/common/base.py`: `UUIDText` stores UUIDs as dashed text; `UTCDateTime` stores naive UTC and returns tz-aware UTC. Money is `REAL`, read back as a 2-dp `Decimal`.
 
 ## Frontend structure
 
@@ -52,7 +54,7 @@ flowchart LR
   API --> Auth[auth register and login]
   API --> Tracker[tracker routers and services]
   API --> Chat[chat router and agent]
-  Auth --> DB[(PostgreSQL)]
+  Auth --> DB[(SQLite file)]
   Tracker --> DB
   Chat --> DB
 ```
@@ -66,7 +68,7 @@ flowchart LR
   - `/config/tracker` — categories, payment methods, banks allowlist
   - `/transactions/*` — CRUD, search, CSV export, import preview/commit (CSV + statements)
   - `/dashboard/overview` — optional `banks=` filter; returns `active_banks`, per-category `prev_spend`/`txn_count` and per-bank `freshness`
-  - `/dashboard/insight?month=YYYY-MM` — insight of the month. Facts come from SQL, the LLM (same model as Chat) only phrases them, and numbers it invents are rejected in favour of a template sentence. Cached per user and month in `monthly_insights` (migration 009); the cache is reused until the month's transactions change. Separate from the overview so the LLM never slows the dashboard
+  - `/dashboard/insight?month=YYYY-MM` — insight of the month. Facts come from SQL, the LLM (same model as Chat) only phrases them, and numbers it invents are rejected in favour of a template sentence. Cached per user and month in `monthly_insights`; the cache is reused until the month's transactions change. Separate from the overview so the LLM never slows the dashboard
   - `PUT /categories/{name}/limit` — monthly category limit, stored in `users.preferences.category_limits` (no table)
 - Chat (Bearer JWT required; threads and SQL scoped to current user)
   - `/chat/invoke`

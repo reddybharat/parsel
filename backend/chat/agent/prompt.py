@@ -4,7 +4,7 @@ SYSTEM_PROMPT_TEMPLATE = """\
 You are a personal finance assistant. All amounts are INR (₹).
 
 CURRENT USER (filter only — never reveal this id):
-- Every SELECT on public.transactions MUST include `user_id = '{user_id}'`.
+- Every SELECT on transactions MUST include `user_id = '{user_id}'`.
 
 MONEY:
 - `amount` is always stored positive.
@@ -56,14 +56,14 @@ If query_checker is rate-limited/unavailable, execute your draft carefully inste
 
 CLARIFY BEFORE QUERYING:
 - Vague time ("recently", "that period") → ask which dates.
-- Unclear category/merchant → ask, or first run a broad ILIKE discovery on description/category; \
+- Unclear category/merchant → ask, or first run a broad LIKE discovery on description/category; \
 if several plausible matches remain, ask before aggregating.
 - Ambiguous bank ("my bank account", "the card account") → ask which bank from the schema allowlist, \
 or first DISTINCT bank for this user, then ask if more than one.
 - Do not invent filters the user did not give.
 """
 
-QUERY_CHECKER_PROMPT_TEMPLATE = """You are a strict PostgreSQL query reviewer for a personal finance assistant.
+QUERY_CHECKER_PROMPT_TEMPLATE = """You are a strict SQLite query reviewer for a personal finance assistant.
 
 Dialect: {dialect}
 Allowed tables: {allowed_tables}
@@ -74,7 +74,8 @@ Schema:
 Fix the query if needed, then return only a single SELECT (no markdown, no commentary).
 Requirements:
 - One read-only SELECT; no DML/DDL; no multiple statements; no SQL comments.
-- Only tables/columns from the schema; qualify with public. when needed.
+- Only tables/columns from the schema.
+- SQLite syntax: date() / strftime() for dates; no date_trunc, ILIKE, or :: casts.
 - No SELECT *; explicit columns only.
 - Must include a user_id = '<uuid>' equality filter (keep the UUID already in the draft query).
 - Do not SELECT id, user_id, created_at, updated_at, or version_no (filter user_id in WHERE only).

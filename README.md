@@ -11,64 +11,60 @@ Parsel is an INR-focused personal finance tracker: log and search transactions t
 
 All amounts are stored and displayed in Indian Rupees (₹). Bank is a label on each transaction (not Open Banking / account aggregation).
 
-## Quick setup (Windows)
+## Quick setup
 
-No coding needed. You need an internet connection and about 15 minutes.
+No coding needed. You need an internet connection and about 10 minutes. Everything Parsel stores stays in one file on your computer (`data/parsel.db`); there is no database server to install.
 
-1. **Download Parsel** and unzip it somewhere easy to find, like your Documents folder.
-2. **Double-click `setup.bat`** and follow what the window says. You only do this once.
-   - Anything missing (Python, Node.js, PostgreSQL) is installed for you.
-   - When the PostgreSQL installer opens, keep the defaults, **choose a password and write it down**, and untick "Stack Builder" at the end. Setup asks for that password next.
-   - If setup says new programs were installed, close the window and double-click `setup.bat` again.
-   - It asks for a Groq API key, which is free at [console.groq.com/keys](https://console.groq.com/keys). Only the chat assistant needs it; press Enter to skip.
-3. **Every time you use Parsel:**
-   - Double-click `start_backend.bat`.
-   - Double-click `start_frontend.bat`.
-   - Open **[http://localhost:5173](http://localhost:5173)** in your browser and register an account.
+### 1. Get Parsel
 
-Keep both windows open while you use Parsel. Close them to stop it.
+**Recommended, with Git** (makes updating one step). Install Git ([git-scm.com](https://git-scm.com/downloads); on a Mac it is offered automatically the first time you type `git`), then in a terminal:
 
-Setup writes all settings to `backend\.env` for you, including generated passwords, so there is nothing to fill in. To add a Groq key later: open `backend\.env` in Notepad, paste the key after `GROQ_API_KEY=`, save, then close and reopen the backend window.
+```cmd
+git clone -b release https://github.com/reddybharat/parsel.git
+```
 
-Running `setup.bat` again is safe: it updates packages and leaves your data alone. It does not apply new database migrations to an existing database; those still run by hand (see [`migrations/README.md`](migrations/README.md)).
+**Or download the zip** from GitHub (pick the `release` branch first) and unzip it somewhere easy to find, like Documents.
+
+### 2. Run setup once
+
+| Your computer | Do this |
+|---|---|
+| Windows | Double-click `run-parsel\windows\setup.bat` |
+| Mac | Double-click `run-parsel/macos/setup.command`. If macOS says it can't be opened, right-click it, choose **Open**, then **Open** again |
+| Linux (Ubuntu 24.04+, Debian 12+) | In a terminal in the Parsel folder: `bash run-parsel/linux/setup.sh` |
+
+Setup prints each step (`[1/5] Python 3.11+ ... found 3.12.4`) and, if one fails, what to do about it.
+
+- Missing Python or Node.js is installed for you: winget on Windows, Homebrew on a Mac (setup tells you how to get Homebrew if you don't have it), apt on Linux (asks for your password). Other Linux systems, or releases too old to have Python 3.11 and Node.js 18, get a message pointing to python.org and nodejs.org.
+- It asks for a Groq API key, free at [console.groq.com/keys](https://console.groq.com/keys). Only the chat assistant and the Overview insight sentence use it; press Enter to skip. Add one later by pasting it after `GROQ_API_KEY=` in `backend/.env`, then restarting Parsel.
+
+### 3. Every time you use Parsel
+
+Start it with `run-parsel\windows\start.bat` (Windows), `run-parsel/macos/start.command` (Mac) or `bash run-parsel/linux/start.sh` (Linux). Your browser opens at [http://localhost:5173](http://localhost:5173) once it's ready; register an account the first time. Keep the window open while you use Parsel, and close it (or press Ctrl+C) to stop.
+
+### Updating
+
+Run setup again. It downloads the latest `release` code, restarts itself, updates packages, and upgrades your database (after backing it up). It skips anything already done and keeps your settings and data.
+
+If you downloaded the zip instead of using Git: download the new zip, unzip it, copy the `data` folder (and `backend/.env`) from your old Parsel folder into the new one, run setup in the new folder, and only then delete the old folder. **Your data lives in `data/`; deleting it without copying deletes your transactions.**
+
+Backups and restores are in [`migrations/README.md`](migrations/README.md#backups). Coming from the old PostgreSQL version: see [Moving from Postgres](migrations/README.md#moving-from-postgres).
 
 The rest of this README is the manual setup, for developers.
 
 ## Prerequisites
 
-- **Python** 3.11+ (3.12 recommended)
+- **Python** 3.11+ (3.12 recommended), whose built-in SQLite is 3.35+ (every python.org build is)
 - **Node.js** 18+ and npm
-- **PostgreSQL** running locally (developed on PostgreSQL 18; installer default `C:\Program Files\PostgreSQL\18`)
-- **Groq API key**: required only for the chat assistant (`GROQ_API_KEY`)
+- **Groq API key**: only for the chat assistant and the Overview insight (`GROQ_API_KEY`)
 
-Commands below are for Windows `cmd`, run from the repo root unless noted. Put the Postgres tools on `PATH` in each new terminal that needs them:
-
-```cmd
-set "PATH=%PATH%;C:\Program Files\PostgreSQL\18\bin"
-```
+Commands below are for Windows `cmd`, run from the repo root unless noted.
 
 ## First-time setup
 
 ### 1) Database
 
-Create the app login and database (each command asks for the `postgres` password):
-
-```cmd
-psql -U postgres -c "CREATE ROLE parsel LOGIN PASSWORD '<parsel-password>';"
-createdb -U postgres -O parsel parsel
-```
-
-Then either load a backup or build an empty schema. Both are in [`migrations/README.md`](migrations/README.md):
-
-- **Restore a backup:** [Restore from a backup](migrations/README.md#restore-from-a-backup)
-- **Empty database:** [Fresh database](migrations/README.md#fresh-database)
-
-Either way, finish by creating the chat agent's read-only login:
-
-```cmd
-psql -U postgres -d parsel -f migrations\008_chat_agent_role.sql
-psql -U postgres -c "\password parsel_agent"
-```
+Nothing to do: the API creates `data\parsel.db` and applies [`migrations/`](migrations/) on startup.
 
 ### 2) Backend
 
@@ -125,23 +121,22 @@ Environment variables are loaded from `backend/.env` when the API starts (`pytho
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL URL (`postgresql://…` or `postgresql+asyncpg://…`) |
-| `CHAT_DATABASE_URL` | For chat | URL for the read-only `parsel_agent` login (see [`migrations/008_chat_agent_role.sql`](migrations/008_chat_agent_role.sql)). Chat refuses to query when unset |
 | `JWT_SECRET` | Yes | Secret key used to sign access tokens (use a long random string) |
+| `DATABASE_PATH` | No | Absolute path of the SQLite file (default: `<repo>/data/parsel.db`) |
 | `JWT_EXPIRE_MINUTES` | No | Access token lifetime in minutes (default: `10`) |
 | `ENV` | No | Set to `production` to disable `/docs`, `/redoc`, and `/openapi.json` |
-| `GROQ_API_KEY` | For chat | Groq API key for the chat assistant |
+| `GROQ_API_KEY` | For chat | Groq API key for the chat assistant and Overview insight |
 | `GROQ_MODEL` | No | Groq model id (default: `openai/gpt-oss-120b`) |
 | `CORS_ORIGINS` | No | Comma-separated allowed frontend origins (default includes `http://localhost:5173` and `http://127.0.0.1:5173`) |
 
 Copy [`backend/.env.example`](backend/.env.example) to `backend/.env` and fill it in. Minimal example:
 
 ```env
-DATABASE_URL=postgresql://parsel:password@localhost:5432/parsel
-CHAT_DATABASE_URL=postgresql://parsel_agent:password2@localhost:5432/parsel
 JWT_SECRET=replace-with-a-long-random-string
 GROQ_API_KEY=your_groq_key_here
 ```
+
+`DATABASE_URL` and `CHAT_DATABASE_URL` are gone. If `DATABASE_URL` still points at PostgreSQL, the API refuses to start and says how to [move your data](migrations/README.md#moving-from-postgres).
 
 ## Category suggestions
 
@@ -154,16 +149,9 @@ The review table shows a single note under the row counts when any category was 
 
 ## Database
 
-Schema SQL lives in [`migrations/`](migrations/). There is no migration runner; apply scripts with `psql`. The app connects as `parsel` (owns the database, not a superuser); the chat assistant connects as `parsel_agent` (`SELECT` on `transactions` only, read-only).
+SQLite, one file: `data/parsel.db` (gitignored). Schema SQL lives in [`migrations/`](migrations/) and is applied automatically at startup: pending `NNN_*.sql` files run in order, each in its own transaction, with a backup of the file taken first. The chat assistant queries through a separate read-only connection that may only `SELECT` from `transactions`.
 
-| Script | When |
-|---|---|
-| [`migrations/001_initial_transactions.sql`](migrations/001_initial_transactions.sql) | Fresh DB: original `transactions` table (pre-auth baseline) |
-| [`migrations/002_users_and_transaction_user_id.sql`](migrations/002_users_and_transaction_user_id.sql) | Add `users` + `transactions.user_id` (multi-user auth) |
-| [`migrations/003_search_indexes.sql`](migrations/003_search_indexes.sql) … [`007_user_banks.sql`](migrations/007_user_banks.sql) | Search indexes, category prefs, non-spend indexes, `transactions.bank`, `user_banks` |
-| [`migrations/008_chat_agent_role.sql`](migrations/008_chat_agent_role.sql) | Read-only `parsel_agent` login for the chat assistant (run as `postgres`) |
-
-See [`migrations/README.md`](migrations/README.md) for the exact order, backfill steps, verification queries, and [backups](migrations/README.md#backups).
+See [`migrations/README.md`](migrations/README.md) for adding a migration, [backups](migrations/README.md#backups), restores, and [moving from PostgreSQL](migrations/README.md#moving-from-postgres).
 
 Allowed `payment_method` and `bank` values are enforced by the API and match `backend/tracker/constants.py` (banks: SBI, Kotak, Slice). Categories are system defaults from that file plus up to 10 custom labels stored in each user's preferences (no categories table). CSV export/import columns include `bank`; a per-row CSV `bank` overrides the form-selected bank when present.
 
@@ -211,7 +199,7 @@ python -m pytest -q
 
 Use `python -m pytest`, not bare `pytest`: it puts `backend` on the import path.
 
-Most tests mock the database and the LLM. [`tests/test_category_suggest.py`](backend/tests/test_category_suggest.py) also runs one real-ledger test (a temporary user, removed afterwards); it is skipped without `DATABASE_URL` in the shell environment (the tests do not read `backend/.env`). [`tests/test_chat_agent_role.py`](backend/tests/test_chat_agent_role.py) runs against the real database through `CHAT_DATABASE_URL` and checks that the chat agent can read `transactions` but cannot write or read `users`; it is skipped when `CHAT_DATABASE_URL` is unset.
+Tests run against a throwaway SQLite file created per test run (it never touches `data/parsel.db`). Most tests mock the database and the LLM; the real-DB tests ([`test_database.py`](backend/tests/test_database.py), [`test_dashboard_overview.py`](backend/tests/test_dashboard_overview.py), [`test_category_suggest.py`](backend/tests/test_category_suggest.py), [`test_chat_agent_role.py`](backend/tests/test_chat_agent_role.py)) always run. `test_chat_agent_role.py` checks that the chat agent can read `transactions` but cannot write, read `users`, or use `PRAGMA` / `ATTACH`.
 
 ## Further reading
 

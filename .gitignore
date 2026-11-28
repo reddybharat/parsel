@@ -15,3 +15,6 @@ frontend/dist
 .playwright-cli/
 playwright-report/
 test-results/
+
+# Local SQLite database and pre-migration backups
+data/

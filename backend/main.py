@@ -1,9 +1,11 @@
 """
 Personal Finance Tracker - FastAPI MVP.
-All monetary values in INR (₹). Uses PostgreSQL via DATABASE_URL.
+All monetary values in INR (₹). Stores data in SQLite (DATABASE_PATH, default data/parsel.db).
 """
 
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI
@@ -12,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from auth.deps import get_current_user
 from auth.router import router as auth_router
 from chat.router.chat import router as chat_router
+from common.database import init_database
 from tracker.router.config import router as config_router
 from tracker.router.categories import router as categories_router
 from tracker.router.banks import router as banks_router
@@ -31,9 +34,17 @@ cors_origins = [
 
 _is_production = os.getenv("ENV", "").strip().lower() == "production"
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    init_database()
+    yield
+
+
 app = FastAPI(
     title="Parsel API",
     version="0.1.0",
+    lifespan=lifespan,
     docs_url=None if _is_production else "/docs",
     redoc_url=None if _is_production else "/redoc",
     openapi_url=None if _is_production else "/openapi.json",

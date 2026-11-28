@@ -11,7 +11,7 @@ from sqlalchemy import delete
 os.environ.setdefault("JWT_SECRET", "test-secret-key-for-pytest-only!!")
 
 from auth.models import User
-from common.database import get_connection, is_database_configured
+from common.database import get_connection
 from tracker.constants import (
     INVESTMENTS_CATEGORY,
     NON_SPEND_CATEGORIES,
@@ -137,7 +137,7 @@ async def test_get_dashboard_aggregates_parses_category_spend_sorted():
     assert params["self_transfer_category"] == SELF_TRANSFER_CATEGORY
     assert params["wallet_top_up_category"] == WALLET_TOP_UP_CATEGORY
     assert params["filter_banks"] is True
-    assert params["banks_csv"] == "SBI,Kotak"
+    assert params["banks_json"] == '["SBI", "Kotak"]'
     assert params["filter_chart_category"] is False
     assert params["chart_category"] == ""
 
@@ -322,7 +322,7 @@ async def test_get_portfolio_balance_parses_and_binds_bank_filter():
     }
     _, params = mock_session.execute.await_args.args
     assert params["filter_banks"] is True
-    assert params["banks_csv"] == "SBI,Kotak"
+    assert params["banks_json"] == '["SBI", "Kotak"]'
     assert params["month_now_start"] == date(2026, 7, 1)
 
 
@@ -352,7 +352,7 @@ async def test_get_portfolio_balance_all_banks_when_unfiltered():
     assert result["missing_opening_banks"] == []
     _, params = mock_session.execute.await_args.args
     assert params["filter_banks"] is False
-    assert params["banks_csv"] == ""
+    assert params["banks_json"] == "[]"
 
 
 async def test_get_dashboard_overview_rejects_invalid_bank():
@@ -363,7 +363,6 @@ async def test_get_dashboard_overview_rejects_invalid_bank():
         )
 
 
-@pytest.mark.skipif(not is_database_configured(), reason="DATABASE_URL not set")
 async def test_chart_category_narrows_only_the_spend_charts():
     user_id = uuid.uuid4()
     user = User(
@@ -391,13 +390,10 @@ async def test_chart_category_narrows_only_the_spend_charts():
         debit(60, "Dining", date(2026, 7, 5)),
         debit(1000, INVESTMENTS_CATEGORY, date(2026, 7, 6)),
     ]
-    try:
-        async with get_connection() as session:
-            session.add(user)
-            await session.flush()
-            session.add_all(txns)
-    except Exception as exc:  # noqa: BLE001
-        pytest.skip(f"database not reachable: {exc}")
+    async with get_connection() as session:
+        session.add(user)
+        await session.flush()
+        session.add_all(txns)
 
     bounds = _dashboard_bounds(2, date(2026, 7, 1))
 
@@ -435,7 +431,6 @@ async def test_chart_category_narrows_only_the_spend_charts():
     assert groceries_result["category_spend"] == all_result["category_spend"]
 
 
-@pytest.mark.skipif(not is_database_configured(), reason="DATABASE_URL not set")
 async def test_inflow_skips_own_account_transfers():
     user_id = uuid.uuid4()
     user = User(
@@ -465,13 +460,10 @@ async def test_inflow_skips_own_account_transfers():
         txn(8000, INVESTMENTS_CATEGORY, is_debit=True),
         txn(1200, "Groceries", is_debit=True),
     ]
-    try:
-        async with get_connection() as session:
-            session.add(user)
-            await session.flush()
-            session.add_all(txns)
-    except Exception as exc:  # noqa: BLE001
-        pytest.skip(f"database not reachable: {exc}")
+    async with get_connection() as session:
+        session.add(user)
+        await session.flush()
+        session.add_all(txns)
 
     try:
         result = await _get_dashboard_aggregates(

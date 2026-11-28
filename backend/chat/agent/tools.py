@@ -8,12 +8,14 @@ Table catalog: db_config.py (SQL_TABLE_NAMES_LIST, SQL_TABLES_SCHEMA_DICT).
 """
 
 import json
+import sqlite3
+import uuid
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import List
 
 from langchain_core.prompts import PromptTemplate
 from langchain_core.tools import tool
-from sqlalchemy import text
 
 from chat.agent.llm import ainvoke_with_retry, get_llm
 from chat.agent.prompt import QUERY_CHECKER_PROMPT_TEMPLATE
@@ -29,10 +31,14 @@ from chat.agent.schema import (
     ListTablesInputSchema,
     QueryCheckerInputSchema,
 )
-from common.database import get_agent_connection, is_chat_database_configured
+from common.database import AGENT_MAX_ROWS, run_agent_query
 from common.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Set by agent_node for the duration of a turn; tool tasks inherit it. Kept out of
+# the tool's arguments so the model can't choose whose rows it reads.
+AGENT_USER_ID: ContextVar[uuid.UUID | None] = ContextVar("agent_user_id", default=None)
 
 
 @tool("list_tables", args_schema=ListTablesInputSchema)
@@ -106,22 +112,16 @@ async def execute_query(query: str) -> str:
     """
     logger.info("execute_query called: %s", query[:200])
 
-    if not is_chat_database_configured():
-        logger.error("CHAT_DATABASE_URL not configured for execute_query")
+    user_id = AGENT_USER_ID.get()
+    if user_id is None:
+        logger.error("execute_query called without a current user; refusing")
         return json.dumps(
-            {
-                "status": "error",
-                "error": "Chat database is not configured. Set CHAT_DATABASE_URL in .env.",
-            }
+            {"status": "error", "error": "Query execution failed. Please try again."}
         )
 
     try:
-        async with get_agent_connection() as session:
-            result = await session.execute(text(query.strip()))
-            fetched = result.mappings().all()
-
-        rows = [dict(row) for row in fetched]
-        logger.info("Query returned %d rows", len(rows))
+        rows, truncated = await run_agent_query(query.strip(), user_id=user_id)
+        logger.info("Query returned %d rows (truncated=%s)", len(rows), truncated)
         if not rows:
             return json.dumps(
                 {
@@ -135,9 +135,23 @@ async def execute_query(query: str) -> str:
                 },
                 default=str,
             )
+        result: dict = {"status": "ok", "row_count": len(rows), "rows": rows}
+        if truncated:
+            result["truncated"] = True
+            result["hint"] = (
+                f"Only the first {AGENT_MAX_ROWS} rows are shown; more exist. "
+                "Say more results may exist, or aggregate / add filters / LIMIT and query again."
+            )
+        return json.dumps(result, default=str)
+    except sqlite3.Error as e:
+        # SQLite's message ("no such function: date_trunc", "not authorized") lets the
+        # agent fix its own query; it holds no data and the prompt keeps it out of replies.
+        logger.warning("execute_query rejected: %s", e)
         return json.dumps(
-            {"status": "ok", "row_count": len(rows), "rows": rows},
-            default=str,
+            {
+                "status": "error",
+                "error": f"SQLite error: {e}. Fix the query (SQLite syntax, schema columns) and retry.",
+            }
         )
     except Exception as e:
         logger.error("execute_query failed: %s", e)

@@ -12,7 +12,7 @@ from sqlalchemy import delete
 os.environ.setdefault("JWT_SECRET", "test-secret-key-for-pytest-only!!")
 
 from auth.models import User
-from common.database import get_connection, is_database_configured
+from common.database import get_connection
 from tracker.category_service import (
     _history_by_merchant,
     category_key,
@@ -99,7 +99,6 @@ async def test_suggest_ignores_filled_rows_and_empty_keys():
     load.assert_not_called()
 
 
-@pytest.mark.skipif(not is_database_configured(), reason="DATABASE_URL not set")
 async def test_suggest_history_from_real_ledger():
     user_id = uuid.uuid4()
     user = User(
@@ -120,13 +119,10 @@ async def test_suggest_history_from_real_ledger():
             description="UPI/DR/5555/SWIGGY/YESB/swiggy@ybl",
         )
     ]
-    try:
-        async with get_connection() as session:
-            session.add(user)
-            await session.flush()
-            session.add_all(txns)
-    except Exception as exc:  # noqa: BLE001
-        pytest.skip(f"database not reachable: {exc}")
+    async with get_connection() as session:
+        session.add(user)
+        await session.flush()
+        session.add_all(txns)
     try:
         result = await suggest_categories(
             user_id, [_row(1, "UPI/DR/9999/SWIGGY/HDFC/swiggy@ybl")], KNOWN

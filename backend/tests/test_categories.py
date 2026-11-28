@@ -87,6 +87,7 @@ def test_transaction_create_accepts_any_nonempty_category_string():
     tx = TransactionCreate(
         amount=10,
         category="  Pet Care ",
+        bank="SBI",
         transaction_date=date.today(),
     )
     assert tx.category == "Pet Care"
@@ -203,6 +204,7 @@ def test_import_preview_reports_new_categories():
         response = client.post(
             "/transactions/import/preview",
             headers=headers,
+            data={"bank": "SBI"},
             files={"file": ("rows.csv", csv_bytes, "text/csv")},
         )
     assert response.status_code == 200

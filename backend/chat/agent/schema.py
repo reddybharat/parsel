@@ -17,7 +17,7 @@ class GetTableSchemaInputSchema(BaseModel):
 
 
 class QueryCheckerInputSchema(BaseModel):
-    query: str = Field(..., description="The PostgreSQL SELECT query to validate or fix.")
+    query: str = Field(..., description="The SQLite SELECT query to validate or fix.")
 
 
 class ExecuteQueryInputSchema(BaseModel):

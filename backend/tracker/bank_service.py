@@ -131,7 +131,7 @@ async def list_unregistered_transaction_banks(user_id: uuid.UUID) -> list[str]:
                     .where(
                         Transaction.user_id == user_id,
                         Transaction.bank.is_not(None),
-                        func.btrim(Transaction.bank) != "",
+                        func.trim(Transaction.bank) != "",
                     )
                     .distinct()
                 )
