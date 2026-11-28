@@ -4,10 +4,10 @@
 
 /* Hybrid: Mono Signal layout + Precision cyan accents + JetBrains Mono */
 :root {
-  --parsel-bg: #ffffff;
+  --parsel-bg: #eeeeee;
   --parsel-surface: #ffffff;
   --parsel-soft: #ebebeb;
-  --parsel-canvas: #f3f3f3;
+  --parsel-canvas: #eeeeee;
   --parsel-text: #0a0a0a;
   --parsel-muted: #6b6b6b;
   --parsel-primary: #00a3c4;
@@ -60,10 +60,10 @@
 }
 
 .dark {
-  --parsel-bg: #000000;
+  --parsel-bg: #252525;
   --parsel-surface: #111111;
   --parsel-soft: #1a1a1a;
-  --parsel-canvas: #0a0a0a;
+  --parsel-canvas: #252525;
   --parsel-text: #f5f5f5;
   --parsel-muted: #a3a3a3;
   --parsel-primary: #35d0ef;
